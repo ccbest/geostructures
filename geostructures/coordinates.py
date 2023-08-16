@@ -1,15 +1,15 @@
 """
 Representation of a specific point on earth
 """
+
+__all__ = ['Coordinate']
+
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
 from precisenumbers import PreciseNumber, parse_number
 
 from geostructures.utils.functions import round_half_up
-
-
-__all__ = ['Coordinate']
 
 
 class Longitude(PreciseNumber):

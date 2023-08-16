@@ -1,5 +1,10 @@
 """ Geometric calculations for Coordinates and Geostructures """
 
+__all__ = [
+    'bearing_degrees', 'haversine_distance_meters', 'inverse_haversine_degrees',
+    'inverse_haversine_radians'
+]
+
 import math
 from typing import List
 
@@ -7,12 +12,6 @@ import numpy as np
 
 from geostructures.coordinates import Coordinate
 from geostructures.utils.functions import round_half_up
-
-
-__all__ = [
-    'bearing_degrees', 'haversine_distance_meters', 'inverse_haversine_degrees',
-    'inverse_haversine_radians'
-]
 
 
 _EARTH_RADIUS = 6_371_000  # meters - WGS84

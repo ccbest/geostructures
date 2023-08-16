@@ -2,6 +2,12 @@
 """
 Geospatial shape representations, for use with earth-surface calculations
 """
+
+__all__ = [
+    'GeoBox', 'GeoCircle', 'GeoEllipse', 'GeoLineString', 'GeoPoint', 'GeoPolygon',
+    'GeoRing', 'GeoShape'
+]
+
 from abc import abstractmethod
 from datetime import date, datetime
 import math
@@ -20,11 +26,6 @@ from geostructures.time import DateInterval, TimeInterval
 
 
 _GEOTIME_TYPE = Union[date, datetime, DateInterval, TimeInterval]
-
-__all__ = [
-    'GeoBox', 'GeoCircle', 'GeoEllipse', 'GeoLineString', 'GeoPoint', 'GeoPolygon',
-    'GeoRing', 'GeoShape'
-]
 
 
 class GeoShape(LoggingMixin, DefaultZuluMixin):

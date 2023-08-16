@@ -1,8 +1,8 @@
 """Module for miscellaneous multi-use functions"""
-import decimal
-
 
 __all__ = ['float_to_str', 'round_half_up']
+
+import decimal
 
 
 def float_to_str(f: float) -> str:

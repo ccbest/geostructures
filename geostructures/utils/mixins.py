@@ -1,10 +1,10 @@
 """Utility mixin classes"""
+
+__all__ = ['LoggingMixin', 'DefaultZuluMixin']
+
 from datetime import datetime, timezone
 import logging
 from typing import Optional
-
-
-__all__ = ['LoggingMixin', 'DefaultZuluMixin']
 
 
 class LoggingMixin:  # pylint: disable=too-few-public-methods

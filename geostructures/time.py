@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+__all__ = ['DateInterval', 'TimeInterval']
+
 from datetime import date, datetime, timedelta
 from typing import Optional, Union
 
 from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
-
-
-__all__ = ['DateInterval', 'TimeInterval']
 
 
 class DateInterval(LoggingMixin, DefaultZuluMixin):

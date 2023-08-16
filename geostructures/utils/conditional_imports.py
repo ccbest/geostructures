@@ -3,15 +3,15 @@ Intercepts import errors concerning optional imports to either:
     - Provide a more detailed error response or
     - Auto-download the specified package
 """
+
+__all__ = ['ConditionalPackageInterceptor']
+
 from importlib import util
 import subprocess
 import sys
 from typing import Union
 
 from geostructures.utils.mixins import LoggingMixin
-
-
-__all__ = ['ConditionalPackageInterceptor']
 
 
 class ConditionalPackageInterceptor(LoggingMixin):

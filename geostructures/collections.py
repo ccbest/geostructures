@@ -1,6 +1,9 @@
 """
 Module for sequences of GeoShapes
 """
+
+__all__ = ['FeatureCollection', 'Track']
+
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from functools import cached_property
@@ -15,17 +18,14 @@ from geostructures.calc import haversine_distance_meters
 from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
 
 
-__all__ = ['GeoFeatureCollection', 'Track']
-
-
-class Collection(LoggingMixin, DefaultZuluMixin):
+class ShapeCollection(LoggingMixin, DefaultZuluMixin):
 
     def __init__(self, geoshapes: List[GeoShape]):
         super().__init__()
         self.geoshapes = geoshapes
 
 
-class GeoFeatureCollection(Collection):
+class FeatureCollection(ShapeCollection):
 
     """
     A collection of GeoShapes, in no particular order
@@ -44,7 +44,7 @@ class GeoFeatureCollection(Collection):
         }
 
 
-class Track(LoggingMixin, DefaultZuluMixin):
+class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
 
     """
     A sequence of chronologically-ordered (by start time) GeoShapes
