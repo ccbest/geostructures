@@ -20,16 +20,13 @@ from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
 
 class ShapeCollection(LoggingMixin, DefaultZuluMixin):
 
-    def __init__(self, geoshapes: List[GeoShape]):
-        super().__init__()
-        self.geoshapes = geoshapes
+    geoshapes: List[GeoShape]
 
+    def __bool__(self):
+        return bool(self.geoshapes)
 
-class FeatureCollection(ShapeCollection):
-
-    """
-    A collection of GeoShapes, in no particular order
-    """
+    def __contains__(self, item):
+        return item in self.geoshapes
 
     def __iter__(self):
         """Iterate through the track"""
@@ -50,6 +47,68 @@ class FeatureCollection(ShapeCollection):
                 ) for idx, x in enumerate(self.geoshapes)
             ]
         }
+
+    @cached_property
+    def convex_hull(self):
+        """Creates a convex hull around the pings"""
+        from scipy import spatial
+
+        if len(self.geoshapes) <= 2 and all(isinstance(x, GeoPoint) for x in self.geoshapes):
+            raise ValueError('Cannot create a convex hull from less than three points.')
+
+        points = [y.to_float() for x in self.geoshapes for y in x.bounding_coords()]
+        hull = spatial.ConvexHull(points)
+        return GeoPolygon([Coordinate(*points[x]) for x in hull.vertices])
+
+
+class FeatureCollection(ShapeCollection):
+
+    """
+    A collection of GeoShapes, in no particular order
+    """
+
+    def __init__(self, geoshapes: List[GeoShape]):
+        super().__init__()
+        self.geoshapes = geoshapes
+
+    def __add__(self, other):
+        if not isinstance(other, FeatureCollection):
+            raise ValueError('You can only combine a FeatureCollection with another FeatureCollection')
+
+        return FeatureCollection(self.geoshapes + other.geoshapes)
+
+    def __eq__(self, other):
+        """Test equality"""
+        if not isinstance(other, FeatureCollection):
+            return False
+
+        if not self.geoshapes == other.geoshapes:
+            return False
+
+        return True
+
+    def __getitem__(self, item):
+        """Slicing by index"""
+        return self.geoshapes.__getitem__(item)
+
+    def __iter__(self):
+        """Iterate through the track"""
+        return self.geoshapes.__iter__()
+
+    def __len__(self):
+        """The track length"""
+        return self.geoshapes.__len__()
+
+    def __repr__(self):
+        """REPL representation"""
+        if not self.geoshapes:
+            return '<Empty FeatureCollection>'
+
+        return f'<FeatureCollection with {len(self.geoshapes)} shapes>'
+
+    def copy(self):
+        """Returns a shallow copy of self"""
+        return FeatureCollection(self.geoshapes.copy())
 
 
 class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
@@ -72,13 +131,8 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
 
         return Track(self.geoshapes + other.geoshapes)
 
-    def __bool__(self):
-        return bool(self.geoshapes)
-
-    def __contains__(self, item):
-        return item in self.geoshapes
-
     def __eq__(self, other):
+        """Test equality"""
         if not isinstance(other, Track):
             return False
 
@@ -120,7 +174,6 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
         return Track(
             [x for x in self.geoshapes if _start <= x.start and x.end < _stop]
         )
-
 
     def __repr__(self):
         """REPL representation"""
@@ -167,18 +220,6 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
 
         return self.geoshapes[-1].dt
 
-    @cached_property
-    def convex_hull(self):
-        """Creates a convex hull around the pings"""
-        from scipy import spatial
-
-        if len(self.geoshapes) <= 2:
-            raise ValueError('Cannot create a convex hull from less than three points.')
-
-        points = [x.centroid.to_float() for x in self.geoshapes]
-        hull = spatial.ConvexHull(points)
-        return GeoPolygon([Coordinate(*points[x]) for x in hull.vertices])
-
     @property
     def speed_diffs(self):
         """
@@ -187,10 +228,10 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
         Returns:
 
         """
-        return self.distances / [x.total_seconds() for x in self.time_diffs]
+        return self.centroid_distances / [x.total_seconds() for x in self.time_start_diffs]
 
     @cached_property
-    def distances(self):
+    def centroid_distances(self):
         """Provides an array of the distances (in meters) between chronologically-ordered
         pings. The length of the returned array will always be len(self) - 1"""
         if len(self.geoshapes) < 2:
@@ -202,14 +243,14 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
         ])
 
     @property
-    def time_diffs(self):
+    def time_start_diffs(self):
         """Provides an array of the time differences between chronologically-ordered
         pings. The length of the returned array will always be len(self) - 1"""
         if len(self.geoshapes) < 2:
-            raise ValueError('Cannot compute time diffs between fewer than two pings.')
+            raise ValueError('Cannot compute time diffs between fewer than two shapes.')
 
         return np.array([
-            (y.end - x.start) or timedelta(seconds=0.1)
+            (y.start - x.start)
             for x, y in zip(self.geoshapes, self.geoshapes[1:])
         ])
 
