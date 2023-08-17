@@ -18,6 +18,6 @@ def draw_collection(collection: Collection):
         mapbox_style="carto-positron",
         opacity=0.5,
         featureidkey='id',
-        hover_data=['id', 'weight', ],
+        hover_data=['id', 'weight'],
         center={'lat': 0.0, 'lon': 1.0}
     )

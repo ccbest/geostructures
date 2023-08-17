@@ -1,3 +1,4 @@
+
 """
 Intercepts import errors concerning optional imports to either:
     - Provide a more detailed error response or
@@ -14,7 +15,7 @@ from typing import Union
 from geostructures.utils.mixins import LoggingMixin
 
 
-class ConditionalPackageInterceptor(LoggingMixin):
+class ConditionalPackageInterceptor(LoggingMixin):  # pragma: no cover
     """
     Provides automatic pip installation of a package if it isn't found. Only packages added to this
     object using the .permit_packages() method are allowed to be automatically installed.

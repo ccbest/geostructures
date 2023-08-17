@@ -154,6 +154,10 @@ def test_shape_to_geojson(geocircle):
     }
 
 
+def test_geoshape_to_shapely(geobox):
+    assert geobox.to_shapely() == shapely.geometry.Polygon([[0.0,1.0],[1.0,1.0],[1.0,0.0],[0.0,0.0]])
+
+
 def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
     p2 = GeoPolygon(
         [
@@ -677,20 +681,19 @@ def test_geolinestring_bounding_coords(geolinestring):
 
 def test_geolinestring_to_geojson(geolinestring):
 
-    assert geolinestring.to_geojson(test_prop=2) == {
-            'type': 'Feature',
-            'geometry': {
-                'type': 'LineString',
-                'coordinates': [x.to_float() for x in geolinestring.bounding_coords()],
-            },
-            'properties': {
-                'test_prop': 2,
-                'datetime_start': default_test_datetime.isoformat(),
-                'datetime_end': default_test_datetime.isoformat(),
-            }
-        }
-
-    shapely.geometry.shape(geolinestring.to_geojson(test_prop=2)['geometry'])
+    assert geolinestring.to_geojson(properties={'test_prop': 2}, test_kwarg=1) == {
+        'type': 'Feature',
+        'geometry': {
+            'type': 'LineString',
+            'coordinates': [x.to_float() for x in geolinestring.bounding_coords()],
+        },
+        'properties': {
+            'test_prop': 2,
+            'datetime_start': default_test_datetime.isoformat(),
+            'datetime_end': default_test_datetime.isoformat(),
+        },
+        'test_kwarg': 1
+    }
 
 
 def test_geolinestring_circumscribing_circle(geolinestring):
@@ -758,7 +761,7 @@ def test_geopoint_bounding_coords(geopoint):
 
 
 def test_geopoint_to_geojson(geopoint):
-    assert geopoint.to_geojson(test_prop=2) == {
+    assert geopoint.to_geojson(properties={'test_prop': 2}, test_kwarg=1) == {
         'type': 'Feature',
         'geometry': {
             'type': 'Point',
@@ -768,10 +771,15 @@ def test_geopoint_to_geojson(geopoint):
             'test_prop': 2,
             'datetime_start': default_test_datetime.isoformat(),
             'datetime_end': default_test_datetime.isoformat(),
-        }
+        },
+        'test_kwarg': 1
     }
 
     shapely.geometry.shape(geopoint.to_geojson(test_prop=2)['geometry'])
+
+
+def test_geopoint_to_shapely(geopoint):
+    assert geopoint.to_shapely() == shapely.Point(0.0, 0.0)
 
 
 def test_geopoint_circumscribing_circle(geopoint):

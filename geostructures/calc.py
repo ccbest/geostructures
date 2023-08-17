@@ -2,7 +2,7 @@
 
 __all__ = [
     'bearing_degrees', 'haversine_distance_meters', 'inverse_haversine_degrees',
-    'inverse_haversine_radians'
+    'inverse_haversine_radians', 'rotate_coordinates'
 ]
 
 import math
@@ -165,11 +165,11 @@ def rotate_coordinates(coords: List[Coordinate], origin: Coordinate, degrees: fl
         [np.cos(angle), -np.sin(angle)],
         [np.sin(angle), np.cos(angle)]
     ])
-    o = np.array(origin.to_float())
-    p = np.array([x.to_float() for x in coords])
+    o = np.atleast_2d(origin.to_float())
+    p = np.atleast_2d([x.to_float() for x in coords])
 
-    precision = [min(x.latitude.precision, x.longitude.precision) for x in coords]
+    precision = [min([x.latitude.precision, x.longitude.precision]) for x in coords]
     return [
-        Coordinate(*x, precision=y)
+        Coordinate(*(round_half_up(_x, y) for _x in x))
         for x, y in zip((R @ (p.T - o.T) + o.T).T, precision)
     ]

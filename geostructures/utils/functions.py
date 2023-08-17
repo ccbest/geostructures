@@ -25,7 +25,7 @@ def float_to_str(f: float) -> str:
     zero_padding = '0' * (abs(exp_int) - 1)
     sign = '-' if f < 0 else ''
     if exp_int > 0:
-        return f'{sign}{digits}{zero_padding}'
+        return f'{sign}{digits}{zero_padding}0'
 
     return f'{sign}0.{zero_padding}{digits}'
 
@@ -44,7 +44,8 @@ def round_half_up(value: float, precision) -> float:
     """
     return float(
         decimal.Decimal(float_to_str(value)).quantize(
-            decimal.Decimal(10) ** -precision, rounding=decimal.ROUND_HALF_UP
+            decimal.Decimal(10) ** -precision,
+            rounding=decimal.ROUND_HALF_UP if value >= 0 else decimal.ROUND_HALF_DOWN
         )
     )
 
