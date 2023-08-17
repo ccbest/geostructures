@@ -196,6 +196,14 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         )
         return f'POLYGON(({bbox_str}))'
 
+    def to_shapely(self):
+        """
+        Converts the geoshape into a Shapely shape.
+        """
+        import shapely
+
+        return shapely.geometry.shape(self.to_geojson()['geometry'])
+
 
 class GeoPolygon(GeoShape):
 
@@ -940,7 +948,7 @@ class GeoPoint(GeoShape):
 
     @property
     def centroid(self):
-        return self
+        return self.center
 
     def to_wkt(self, **_):
         point_str = " ".join(self.center.to_str())

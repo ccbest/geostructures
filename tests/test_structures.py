@@ -1,6 +1,5 @@
 from datetime import date, datetime, timezone
 import pytest
-import pytz
 import shapely
 from shapely import wkt
 
@@ -10,15 +9,7 @@ from geostructures.coordinates import Coordinate
 from geostructures.time import DateInterval, TimeInterval
 
 
-
 default_test_datetime = datetime(1970, 1, 1, 0, 0, tzinfo=timezone.utc)
-
-d20200101 = datetime(2020, 1, 1)
-d20200101_tz = pytz.timezone("America/Toronto").localize(datetime(2020, 1, 1))
-d20201231 = datetime(2020, 12, 31)
-d20201231_tz = pytz.timezone("America/Toronto").localize(datetime(2020, 12, 31))
-r1 = TimeInterval(d20200101, d20201231)
-r2 = TimeInterval(d20200101_tz, d20201231_tz)
 
 
 @pytest.fixture
@@ -131,6 +122,36 @@ def test_geoshape_end():
 
     with pytest.raises(ValueError):
         _ = GeoCircle(Coordinate('0.0', '0.0'), 50).end
+
+
+def test_shape_to_geojson(geocircle):
+    # Assert kwargs and properties end up in the right place
+    assert geocircle.to_geojson(properties={'test_prop': 1}, test_kwarg=2) == {
+        'type': 'Feature',
+        'geometry': {
+            'type': 'Polygon',
+            'coordinates': [[x.to_float() for x in geocircle.bounding_coords()]],
+        },
+        'properties': {
+            'test_prop': 1,
+            'datetime_start': default_test_datetime.isoformat(),
+            'datetime_end': default_test_datetime.isoformat(),
+        },
+        'test_kwarg': 2,
+    }
+
+    # Assert k works as intended
+    assert geocircle.to_geojson(k=10) == {
+        'type': 'Feature',
+        'geometry': {
+            'type': 'Polygon',
+            'coordinates': [[x.to_float() for x in geocircle.bounding_coords(k=10)]],
+        },
+        'properties': {
+            'datetime_start': default_test_datetime.isoformat(),
+            'datetime_end': default_test_datetime.isoformat(),
+        }
+    }
 
 
 def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
@@ -261,20 +282,7 @@ def test_geopolygon_bounding_coords(geopolygon):
 
 
 def test_polygon_to_geojson(geopolygon):
-    assert geopolygon.to_geojson(test_prop=2) == {
-        'type': 'Feature',
-        'geometry': {
-            'type': 'Polygon',
-            'coordinates': [[x.to_float() for x in geopolygon.bounding_coords()]],
-        },
-        'properties': {
-            'test_prop': 2,
-            'datetime_start': default_test_datetime.isoformat(),
-            'datetime_end': default_test_datetime.isoformat(),
-        }
-    }
-
-    shapely.geometry.shape(geopolygon.to_geojson(test_prop=2)['geometry'])
+    shapely.geometry.shape(geopolygon.to_geojson()['geometry'])
 
 
 def test_geopolygon_circumscribing_circle(geopolygon):
@@ -345,20 +353,7 @@ def test_geobox_bounding_coords(geobox):
 
 
 def test_geobox_to_geojson(geobox):
-    assert geobox.to_geojson(test_prop=2) == {
-        'type': 'Feature',
-        'geometry': {
-            'type': 'Polygon',
-            'coordinates': [[x.to_float() for x in geobox.bounding_coords()]],
-        },
-        'properties': {
-            'test_prop': 2,
-            'datetime_start': default_test_datetime.isoformat(),
-            'datetime_end': default_test_datetime.isoformat(),
-        }
-    }
-
-    shapely.geometry.shape(geobox.to_geojson(test_prop=2)['geometry'])
+    shapely.geometry.shape(geobox.to_geojson()['geometry'])
 
 
 def test_geobox_to_polygon(geobox):
@@ -381,6 +376,10 @@ def test_geocircle_contains(geocircle):
     assert Coordinate(0.0, 0.0) in geocircle
     assert Coordinate(0.001, 0.001) in geocircle
     assert Coordinate(1.0, 1.0) not in geocircle
+
+
+def test_geocircle_geojson(geocircle):
+    shapely.geometry.shape(geocircle.to_geojson(k=10, test_prop=2)['geometry'])
 
 
 def test_geocircle_eq(geocircle):
@@ -406,36 +405,6 @@ def test_geocircle_hash(geocircle):
 
 def test_geocircle_repr(geocircle):
     assert repr(geocircle) == '<GeoCircle at (0.0, 0.0); radius 1000 meters>'
-
-
-def test_geocircle_to_geojson(geocircle):
-    assert geocircle.to_geojson(test_prop=2) == {
-        'type': 'Feature',
-        'geometry': {
-            'type': 'Polygon',
-            'coordinates': [[x.to_float() for x in geocircle.bounding_coords()]],
-        },
-        'properties': {
-            'test_prop': 2,
-            'datetime_start': default_test_datetime.isoformat(),
-            'datetime_end': default_test_datetime.isoformat(),
-        }
-    }
-
-    assert geocircle.to_geojson(k=10, test_prop=2) == {
-        'type': 'Feature',
-        'geometry': {
-            'type': 'Polygon',
-            'coordinates': [[x.to_float() for x in geocircle.bounding_coords(k=10)]],
-        },
-        'properties': {
-            'test_prop': 2,
-            'datetime_start': default_test_datetime.isoformat(),
-            'datetime_end': default_test_datetime.isoformat(),
-        }
-    }
-
-    shapely.geometry.shape(geocircle.to_geojson(k=10, test_prop=2)['geometry'])
 
 
 def test_geocircle_to_polygon(geocircle):
@@ -534,32 +503,6 @@ def test_geoellipse_to_polygon(geoellipse):
 
 
 def test_geoellipse_to_geojson(geoellipse):
-    assert geoellipse.to_geojson(test_prop=2) == {
-        'type': 'Feature',
-        'geometry': {
-            'type': 'Polygon',
-            'coordinates': [[x.to_float() for x in geoellipse.bounding_coords()]],
-        },
-        'properties': {
-            'test_prop': 2,
-            'datetime_start': default_test_datetime.isoformat(),
-            'datetime_end': default_test_datetime.isoformat(),
-        }
-    }
-
-    assert geoellipse.to_geojson(k=10, test_prop=2) == {
-        'type': 'Feature',
-        'geometry': {
-            'type': 'Polygon',
-            'coordinates': [[x.to_float() for x in geoellipse.bounding_coords(k=10)]],
-        },
-        'properties': {
-            'test_prop': 2,
-            'datetime_start': default_test_datetime.isoformat(),
-            'datetime_end': default_test_datetime.isoformat(),
-        }
-    }
-
     shapely.geometry.shape(geoellipse.to_geojson(k=10, test_prop=2)['geometry'])
 
 
@@ -655,34 +598,7 @@ def test_georing_bounding_coords(geowedge, georing):
 
 
 def test_georing_to_geojson(georing):
-    assert georing.to_geojson(test_prop=2) == {
-        'type': 'Feature',
-        'geometry': {
-            'type': 'Polygon',
-            'coordinates': [[x.to_float() for x in georing.bounding_coords()]],
-        },
-        'properties': {
-            'test_prop': 2,
-            'datetime_start': default_test_datetime.isoformat(),
-            'datetime_end': default_test_datetime.isoformat(),
-        }
-    }
-
-    assert georing.to_geojson(k=10, test_prop=2) == {
-        'type': 'Feature',
-        'geometry': {
-            'type': 'Polygon',
-            'coordinates': [[x.to_float() for x in georing.bounding_coords(k=10)]],
-        },
-        'properties': {
-            'test_prop': 2,
-            'datetime_start': default_test_datetime.isoformat(),
-            'datetime_end': default_test_datetime.isoformat(),
-        }
-    }
-
-    # Confirm shapely can read the GeoJson
-    shapely.geometry.shape(georing.to_geojson(k=10, test_prop=2)['geometry'])
+    shapely.geometry.shape(georing.to_geojson()['geometry'])
 
 
 def test_georing_circumscribing_rectangle(georing, geowedge):
@@ -869,7 +785,7 @@ def test_geopoint_circumscribing_rectangle(geopoint):
 
 
 def test_geopoint_centroid(geopoint):
-    assert geopoint.centroid == geopoint
+    assert geopoint.centroid == geopoint.center
 
 
 def test_geopoint_to_wkt(geopoint):

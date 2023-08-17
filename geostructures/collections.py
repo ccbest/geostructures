@@ -31,6 +31,14 @@ class FeatureCollection(ShapeCollection):
     A collection of GeoShapes, in no particular order
     """
 
+    def __iter__(self):
+        """Iterate through the track"""
+        return self.geoshapes.__iter__()
+
+    def __len__(self):
+        """The track length"""
+        return self.geoshapes.__len__()
+
     def to_geojson(self, properties: Optional[Dict] = None, **kwargs):
         return {
             'type': 'FeatureCollection',
@@ -113,13 +121,6 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
             [x for x in self.geoshapes if _start <= x.start and x.end < _stop]
         )
 
-    def __iter__(self):
-        """Iterate through the track"""
-        return self.geoshapes.__iter__()
-
-    def __len__(self):
-        """The track length"""
-        return self.geoshapes.__len__()
 
     def __repr__(self):
         """REPL representation"""

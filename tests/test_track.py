@@ -193,7 +193,7 @@ def test_track_convex_hull():
             GeoPoint(Coordinate('-2.0', '4.0'), datetime(2020, 1, 1, 8)),
         ]
     )
-    points = [x.center.to_float() for x in track.geoshapes]
+    points = [x.centroid.to_float() for x in track.geoshapes]
     hull = ConvexHull(points)
     assert GeoPolygon([Coordinate(*points[x]) for x in hull.vertices]) == track.convex_hull
     
@@ -220,7 +220,7 @@ def test_track_distances():
         ]
     )
     np.testing.assert_array_equal(
-        np.round(track1.distances, 3),
+        np.round(track1.centroid_distances, 3),
         np.round(np.array(
             [
                 157.241, 157.241, 157.241, 157.241, 157.241,
@@ -230,7 +230,7 @@ def test_track_distances():
     )
 
     with pytest.raises(ValueError):
-        _ = Track([GeoPoint(Coordinate('0.0000', '1.0000'), datetime(2020, 1, 1))]).distances
+        _ = Track([GeoPoint(Coordinate('0.0000', '1.0000'), datetime(2020, 1, 1))]).centroid_distances
 
 
 def test_track_time_diffs():
@@ -247,8 +247,8 @@ def test_track_time_diffs():
         ]
     )
 
-    assert track1.time_diffs[0] == track1.geoshapes[1].dt - track1.geoshapes[0].dt
-    assert len(track1) - 1 == len(track1.time_diffs)
+    assert track1.time_start_diffs[0] == track1.geoshapes[1].dt - track1.geoshapes[0].dt
+    assert len(track1) - 1 == len(track1.time_start_diffs)
 
 
 def test_track_has_duplicates():
