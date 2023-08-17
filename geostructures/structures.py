@@ -151,7 +151,12 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             (GeoBox)
         """
 
-    def to_geojson(self, k: Optional[int] = None, properties: Optional[Dict] = None, **kwargs) -> Dict:
+    def to_geojson(
+            self,
+            k: Optional[int] = None,
+            properties: Optional[Dict] = None,
+            **kwargs
+    ) -> Dict:
         """
         Convert the shape to geojson format.
 
@@ -195,6 +200,16 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             " ".join(x.to_str()) for x in self.bounding_coords(**kwargs)
         )
         return f'POLYGON(({bbox_str}))'
+
+    def to_shapely(self):
+        """
+        Converts the geoshape into a Shapely shape.
+        """
+        import shapely
+
+        return shapely.geometry.Polygon(
+            [[float(x.longitude), float(x.latitude)] for x in self.bounding_coords()]
+        )
 
 
 class GeoPolygon(GeoShape):
@@ -838,7 +853,12 @@ class GeoLineString(GeoShape):
     def bounding_coords(self, **kwargs):
         return [*self.coords, self.coords[0]]
 
-    def to_geojson(self, k: Optional[int] = None, **properties):
+    def to_geojson(
+            self,
+            k: Optional[int] = None,
+            properties: Optional[Dict] = None,
+            **kwargs
+    ) -> Dict:
         return {
             'type': 'Feature',
             'geometry': {
@@ -848,8 +868,9 @@ class GeoLineString(GeoShape):
             'properties': {
                 **self.properties,
                 **self._dt_to_json(),
-                **properties
+                **(properties or {})
             },
+            **kwargs
         }
 
     def circumscribing_circle(self):
@@ -918,7 +939,12 @@ class GeoPoint(GeoShape):
     def bounding_coords(self, **kwargs):
         return [self.center]
 
-    def to_geojson(self, k: Optional[int] = None, **properties):
+    def to_geojson(
+            self,
+            k: Optional[int] = None,
+            properties: Optional[Dict] = None,
+            **kwargs
+    ) -> Dict:
         return {
             'type': 'Feature',
             'geometry': {
@@ -928,9 +954,15 @@ class GeoPoint(GeoShape):
             'properties': {
                 **self.properties,
                 **self._dt_to_json(),
-                **properties
+                **(properties or {})
             },
+            **kwargs
         }
+
+    def to_shapely(self):
+        import shapely
+
+        return shapely.Point(*self.centroid.to_float())
 
     def circumscribing_circle(self):
         raise NotImplementedError('Points cannot be circumscribed')
@@ -940,7 +972,7 @@ class GeoPoint(GeoShape):
 
     @property
     def centroid(self):
-        return self
+        return self.center
 
     def to_wkt(self, **_):
         point_str = " ".join(self.center.to_str())

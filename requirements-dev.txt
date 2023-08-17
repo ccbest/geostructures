@@ -3,3 +3,4 @@ mgrs>=1.4.5,<2
 pylint>=2.15,<3
 pytest>=7,<8
 scipy>=1.11,<2.0
+shapely>=2,<3

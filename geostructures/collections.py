@@ -28,6 +28,14 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
     def __contains__(self, item):
         return item in self.geoshapes
 
+    def __iter__(self):
+        """Iterate through the track"""
+        return self.geoshapes.__iter__()
+
+    def __len__(self):
+        """The track length"""
+        return self.geoshapes.__len__()
+
     def to_geojson(self, properties: Optional[Dict] = None, **kwargs):
         return {
             'type': 'FeatureCollection',
@@ -172,7 +180,7 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
         if not self.geoshapes:
             return '<Empty Track>'
 
-        return f'<Track with {len(self.geoshapes)} pings ' \
+        return f'<Track with {len(self.geoshapes)} shapes ' \
                f'from {self.geoshapes[0].start.isoformat()} - ' \
                f'{self.geoshapes[-1].end.isoformat()}>'
 
@@ -218,7 +226,7 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
         Provides speed differences (meters per second) between pings in a track
 
         Returns:
-
+            np.Array
         """
         return self.centroid_distances / [x.total_seconds() for x in self.time_start_diffs]
 
@@ -301,13 +309,14 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
         Returns:
             Track
         """
+        # Has to be checked before date - datetimes are dates, but dates are not datetimes
+        if isinstance(dt, datetime):
+            return self[dt]  # type: ignore
+
         if isinstance(dt, date):
             _start = self._date_to_datetime(dt)
             _end = self._date_to_datetime(dt + timedelta(days=1))
             return self[_start:_end]  # type: ignore
-
-        if isinstance(dt, datetime):
-            return self[dt]  # type: ignore
 
         if isinstance(dt, DateInterval):
             _start = self._date_to_datetime(dt.start)

@@ -27,3 +27,16 @@ def test_inverse_haversine_radians():
 
 def test_inverse_haversine_degrees():
     assert inverse_haversine_degrees(Coordinate(0.0, 0.0), 45., 111_000) == Coordinate(0.7059029, 0.7058494)
+
+
+def test_rotate_coordinates():
+    points = [
+        Coordinate(1.0, 0.0),
+        Coordinate('1.000', '0.000'),
+        Coordinate('1.0', '0.000'),
+    ]
+    assert rotate_coordinates(points, Coordinate(0.0, 0.0), 45) == [
+        Coordinate(0.7, 0.7),
+        Coordinate(0.707, 0.707),
+        Coordinate(0.707, 0.707),
+    ]
