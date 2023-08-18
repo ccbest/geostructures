@@ -1,6 +1,9 @@
 
 from geostructures.coordinates import Coordinate
-from geostructures.structures import *
+from geostructures.structures import (
+    GeoBox, GeoCircle, GeoEllipse, GeoLineString, GeoPoint, GeoPolygon,
+    GeoRing
+)
 from geostructures.utils.conditional_imports import ConditionalPackageInterceptor
 
 

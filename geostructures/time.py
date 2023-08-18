@@ -20,7 +20,9 @@ class DateInterval(LoggingMixin, DefaultZuluMixin):
             The starting date of the date interval. If not passed, behaves as all dates in the past.
 
         end:  Union[datetime.date, datetime.timedelta, int]
-            The last date of the date interval, inclusive. If not passed, behaves as all dates in the future.
+            The last date of the date interval, inclusive. If not passed, behaves as all
+            ates in the future.
+
             You can provide any of:
                 - A `Date`, indicating the end date
                 - A `timedelta`, indicating the number of days from the `start`
@@ -74,7 +76,9 @@ class DateInterval(LoggingMixin, DefaultZuluMixin):
 
     def __repr__(self):
         """REPL representation"""
-        return f'<DateInterval [{self.start.strftime("%Y-%m-%d")} - {self.end.strftime("%Y-%m-%d")}]>'
+        return (
+            f'<DateInterval [{self.start.strftime("%Y-%m-%d")} - {self.end.strftime("%Y-%m-%d")}]>'
+        )
 
     def isdisjoint(self, other: DateInterval) -> bool:
         """Returns True if date intervals do not overlap."""

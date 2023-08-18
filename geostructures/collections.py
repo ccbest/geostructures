@@ -73,7 +73,9 @@ class FeatureCollection(ShapeCollection):
 
     def __add__(self, other):
         if not isinstance(other, FeatureCollection):
-            raise ValueError('You can only combine a FeatureCollection with another FeatureCollection')
+            raise ValueError(
+                'You can only combine a FeatureCollection with another FeatureCollection'
+            )
 
         return FeatureCollection(self.geoshapes + other.geoshapes)
 
