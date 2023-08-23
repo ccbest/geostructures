@@ -105,6 +105,9 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         Produce a list of bounding coordinates for the object. The coordinates will
         necessary not represent smooth curves, therefore some data loss is implied.
 
+        All shapes that represent a linear ring (e.g. a box or polygon) will return
+        self-closing coordinates, meaning the last coordinate is equal to the first.
+
         For shapes with smooth curves (ellipsoids, circles, etc.) you may specify a
         number k that will produce k-points along the curve.
 
@@ -351,6 +354,7 @@ class GeoPolygon(GeoShape):
         return _intersections > 0 and _intersections % 2 != 0
 
     def bounding_coords(self, **_):
+        # Is self-closing
         return self.outline
 
     def circumscribing_circle(self):
@@ -435,6 +439,7 @@ class GeoBox(GeoShape):
         _nw = self.nw_bound.to_str()
         _se = self.se_bound.to_str()
 
+        # Is self-closing
         return [
             self.nw_bound,
             Coordinate(_se[0], _nw[1]),
@@ -523,7 +528,8 @@ class GeoCircle(GeoShape):
             coord = inverse_haversine_radians(self.center, angle, self.radius)
             coords.append(coord)
 
-        return coords
+        # Is self-closing
+        return [*coords, coords[0]]
 
     def circumscribing_rectangle(self):
         return GeoBox(
@@ -780,6 +786,7 @@ class GeoRing(GeoShape):
             )
             inner_coords.append(coord)
 
+        # Is self-closing
         return [*outer_coords, *inner_coords[::-1], outer_coords[0]]
 
     def circumscribing_rectangle(self):
@@ -856,7 +863,8 @@ class GeoLineString(GeoShape):
         return f'<GeoLineString with {len(self.coords)} points>'
 
     def bounding_coords(self, **kwargs):
-        return [*self.coords, self.coords[0]]
+        # Is not self-closing
+        return self.coords
 
     def to_geojson(
             self,
@@ -902,7 +910,7 @@ class GeoLineString(GeoShape):
 
     def to_wkt(self, **kwargs):
         bbox_str = ",".join(
-            " ".join(x.to_str()) for x in self.bounding_coords(**kwargs)[:-1]
+            " ".join(x.to_str()) for x in self.bounding_coords(**kwargs)
         )
         return f'LINESTRING({bbox_str})'
 
