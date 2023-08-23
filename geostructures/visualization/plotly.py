@@ -1,10 +1,10 @@
 
 import plotly.express as px
 
-from geostructures.collections import Collection
+from geostructures.collections import FeatureCollection
 
 
-def draw_collection(collection: Collection):
+def draw_collection(collection: FeatureCollection):  # pragma: no cover
     _fig = px.choropleth_mapbox(
         [
             {
@@ -21,3 +21,5 @@ def draw_collection(collection: Collection):
         hover_data=['id', 'weight'],
         center={'lat': 0.0, 'lon': 1.0}
     )
+
+    return _fig

@@ -142,7 +142,11 @@ def inverse_haversine_radians(
     return Coordinate(final_lon, final_lat)
 
 
-def rotate_coordinates(coords: List[Coordinate], origin: Coordinate, degrees: float):
+def rotate_coordinates(
+        coords: List[Coordinate],
+        origin: Coordinate,
+        degrees: float
+) -> List[Coordinate]:
     """
     Rotate a set of coordinates around an origin. Returned Coordinate precision will be
     determined by the respective Coordinate's least significant precision.
@@ -158,7 +162,7 @@ def rotate_coordinates(coords: List[Coordinate], origin: Coordinate, degrees: fl
             The degrees of rotation to be applied
 
     Returns:
-        
+        List[Coordinate]
     """
     angle = np.deg2rad(degrees)
     R = np.array([

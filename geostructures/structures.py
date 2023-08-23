@@ -829,7 +829,12 @@ class GeoLineString(GeoShape):
     A LineString (or more colloquially, a path) consisting of a series of
     """
 
-    def __init__(self, coords: List[Coordinate], dt: Optional[_GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+    def __init__(
+            self,
+            coords: List[Coordinate],
+            dt: Optional[_GEOTIME_TYPE] = None,
+            properties: Optional[Dict] = None
+    ):
         super().__init__(dt, properties)
         self.coords = coords
 

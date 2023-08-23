@@ -48,4 +48,3 @@ def round_half_up(value: float, precision) -> float:
             rounding=decimal.ROUND_HALF_UP if value >= 0 else decimal.ROUND_HALF_DOWN
         )
     )
-
