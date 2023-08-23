@@ -34,7 +34,7 @@ setuptools.setup(
     long_description_content_type='text/markdown',
     url="https://github.com/ccbest/geostructures",
     packages=setuptools.find_packages(
-        include=('geostructures', ),
+        include=('geostructures*', ),
         exclude=('*tests', 'tests*')
     ),
     classifiers=[
