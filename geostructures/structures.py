@@ -78,10 +78,10 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         return {}
 
     @property
-    def start(self) -> Union[date, datetime]:
+    def start(self) -> Union[date, datetime, None]:
         """The start date/datetime, if present"""
         if not self.dt:
-            raise ValueError("GeoShape has no associated time information.")
+            return None
 
         if isinstance(self.dt, (date, datetime)):
             return self.dt
@@ -89,10 +89,10 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         return self.dt.start
 
     @property
-    def end(self) -> Union[date, datetime]:
+    def end(self) -> Union[date, datetime, None]:
         """The end date/datetime, if present"""
         if not self.dt:
-            raise ValueError("GeoShape has no associated time information.")
+            return None
 
         if isinstance(self.dt, (date, datetime)):
             return self.dt
