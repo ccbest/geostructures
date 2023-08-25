@@ -11,6 +11,7 @@ __all__ = [
 from abc import abstractmethod
 from datetime import date, datetime
 import math
+import re
 import statistics
 from typing import Dict, List, Optional, Union
 
@@ -26,6 +27,17 @@ from geostructures.time import DateInterval, TimeInterval
 
 
 _GEOTIME_TYPE = Union[date, datetime, DateInterval, TimeInterval]
+
+_RE_COORD_GROUP_STR = r'\(((?:\s?\d+\.?\d*\s\d+\.?\d*\,?)+)\)'
+_RE_COORD_GROUP = re.compile(_RE_COORD_GROUP_STR)
+_RE_POLYGON_WKT = re.compile(r'POLYGON\s?\(' + _RE_COORD_GROUP_STR + r'\)')
+
+
+def _parse_wkt_coord_group(group: str):
+    return [
+        Coordinate(*coord.strip().split(' '))
+        for coord in group.split(',') if coord
+    ]
 
 
 class GeoShape(LoggingMixin, DefaultZuluMixin):
@@ -232,6 +244,7 @@ class GeoPolygon(GeoShape):
         outline: List[Coordinate],
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
+        hole: Optional[List[Coordinate]] = None,
     ):
         super().__init__(dt, properties)
 
@@ -243,6 +256,7 @@ class GeoPolygon(GeoShape):
             outline.append(outline[0])
 
         self.outline = outline
+        self.hole = hole
 
     def __contains__(self, coord: Coordinate) -> bool:
         # First see if the point even falls inside the circumscribing rectangle
@@ -380,6 +394,24 @@ class GeoPolygon(GeoShape):
                 for x in zip(*[y.to_float() for y in self.outline[:-1]])
             ]
         )
+
+    @classmethod
+    def from_wkt(cls, wkt_string: str):
+        if not _RE_POLYGON_WKT.match(wkt_string):
+            raise ValueError(f'Invalid WKT Polygon: {wkt_string}')
+
+        coord_groups = _RE_COORD_GROUP.findall(wkt_string)
+        if not 0 < len(coord_groups) < 3:
+            raise ValueError(f'Invalid WKT Polygon: {wkt_string}')
+
+        outline = _parse_wkt_coord_group(coord_groups[0])
+        hole = None
+        if len(outline) == 2:
+            hole = _parse_wkt_coord_group(coord_groups[1])
+
+        return GeoPolygon(outline, hole=hole)
+
+
 
     def to_polygon(self, **kwargs):
         return self
