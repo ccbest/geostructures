@@ -6,7 +6,7 @@ __all__ = [
 ]
 
 import math
-from typing import List
+from typing import List, Tuple
 
 import numpy as np
 
@@ -177,3 +177,54 @@ def rotate_coordinates(
         Coordinate(*(round_half_up(_x, y) for _x in x))
         for x, y in zip((R @ (p.T - o.T) + o.T).T, precision)
     ]
+
+
+def find_line_intersection(
+        line1: Tuple[Coordinate, Coordinate],
+        line2: Tuple[Coordinate, Coordinate]
+):
+    def det(a, b):
+        return a[0] * b[1] - a[1] * b[0]
+
+    line1 = (line1[0].to_float(), line1[1].to_float())
+    if line1[1][0] < line1[0][0]:  # Flip order such that lower x value is first
+        line1 = (line1[1], line1[0])
+
+    line2 = (line2[0].to_float(), line2[1].to_float())
+    if line2[1][0] < line2[0][0]:
+        line2 = (line2[1], line2[0])
+
+    line1_y_bounds = min([line1[0][1], line1[1][1]]), max([line1[0][1], line1[1][1]])
+    line2_y_bounds = min([line2[0][1], line2[1][1]]), max([line2[0][1], line2[1][1]])
+
+    if not (
+            max([line1[0][0], line2[0][0]]) <= min([line1[1][0], line2[1][0]]) and
+            max([line1_y_bounds[0], line2_y_bounds[0]]) <= min([line1_y_bounds[1], line2_y_bounds[1]])
+    ):
+        # line bounds do not overlap
+        return
+
+    line1_diff = (line1[0][0] - line1[1][0], line1[0][1] - line1[1][1])
+    xdiff = (line1_diff[0], line2[0][0] - line2[1][0])
+    ydiff = (line1[0][1] - line1[1][1], line2[0][1] - line2[1][1])
+    div = det(xdiff, (line1_diff[1], line2[0][1] - line2[1][1]))
+    if div == 0:
+        # lines are parallel
+        return
+
+    d = (det(*line1), det(*line2))
+    x_intersection = det(d, xdiff) / div
+    y_intersection = det(d, ydiff) / div
+
+    if (
+            max([line1[0][0], line2[0][0]]) <= x_intersection <= min([line1[1][0], line2[1][0]])
+            and max(
+                [line1_y_bounds[0], line2_y_bounds[0]]
+            ) <= y_intersection <= min(
+                [line1_y_bounds[1], line2_y_bounds[1]]
+            )
+    ):
+        return x_intersection, y_intersection
+
+    return
+
