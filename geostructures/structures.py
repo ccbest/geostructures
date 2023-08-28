@@ -11,6 +11,7 @@ __all__ = [
 from abc import abstractmethod
 from datetime import date, datetime
 import math
+import re
 import statistics
 from typing import Dict, List, Optional, Union
 
@@ -26,6 +27,20 @@ from geostructures.time import DateInterval, TimeInterval
 
 
 _GEOTIME_TYPE = Union[date, datetime, DateInterval, TimeInterval]
+
+_RE_COORD_STR = r'((?:\s?\d+\.?\d*\s\d+\.?\d*\s?\,?)+)'
+_RE_COORD = re.compile(_RE_COORD_STR)
+_RE_COORD_GROUPS_STR = r'(?:\(' + _RE_COORD_STR + r'\)\,?\s?)+'
+_RE_POINT_WKT = re.compile(r'POINT\s?\((\s?\d+\.?\d*\s\d+\.?\d*\s?)\)')
+_RE_POLYGON_WKT = re.compile(r'POLYGON\s?\(' + _RE_COORD_GROUPS_STR + '\)')
+_RE_LINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_COORD_GROUPS_STR + r'\s?')
+
+
+def _parse_wkt_coord_group(group: str) -> List[Coordinate]:
+    return [
+        Coordinate(*coord.strip().split(' '))
+        for coord in group.split(',') if coord
+    ]
 
 
 class GeoShape(LoggingMixin, DefaultZuluMixin):
@@ -225,11 +240,21 @@ class GeoPolygon(GeoShape):
         outline: (List[Coordinate])
             A list of coordinates that define the outside edges of the polygon
 
+        args: (List[Coordinate])
+            Additional lists of coordinates representing holes in the polygon
+
+    Keyword Args:
+        dt: ()
+
+        properties: dict
+            "Storage" space for attributing additional properties to the polygon.
+
     """
 
     def __init__(
         self,
         outline: List[Coordinate],
+        *args: List[Coordinate],
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -243,6 +268,7 @@ class GeoPolygon(GeoShape):
             outline.append(outline[0])
 
         self.outline = outline
+        self.holes = args or tuple()
 
     def __contains__(self, coord: Coordinate) -> bool:
         # First see if the point even falls inside the circumscribing rectangle
@@ -274,12 +300,23 @@ class GeoPolygon(GeoShape):
 
         s_outline = self.outline[0:-1]
         o_outline = other.outline[0:-1]
+        outline_eq = False
         for _ in range(0, len(o_outline)):
+            # Rotate the outline
             if s_outline in (o_outline, o_outline[::-1]):
-                return True
+                outline_eq = True
+                break
             o_outline = o_outline[1:] + [o_outline[0]]
 
-        return False
+        if not outline_eq:
+            return False
+
+        if len(self.holes) != len(other.holes):
+            return False
+
+        s_holes = set([tuple({(x, y) for x, y in zip(hole, hole[1:])}) for hole in self.holes])
+        o_holes = set([tuple({(x, y) for x, y in zip(hole, hole[1:])}) for hole in other.holes])
+        return s_holes == o_holes
 
     def __hash__(self):
         return hash((tuple(self.outline), self.dt))
@@ -380,6 +417,23 @@ class GeoPolygon(GeoShape):
                 for x in zip(*[y.to_float() for y in self.outline[:-1]])
             ]
         )
+
+    @classmethod
+    def from_wkt(cls, wkt_str: str):
+        """Create a GeoPolygon from a wkt string"""
+        if not _RE_POLYGON_WKT.match(wkt_str):
+            raise ValueError(f'Invalid WKT Polygon: {wkt_str}')
+
+        coord_groups = _RE_COORD.findall(wkt_str)
+        if not 0 < len(coord_groups):
+            raise ValueError(f'Invalid WKT Polygon: {wkt_str}')
+
+        outline = _parse_wkt_coord_group(coord_groups[0])
+        holes = []
+        if len(coord_groups) > 1:
+            holes = [_parse_wkt_coord_group(coord_group) for coord_group in coord_groups[1:]]
+
+        return GeoPolygon(outline, *holes)
 
     def to_polygon(self, **kwargs):
         return self
@@ -826,6 +880,21 @@ class GeoRing(GeoShape):
 
         return self.center
 
+    def to_wkt(self, **kwargs) -> str:
+        if self.angle_min == 0 and self.angle_max == 360:
+            # Return as a polygon with hole
+            outer_circle = GeoCircle(self.center, self.outer_radius).bounding_coords(**kwargs)
+            outer_bbox_str = ",".join(
+                " ".join(x.to_str()) for x in outer_circle
+            )
+            inner_circle = GeoCircle(self.center, self.inner_radius).bounding_coords(**kwargs)
+            inner_bbox_str = ",".join(
+                " ".join(x.to_str()) for x in inner_circle
+            )
+            return f'POLYGON(({outer_bbox_str}), ({inner_bbox_str}))'
+
+        return super().to_wkt(**kwargs)
+
     def to_polygon(self, **kwargs):
         return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
 
@@ -908,6 +977,18 @@ class GeoLineString(GeoShape):
             ]
         )
 
+    @classmethod
+    def from_wkt(cls, wkt_str: str):
+        """Create a GeoLineString from a wkt string"""
+        if not _RE_LINESTRING_WKT.match(wkt_str):
+            raise ValueError(f'Invalid WKT LineString: {wkt_str}')
+
+        coord_groups = _RE_COORD.findall(wkt_str)
+        if not len(coord_groups) == 1:
+            raise ValueError(f'Invalid WKT LineString: {wkt_str}')
+
+        return GeoLineString(_parse_wkt_coord_group(coord_groups[0]))
+
     def to_wkt(self, **kwargs):
         bbox_str = ",".join(
             " ".join(x.to_str()) for x in self.bounding_coords(**kwargs)
@@ -929,7 +1010,12 @@ class GeoPoint(GeoShape):
 
     """
 
-    def __init__(self, center: Coordinate, dt: _GEOTIME_TYPE, properties: Optional[Dict] = None):
+    def __init__(
+        self,
+        center: Coordinate,
+        dt: Optional[_GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
         super().__init__(dt, properties)
         self.center = center
 
@@ -986,6 +1072,15 @@ class GeoPoint(GeoShape):
     @property
     def centroid(self):
         return self.center
+
+    @classmethod
+    def from_wkt(cls, wkt_str: str):
+        """Create a GeoPoint from a wkt string"""
+        _match = _RE_POINT_WKT.match(wkt_str)
+        if not _match:
+            raise ValueError('Invalid WKT Point: {wkt_str}')
+
+        return GeoPoint(Coordinate(*_match.groups()[0].split(' ')))
 
     def to_wkt(self, **_):
         point_str = " ".join(self.center.to_str())
