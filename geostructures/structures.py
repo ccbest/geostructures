@@ -32,7 +32,7 @@ _RE_COORD_STR = r'((?:\s?\d+\.?\d*\s\d+\.?\d*\s?\,?)+)'
 _RE_COORD = re.compile(_RE_COORD_STR)
 _RE_COORD_GROUPS_STR = r'(?:\(' + _RE_COORD_STR + r'\)\,?\s?)+'
 _RE_POINT_WKT = re.compile(r'POINT\s?\((\s?\d+\.?\d*\s\d+\.?\d*\s?)\)')
-_RE_POLYGON_WKT = re.compile(r'POLYGON\s?\(' + _RE_COORD_GROUPS_STR + '\)')
+_RE_POLYGON_WKT = re.compile(r'POLYGON\s?\(' + _RE_COORD_GROUPS_STR + r'\)')
 _RE_LINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_COORD_GROUPS_STR + r'\s?')
 
 
@@ -425,9 +425,6 @@ class GeoPolygon(GeoShape):
             raise ValueError(f'Invalid WKT Polygon: {wkt_str}')
 
         coord_groups = _RE_COORD.findall(wkt_str)
-        if not 0 < len(coord_groups):
-            raise ValueError(f'Invalid WKT Polygon: {wkt_str}')
-
         outline = _parse_wkt_coord_group(coord_groups[0])
         holes = []
         if len(coord_groups) > 1:
@@ -1078,7 +1075,7 @@ class GeoPoint(GeoShape):
         """Create a GeoPoint from a wkt string"""
         _match = _RE_POINT_WKT.match(wkt_str)
         if not _match:
-            raise ValueError('Invalid WKT Point: {wkt_str}')
+            raise ValueError(f'Invalid WKT Point: {wkt_str}')
 
         return GeoPoint(Coordinate(*_match.groups()[0].split(' ')))
 

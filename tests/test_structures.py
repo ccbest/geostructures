@@ -370,6 +370,9 @@ def test_geopolygon_from_wkt():
         ]
     )
 
+    with pytest.raises(ValueError):
+        _ = GeoPolygon.from_wkt('NOT A POLYGON')
+
 
 def test_geoshape_to_wkt(geopolygon):
     assert geopolygon.to_wkt() == 'POLYGON((0.0 0.0,0.0 1.0,1.0 1.0,1.0 0.0,0.0 0.0))'
@@ -812,6 +815,12 @@ def test_geolinestring_from_wkt():
         Coordinate(30, 10), Coordinate(10, 30), Coordinate(40, 40)
     ])
 
+    with pytest.raises(ValueError):
+        _ = GeoLineString.from_wkt('BAD WKT')
+
+    with pytest.raises(ValueError):
+        _ = GeoLineString.from_wkt('LINESTRING(30 10,10 30,40 40) (1 2, 3 4)')
+
 
 def test_geolinestring_to_wkt(geolinestring):
     assert geolinestring.to_wkt() == 'LINESTRING(0.0 0.0,1.0 0.0,1.0 1.0)'
@@ -899,6 +908,9 @@ def test_geopoint_from_wkt():
 
     wkt_str = 'POINT(1.0 1.0)'
     assert GeoPoint.from_wkt(wkt_str) == GeoPoint(Coordinate(1.0, 1.0))
+
+    with pytest.raises(ValueError):
+        _ = GeoPoint.from_wkt('NOT WKT')
 
 
 def test_geopoint_to_wkt(geopoint):
