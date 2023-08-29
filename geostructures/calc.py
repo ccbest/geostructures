@@ -213,8 +213,14 @@ def find_line_intersection(
     if line2_flt[1][0] < line2_flt[0][0]:
         line2_flt = (line2_flt[1], line2_flt[0])
 
-    line1_y_bounds = min([line1_flt[0][1], line1_flt[1][1]]), max([line1_flt[0][1], line1_flt[1][1]])
-    line2_y_bounds = min([line2_flt[0][1], line2_flt[1][1]]), max([line2_flt[0][1], line2_flt[1][1]])
+    line1_y_bounds = (
+        min([line1_flt[0][1], line1_flt[1][1]]),
+        max([line1_flt[0][1], line1_flt[1][1]])
+    )
+    line2_y_bounds = (
+        min([line2_flt[0][1], line2_flt[1][1]]),
+        max([line2_flt[0][1], line2_flt[1][1]])
+    )
 
     if not (
             max([line1_flt[0][0], line2_flt[0][0]]) <= min([line1_flt[1][0], line2_flt[1][0]]) and
