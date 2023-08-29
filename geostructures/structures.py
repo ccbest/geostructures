@@ -11,6 +11,7 @@ __all__ = [
 from abc import abstractmethod
 from datetime import date, datetime
 import math
+import re
 import statistics
 from typing import Dict, List, Optional, Union
 
@@ -19,6 +20,7 @@ from geostructures.calc import (
     inverse_haversine_radians,
     haversine_distance_meters,
     bearing_degrees,
+    find_line_intersection
 )
 from geostructures.utils.functions import round_half_up
 from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
@@ -26,6 +28,21 @@ from geostructures.time import DateInterval, TimeInterval
 
 
 _GEOTIME_TYPE = Union[date, datetime, DateInterval, TimeInterval]
+
+_RE_COORD_STR = r'((?:\s?\d+\.?\d*\s\d+\.?\d*\s?\,?)+)'
+_RE_COORD = re.compile(_RE_COORD_STR)
+_RE_COORD_GROUPS_STR = r'(?:\(' + _RE_COORD_STR + r'\)\,?\s?)+'
+_RE_POINT_WKT = re.compile(r'POINT\s?\((\s?\d+\.?\d*\s\d+\.?\d*\s?)\)')
+_RE_POLYGON_WKT = re.compile(r'POLYGON\s?\(' + _RE_COORD_GROUPS_STR + r'\)')
+_RE_LINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_COORD_GROUPS_STR + r'\s?')
+
+
+def _parse_wkt_coord_group(group: str) -> List[Coordinate]:
+    """Parse wkt coordinate list into Coordinate objects"""
+    return [
+        Coordinate(*coord.strip().split(' '))  # type: ignore
+        for coord in group.split(',') if coord
+    ]
 
 
 class GeoShape(LoggingMixin, DefaultZuluMixin):
@@ -225,11 +242,21 @@ class GeoPolygon(GeoShape):
         outline: (List[Coordinate])
             A list of coordinates that define the outside edges of the polygon
 
+        args: (List[Coordinate])
+            Additional lists of coordinates representing holes in the polygon
+
+    Keyword Args:
+        dt: ()
+
+        properties: dict
+            "Storage" space for attributing additional properties to the polygon.
+
     """
 
     def __init__(
         self,
         outline: List[Coordinate],
+        *args: List[Coordinate],
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -240,9 +267,20 @@ class GeoPolygon(GeoShape):
                 'Polygon outlines must be self-closing; your final point will be '
                 'connected to your starting point.'
             )
-            outline.append(outline[0])
+            outline = [*outline, outline[0]]
 
         self.outline = outline
+
+        self.holes = []
+        for hole in args:
+            if not hole[0] == hole[-1]:
+                self.logger.warning(
+                    'Polygon holes must be self-closing; your final point will be '
+                    'connected to your starting point.'
+                )
+                hole = [*hole, hole[0]]
+
+            self.holes.append(hole)
 
     def __contains__(self, coord: Coordinate) -> bool:
         # First see if the point even falls inside the circumscribing rectangle
@@ -257,8 +295,15 @@ class GeoPolygon(GeoShape):
             # Falls outside rectangle - not in polygon
             return False
 
-        # Use point in polygon to determine if its inside
-        return self._point_in_polygon(coord)
+        # If not inside outline, no need to continue
+        if not self._point_in_polygon(coord, self.outline):
+            return False
+
+        for hole in self.holes:
+            if self._point_in_polygon(coord, hole):
+                return False
+
+        return True
 
     def __eq__(self, other):
         if not isinstance(other, GeoPolygon):
@@ -274,12 +319,23 @@ class GeoPolygon(GeoShape):
 
         s_outline = self.outline[0:-1]
         o_outline = other.outline[0:-1]
+        outline_eq = False
         for _ in range(0, len(o_outline)):
+            # Rotate the outline
             if s_outline in (o_outline, o_outline[::-1]):
-                return True
+                outline_eq = True
+                break
             o_outline = o_outline[1:] + [o_outline[0]]
 
-        return False
+        if not outline_eq:
+            return False
+
+        if len(self.holes) != len(other.holes):
+            return False
+
+        s_holes = set([tuple({(x, y) for x, y in zip(hole, hole[1:])}) for hole in self.holes])
+        o_holes = set([tuple({(x, y) for x, y in zip(hole, hole[1:])}) for hole in other.holes])
+        return s_holes == o_holes
 
     def __hash__(self):
         return hash((tuple(self.outline), self.dt))
@@ -287,7 +343,12 @@ class GeoPolygon(GeoShape):
     def __repr__(self):
         return f'<GeoPolygon of {len(self.outline) - 1} coordinates>'
 
-    def _point_in_polygon(self, coord: Coordinate) -> bool:
+    @staticmethod
+    def _point_in_polygon(
+            coord: Coordinate,
+            polygon: List[Coordinate],
+            include_boundary: bool = False,
+    ) -> bool:
         """
         Tests whether a point is in the polygon. From the point, draws
         a straight line along the latitude and determines how many sides
@@ -303,52 +364,29 @@ class GeoPolygon(GeoShape):
             coord:
                 A Coordinate
 
+            polygon:
+                A list of coordinates (self-closing) representing a linear ring
+
+            include_boundary:
+                Whether to count boundaries as intersecting (parallel overlapping
+                lines still do not count)
+
         Returns:
             bool
         """
-
-        def det(a, b):
-            return a[0] * b[1] - a[1] * b[0]
-
-        # Create a line from our point that extends eastward past the antimeridian
-        # (geo-equivalent of infinity)
-        line1 = (coord.to_float(), (181, float(coord.latitude)))
-        line1_diff = (line1[0][0] - line1[1][0], line1[0][1] - line1[1][1])
-
+        test_line = (coord, Coordinate(180, float(coord.latitude)))
         _intersections = 0
-        # zip together consecutive points in the bounding box, representing sides of the polygon
-        for line2_coord in zip(self.outline, [*self.outline[1:], self.outline[0]]):
-            line2 = (line2_coord[0].to_float(), line2_coord[1].to_float())
-            if line2[1][0] < line2[0][0]:
-                line2 = (line2[1], line2[0])
-
-            if max(x[0] for x in line2) < line1[0][0]:
-                # to the right of line, won't intersect
+        for vertex in zip(polygon, [*polygon[1:], polygon[0]]):
+            intersection = find_line_intersection(test_line, vertex)
+            if not intersection:
                 continue
 
-            xdiff = (line1_diff[0], line2[0][0] - line2[1][0])
-            div = det(xdiff, (line1_diff[1], line2[0][1] - line2[1][1]))
-            if div == 0:
-                # lines are parallel
-                continue
+            if intersection[1] and not include_boundary:
+                # Lies on boundary, no need to continue
+                return False
 
-            d = (det(line1[0], line1[1]), det(line2[0], line2[1]))
-            x_intersection = det(d, xdiff) / div
-
-            if line1[0][0] == x_intersection:
-                # point lies exactly at intersection - counts as being contained
-                continue
-
-            if line2[0][0] == x_intersection == line2[1][0]:
-                # line is vertical and intersects
-                _intersections += 1
-                continue
-
-            if (
-                line2[0][0] < x_intersection < line2[1][0]
-                and line1[0][0] < x_intersection
-            ):
-                # intersection within x bounds and to the right of the point
+            if include_boundary or not intersection[1]:
+                # If boundaries are allowed, or is not a boundary intersection
                 _intersections += 1
 
         return _intersections > 0 and _intersections % 2 != 0
@@ -380,6 +418,36 @@ class GeoPolygon(GeoShape):
                 for x in zip(*[y.to_float() for y in self.outline[:-1]])
             ]
         )
+
+    @classmethod
+    def from_wkt(cls, wkt_str: str):
+        """Create a GeoPolygon from a wkt string"""
+        if not _RE_POLYGON_WKT.match(wkt_str):
+            raise ValueError(f'Invalid WKT Polygon: {wkt_str}')
+
+        coord_groups = _RE_COORD.findall(wkt_str)
+        outline = _parse_wkt_coord_group(coord_groups[0])
+        holes = []
+        if len(coord_groups) > 1:
+            holes = [_parse_wkt_coord_group(coord_group) for coord_group in coord_groups[1:]]
+
+        return GeoPolygon(outline, *holes)
+
+    def to_wkt(self, **kwargs):
+        """
+        Converts the shape to its WKT string representation
+
+        Keyword Args:
+            Arguments to be passed to the .bounding_coords() method. Reference
+            that method for a list of corresponding kwargs.
+
+        Returns:
+            str
+        """
+        bbox_str = f'({",".join(" ".join(x.to_str()) for x in self.outline)})'
+        for hole in self.holes:
+            bbox_str += f',({",".join(" ".join(x.to_str()) for x in hole)})'
+        return f'POLYGON({bbox_str})'
 
     def to_polygon(self, **kwargs):
         return self
@@ -826,6 +894,21 @@ class GeoRing(GeoShape):
 
         return self.center
 
+    def to_wkt(self, **kwargs) -> str:
+        if self.angle_min == 0 and self.angle_max == 360:
+            # Return as a polygon with hole
+            outer_circle = GeoCircle(self.center, self.outer_radius).bounding_coords(**kwargs)
+            outer_bbox_str = ",".join(
+                " ".join(x.to_str()) for x in outer_circle
+            )
+            inner_circle = GeoCircle(self.center, self.inner_radius).bounding_coords(**kwargs)
+            inner_bbox_str = ",".join(
+                " ".join(x.to_str()) for x in inner_circle
+            )
+            return f'POLYGON(({outer_bbox_str}), ({inner_bbox_str}))'
+
+        return super().to_wkt(**kwargs)
+
     def to_polygon(self, **kwargs):
         return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
 
@@ -908,6 +991,18 @@ class GeoLineString(GeoShape):
             ]
         )
 
+    @classmethod
+    def from_wkt(cls, wkt_str: str):
+        """Create a GeoLineString from a wkt string"""
+        if not _RE_LINESTRING_WKT.match(wkt_str):
+            raise ValueError(f'Invalid WKT LineString: {wkt_str}')
+
+        coord_groups = _RE_COORD.findall(wkt_str)
+        if not len(coord_groups) == 1:
+            raise ValueError(f'Invalid WKT LineString: {wkt_str}')
+
+        return GeoLineString(_parse_wkt_coord_group(coord_groups[0]))
+
     def to_wkt(self, **kwargs):
         bbox_str = ",".join(
             " ".join(x.to_str()) for x in self.bounding_coords(**kwargs)
@@ -929,7 +1024,12 @@ class GeoPoint(GeoShape):
 
     """
 
-    def __init__(self, center: Coordinate, dt: _GEOTIME_TYPE, properties: Optional[Dict] = None):
+    def __init__(
+        self,
+        center: Coordinate,
+        dt: Optional[_GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
         super().__init__(dt, properties)
         self.center = center
 
@@ -986,6 +1086,15 @@ class GeoPoint(GeoShape):
     @property
     def centroid(self):
         return self.center
+
+    @classmethod
+    def from_wkt(cls, wkt_str: str):
+        """Create a GeoPoint from a wkt string"""
+        _match = _RE_POINT_WKT.match(wkt_str)
+        if not _match:
+            raise ValueError(f'Invalid WKT Point: {wkt_str}')
+
+        return GeoPoint(Coordinate(*_match.groups()[0].split(' ')))
 
     def to_wkt(self, **_):
         point_str = " ".join(self.center.to_str())
