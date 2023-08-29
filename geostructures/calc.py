@@ -182,10 +182,12 @@ def rotate_coordinates(
 def find_line_intersection(
         line1: Tuple[Coordinate, Coordinate],
         line2: Tuple[Coordinate, Coordinate]
-) -> Optional[Coordinate]:
+) -> Optional[Tuple[Coordinate, bool]]:
     """
     Finds the point of intersection between two lines, each defined by two Coordinates.
     Each line's x and y values are bound between the Coordinate pairs.
+
+    Parallel overlapping lines are not considered intersecting.
 
     Args:
         line1:
@@ -195,8 +197,10 @@ def find_line_intersection(
             A second 2-tuple of two Coordinates
 
     Returns:
-        The x and y (longitude and latitude) of the intersection location, or None if
-        no intersection exists.
+        If a point of intersection if found, returns a 2-tuple consisting of:
+            - The Coordinate of the intersection location
+            - A boolean "is_boundary" representing whether the intersection falls
+              directly on one of the points of the lines
     """
     def det(a, b):
         return a[0] * b[1] - a[1] * b[0]
@@ -232,17 +236,26 @@ def find_line_intersection(
         return None
 
     d = (det(*line1_flt), det(*line2_flt))
-    x_intersection = det(d, xdiff) / div
-    y_intersection = det(d, ydiff) / div
+    x_intersection = round_half_up(det(d, xdiff) / div, 10)
+    y_intersection = round_half_up(det(d, ydiff) / div, 10)
+
+    # Check if any of the x values are exactly the same - could be boundary intersection
+    if (x_intersection, y_intersection) in (*line1_flt, *line2_flt):
+        # Intersection exactly on one of the coordinates - boundary intersection
+        return Coordinate(x_intersection, y_intersection), True
 
     if (
-            max([line1_flt[0][0], line2_flt[0][0]]) <= x_intersection <= min([line1_flt[1][0], line2_flt[1][0]])
+            max(
+                [line1_flt[0][0], line2_flt[0][0]]
+            ) <= x_intersection <= min(
+                [line1_flt[1][0], line2_flt[1][0]]
+            )
             and max(
                 [line1_y_bounds[0], line2_y_bounds[0]]
             ) <= y_intersection <= min(
                 [line1_y_bounds[1], line2_y_bounds[1]]
             )
     ):
-        return Coordinate(x_intersection, y_intersection)
+        return Coordinate(x_intersection, y_intersection), False
 
     return None

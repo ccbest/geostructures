@@ -232,6 +232,9 @@ def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
         ],
         [
             Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+        ],
+        [
+            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
         ]
     )
     p2 = GeoPolygon(
@@ -241,6 +244,9 @@ def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
         ],
         [
             Coordinate(0.6, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+        ],
+        [
+            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
         ]
     )
     # Holes are not equal
@@ -297,13 +303,17 @@ def test_geopolygon_repr(geopolygon):
 def test_geopolygon_contains():
     # Triangle
     polygon = GeoPolygon([
-        Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(1.0, .0)
+        Coordinate(0.0, 0.0), Coordinate(1.0, 1.0),
+        Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
     ])
     # Way outside
     assert Coordinate(1.5, 1.5) not in polygon
 
-    # Center along hypotenuse
-    assert Coordinate(0.5, 0.5) in polygon
+    # Center along hypotenuse - boundary intersection should not count
+    assert Coordinate(0.5, 0.5) not in polygon
+
+    # Nudge above to be just inside
+    assert Coordinate(0.5, 0.49) in polygon
 
     # Outside, to upper left
     assert Coordinate(0.1, 0.9) not in polygon
@@ -319,6 +329,21 @@ def test_geopolygon_contains():
     assert Coordinate(0.9, 0.1) not in polygon
     assert Coordinate(-0.9, 0.4) not in polygon
     assert Coordinate(-0.9, 0.1) not in polygon
+
+    # Box with hole in middle
+    polygon = GeoPolygon(
+        [
+            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
+            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+        ],
+        [
+            Coordinate(0.25, 0.25), Coordinate(0.25, 0.75), Coordinate(0.75, 0.75),
+            Coordinate(0.75, 0.25), Coordinate(0.25, 0.25)
+        ]
+    )
+    assert Coordinate(0.9, 0.9) in polygon  # outside hole
+    assert Coordinate(0.5, 0.5) not in polygon  # inside hole
+    assert Coordinate(0.75, 0.75) in polygon  # on hole edge
 
 
 def test_geopolygon_bounding_coords(geopolygon):
@@ -374,8 +399,23 @@ def test_geopolygon_from_wkt():
         _ = GeoPolygon.from_wkt('NOT A POLYGON')
 
 
-def test_geoshape_to_wkt(geopolygon):
-    assert geopolygon.to_wkt() == 'POLYGON((0.0 0.0,0.0 1.0,1.0 1.0,1.0 0.0,0.0 0.0))'
+def test_geopolygon_to_wkt():
+    polygon = GeoPolygon(
+        [
+            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
+            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+        ],
+        [
+            Coordinate(0.25, 0.25), Coordinate(0.25, 0.75), Coordinate(0.75, 0.75),
+            Coordinate(0.75, 0.25), Coordinate(0.25, 0.25)
+        ]
+    )
+    assert polygon.to_wkt() == 'POLYGON((0.0 0.0,0.0 1.0,1.0 1.0,1.0 0.0,0.0 0.0),(0.25 0.25,0.25 0.75,0.75 0.75,0.75 0.25,0.25 0.25))'
+
+
+def test_geoshape_to_wkt():
+    box = GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0))
+    assert box.to_wkt() == 'POLYGON((0.0 1.0,1.0 1.0,1.0 0.0,0.0 0.0,0.0 1.0))'
 
 
 def test_geobox_contains(geobox):
