@@ -13,7 +13,7 @@ from datetime import date, datetime
 import math
 import re
 import statistics
-from typing import Dict, List, Optional, Union
+from typing import cast, Dict, List, Optional, Union
 
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
@@ -37,8 +37,9 @@ _RE_LINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_COORD_GROUPS_STR + r'\s?'
 
 
 def _parse_wkt_coord_group(group: str) -> List[Coordinate]:
+    """Parse wkt coordinate list into Coordinate objects"""
     return [
-        Coordinate(*coord.strip().split(' '))
+        Coordinate(coord.strip().split(' '))  # type: ignore
         for coord in group.split(',') if coord
     ]
 

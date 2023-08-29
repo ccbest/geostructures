@@ -2,11 +2,11 @@
 
 __all__ = [
     'bearing_degrees', 'haversine_distance_meters', 'inverse_haversine_degrees',
-    'inverse_haversine_radians', 'rotate_coordinates'
+    'inverse_haversine_radians', 'rotate_coordinates', 'find_line_intersection'
 ]
 
 import math
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -174,7 +174,7 @@ def rotate_coordinates(
 
     precision = [min([x.latitude.precision, x.longitude.precision]) for x in coords]
     return [
-        Coordinate(*(round_half_up(_x, y) for _x in x))
+        Coordinate(*(round_half_up(_x, y) for _x in x))  # type: ignore
         for x, y in zip((R @ (p.T - o.T) + o.T).T, precision)
     ]
 
@@ -182,49 +182,67 @@ def rotate_coordinates(
 def find_line_intersection(
         line1: Tuple[Coordinate, Coordinate],
         line2: Tuple[Coordinate, Coordinate]
-):
+) -> Optional[Coordinate]:
+    """
+    Finds the point of intersection between two lines, each defined by two Coordinates.
+    Each line's x and y values are bound between the Coordinate pairs.
+
+    Args:
+        line1:
+            A 2-tuple of two Coordinates
+
+        line2:
+            A second 2-tuple of two Coordinates
+
+    Returns:
+        The x and y (longitude and latitude) of the intersection location, or None if
+        no intersection exists.
+    """
     def det(a, b):
         return a[0] * b[1] - a[1] * b[0]
 
-    line1 = (line1[0].to_float(), line1[1].to_float())
-    if line1[1][0] < line1[0][0]:  # Flip order such that lower x value is first
-        line1 = (line1[1], line1[0])
+    line1_flt = (line1[0].to_float(), line1[1].to_float())
+    if line1_flt[1][0] < line1_flt[0][0]:  # Flip order such that lower x value is first
+        line1_flt = (line1_flt[1], line1_flt[0])
 
-    line2 = (line2[0].to_float(), line2[1].to_float())
-    if line2[1][0] < line2[0][0]:
-        line2 = (line2[1], line2[0])
+    line2_flt = (line2[0].to_float(), line2[1].to_float())
+    if line2_flt[1][0] < line2_flt[0][0]:
+        line2_flt = (line2_flt[1], line2_flt[0])
 
-    line1_y_bounds = min([line1[0][1], line1[1][1]]), max([line1[0][1], line1[1][1]])
-    line2_y_bounds = min([line2[0][1], line2[1][1]]), max([line2[0][1], line2[1][1]])
+    line1_y_bounds = min([line1_flt[0][1], line1_flt[1][1]]), max([line1_flt[0][1], line1_flt[1][1]])
+    line2_y_bounds = min([line2_flt[0][1], line2_flt[1][1]]), max([line2_flt[0][1], line2_flt[1][1]])
 
     if not (
-            max([line1[0][0], line2[0][0]]) <= min([line1[1][0], line2[1][0]]) and
-            max([line1_y_bounds[0], line2_y_bounds[0]]) <= min([line1_y_bounds[1], line2_y_bounds[1]])
+            max([line1_flt[0][0], line2_flt[0][0]]) <= min([line1_flt[1][0], line2_flt[1][0]]) and
+            max(
+                [line1_y_bounds[0], line2_y_bounds[0]]
+            ) <= min(
+                [line1_y_bounds[1], line2_y_bounds[1]]
+            )
     ):
         # line bounds do not overlap
-        return
+        return None
 
-    line1_diff = (line1[0][0] - line1[1][0], line1[0][1] - line1[1][1])
-    xdiff = (line1_diff[0], line2[0][0] - line2[1][0])
-    ydiff = (line1[0][1] - line1[1][1], line2[0][1] - line2[1][1])
-    div = det(xdiff, (line1_diff[1], line2[0][1] - line2[1][1]))
+    line1_diff = (line1_flt[0][0] - line1_flt[1][0], line1_flt[0][1] - line1_flt[1][1])
+    xdiff = (line1_diff[0], line2_flt[0][0] - line2_flt[1][0])
+    ydiff = (line1_flt[0][1] - line1_flt[1][1], line2_flt[0][1] - line2_flt[1][1])
+    div = det(xdiff, (line1_diff[1], line2_flt[0][1] - line2_flt[1][1]))
     if div == 0:
         # lines are parallel
-        return
+        return None
 
-    d = (det(*line1), det(*line2))
+    d = (det(*line1_flt), det(*line2_flt))
     x_intersection = det(d, xdiff) / div
     y_intersection = det(d, ydiff) / div
 
     if (
-            max([line1[0][0], line2[0][0]]) <= x_intersection <= min([line1[1][0], line2[1][0]])
+            max([line1_flt[0][0], line2_flt[0][0]]) <= x_intersection <= min([line1_flt[1][0], line2_flt[1][0]])
             and max(
                 [line1_y_bounds[0], line2_y_bounds[0]]
             ) <= y_intersection <= min(
                 [line1_y_bounds[1], line2_y_bounds[1]]
             )
     ):
-        return x_intersection, y_intersection
+        return Coordinate(x_intersection, y_intersection)
 
-    return
-
+    return None

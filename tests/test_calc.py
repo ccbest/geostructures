@@ -40,3 +40,37 @@ def test_rotate_coordinates():
         Coordinate(0.707, 0.707),
         Coordinate(0.707, 0.707),
     ]
+
+
+def test_find_line_intersection():
+    # X-shape, intersect in middle
+    line1 = (Coordinate(0.0, 1.0), Coordinate(1.0, 0.0))
+    line2 = (Coordinate(0.0, 0.0), Coordinate(1.0, 1.0))
+    assert find_line_intersection(line1, line2) == Coordinate(0.5, 0.5)
+
+    # Coordinates run right to left, should get flipped
+    line1 = (Coordinate(1.0, 0.0), Coordinate(0.0, 1.0), )
+    line2 = (Coordinate(1.0, 1.0), Coordinate(0.0, 0.0), )
+    assert find_line_intersection(line1, line2) == Coordinate(0.5, 0.5)
+
+    # Intersect at ends
+    line1 = (Coordinate(0.0, 1.0), Coordinate(1.0, 0.0))
+    line2 = (Coordinate(1.0, 0.0), Coordinate(2.0, 0.0))
+    assert find_line_intersection(line1, line2) == Coordinate(1.0, 0.0)
+
+    # Parallel lines
+    line1 = (Coordinate(0.0, 1.0), Coordinate(1.0, 0.0))
+    line2 = (Coordinate(1.0, 2.0), Coordinate(2.0, 1.0))
+    assert not find_line_intersection(line1, line2)
+
+    # Out of bounds
+    line1 = (Coordinate(5.0, 4.0), Coordinate(5.0, 4.0))
+    line2 = (Coordinate(1.0, 2.0), Coordinate(2.0, 1.0))
+    assert not find_line_intersection(line1, line2)
+
+    # In bounds and not parallel but no intersection
+    line1 = (Coordinate(0.0, 0.0), Coordinate(0.5, 0.5))
+    line2 = (Coordinate(0.0, 0.5), Coordinate(0.1, 0.3))
+    assert not find_line_intersection(line1, line2)
+
+
