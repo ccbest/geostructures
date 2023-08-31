@@ -24,10 +24,10 @@ from geostructures.calc import (
 )
 from geostructures.utils.functions import round_half_up
 from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
-from geostructures.time import DateInterval, TimeInterval
+from geostructures.time import TimeInterval
 
 
-_GEOTIME_TYPE = Union[date, datetime, DateInterval, TimeInterval]
+_GEOTIME_TYPE = Union[date, datetime, TimeInterval]
 
 _RE_COORD_STR = r'((?:\s?\d+\.?\d*\s\d+\.?\d*\s?\,?)+)'
 _RE_COORD = re.compile(_RE_COORD_STR)
@@ -57,9 +57,15 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         self.dt = dt
         self.properties = properties or {}
 
-    @abstractmethod
-    def __contains__(self, coord: Coordinate):
-        """Test whether a coordinate is contained within this geoshape"""
+    def __contains__(self, point: Union[Coordinate, 'GeoPoint']):
+        """Test whether a coordinate or GeoPoint is contained within this geoshape"""
+        if isinstance(point, Coordinate):
+            return self.contains_coordinate(point)
+
+        if point.dt is None or self.dt is None:
+            return self.contains_coordinate(point.centroid)
+
+        return self.contains_coordinate(point.centroid) and self.contains_time(point.dt)
 
     @abstractmethod
     def __hash__(self) -> int:
@@ -84,12 +90,6 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             return {
                 'datetime_start': self.dt.start.isoformat(),
                 'datetime_end': self.dt.end.isoformat(),
-            }
-
-        if isinstance(self.dt, DateInterval):
-            return {
-                'date_start': self.dt.start.isoformat(),
-                'date_end': self.dt.end.isoformat(),
             }
 
         return {}
@@ -143,6 +143,52 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         Returns:
             Coordinate
         """
+
+    @abstractmethod
+    def contains_coordinate(self, coord: Coordinate) -> bool:
+        """
+        Test if a geoshape contains a coordinate.
+
+        Args:
+            coord:
+                A Coordinate
+
+        Returns:
+            bool
+        """
+
+    def contains_time(self, time: Union[datetime, date, TimeInterval]) -> bool:
+        """
+        Test if the geoshape's time dimension fully contains either a date or a datetime.
+
+        Args:
+            time:
+                A date or a datetime.
+
+        Returns:
+            bool
+        """
+        if isinstance(self.dt, datetime):
+            if isinstance(time, datetime):
+                return self._default_to_zulu(time) == self.dt
+
+            # Timestamps can never be inclusive of dates or time intervals
+            return False
+
+        if isinstance(self.dt, date):
+            if isinstance(time, datetime):
+                return time.date() == self.dt
+
+            if isinstance(time, TimeInterval):
+                return time.start.date() == self.dt == time.end.date()
+
+            return time == self.dt
+
+        if isinstance(self.dt, TimeInterval):
+            if isinstance(time, TimeInterval):
+                return time.issubset(self.dt)
+
+            return time in self.dt
 
     @abstractmethod
     def to_polygon(self, **kwargs):
@@ -282,29 +328,6 @@ class GeoPolygon(GeoShape):
 
             self.holes.append(hole)
 
-    def __contains__(self, coord: Coordinate) -> bool:
-        # First see if the point even falls inside the circumscribing rectangle
-        _coord = coord.to_float()
-        lons, lats = zip(*[y.to_float() for y in self.outline])
-        if (
-            min(lons) > _coord[0]
-            or min(lats) > _coord[1]
-            or max(lons) < _coord[0]
-            or max(lats) < _coord[1]
-        ):
-            # Falls outside rectangle - not in polygon
-            return False
-
-        # If not inside outline, no need to continue
-        if not self._point_in_polygon(coord, self.outline):
-            return False
-
-        for hole in self.holes:
-            if self._point_in_polygon(coord, hole):
-                return False
-
-        return True
-
     def __eq__(self, other):
         if not isinstance(other, GeoPolygon):
             return False
@@ -395,6 +418,29 @@ class GeoPolygon(GeoShape):
         # Is self-closing
         return self.outline
 
+    def contains_coordinate(self, coord: Coordinate) -> bool:
+        # First see if the point even falls inside the circumscribing rectangle
+        _coord = coord.to_float()
+        lons, lats = zip(*[y.to_float() for y in self.outline])
+        if (
+            min(lons) > _coord[0]
+            or min(lats) > _coord[1]
+            or max(lons) < _coord[0]
+            or max(lats) < _coord[1]
+        ):
+            # Falls outside rectangle - not in polygon
+            return False
+
+        # If not inside outline, no need to continue
+        if not self._point_in_polygon(coord, self.outline):
+            return False
+
+        for hole in self.holes:
+            if self._point_in_polygon(coord, hole):
+                return False
+
+        return True
+
     def circumscribing_circle(self):
         centroid = self.centroid
         max_dist = max(
@@ -478,15 +524,6 @@ class GeoBox(GeoShape):
         self.nw_bound = nw_bound
         self.se_bound = se_bound
 
-    def __contains__(self, coord: Coordinate):
-        lon, lat = coord.to_float()
-        if float(self.nw_bound.longitude) <= lon <= float(
-            self.se_bound.longitude
-        ) and float(self.se_bound.latitude) <= lat <= float(self.nw_bound.latitude):
-            return True
-
-        return False
-
     def __eq__(self, other):
         if not isinstance(other, GeoBox):
             return False
@@ -515,6 +552,15 @@ class GeoBox(GeoShape):
             Coordinate(_nw[0], _se[1]),
             self.nw_bound,
         ]
+
+    def contains_coordinate(self, coord: Coordinate):
+        lon, lat = coord.to_float()
+        if float(self.nw_bound.longitude) <= lon <= float(
+            self.se_bound.longitude
+        ) and float(self.se_bound.latitude) <= lat <= float(self.nw_bound.latitude):
+            return True
+
+        return False
 
     def to_polygon(self, **_):
         return GeoPolygon(self.bounding_coords(), dt=self.dt)
@@ -565,7 +611,7 @@ class GeoCircle(GeoShape):
         self.center = center
         self.radius = radius
 
-    def __contains__(self, coord: Coordinate):
+    def contains_coordinate(self, coord: Coordinate) -> bool:
         return haversine_distance_meters(coord, self.center) <= self.radius
 
     def __eq__(self, other):
@@ -658,7 +704,7 @@ class GeoEllipse(GeoShape):
         self.minor_axis = minor_axis
         self.rotation = rotation
 
-    def __contains__(self, coord: Coordinate):
+    def contains_coordinate(self, coord: Coordinate) -> bool:
         bearing = bearing_degrees(self.center, coord)
         radius = self._radius_at_angle(math.radians(bearing - self.rotation))
         return haversine_distance_meters(self.center, coord) <= radius
@@ -791,7 +837,7 @@ class GeoRing(GeoShape):
         self.angle_min = angle_min or 0
         self.angle_max = angle_max or 360
 
-    def __contains__(self, coord):
+    def contains_coordinate(self, coord: Coordinate) -> bool:
         # Make sure bearing within wedge, if a wedge
         if self.angle_max - self.angle_min < 360:
             bearing = bearing_degrees(self.center, coord)
@@ -928,7 +974,7 @@ class GeoLineString(GeoShape):
         super().__init__(dt, properties)
         self.coords = coords
 
-    def __contains__(self, coord: Coordinate):
+    def contains_coordinate(self, coord: Coordinate) -> bool:
         # For now, just check for exact match. Will need update if buffering
         # becomes a feature
         return coord in self.coords
@@ -1033,7 +1079,7 @@ class GeoPoint(GeoShape):
         super().__init__(dt, properties)
         self.center = center
 
-    def __contains__(self, coord: Coordinate):
+    def contains_coordinate(self, coord: Coordinate) -> bool:
         # Points don't contain anything, even themselves
         return False
 

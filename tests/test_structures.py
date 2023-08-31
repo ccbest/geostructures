@@ -6,7 +6,7 @@ from shapely import wkt
 from geostructures.structures import *
 from geostructures.calc import inverse_haversine_degrees
 from geostructures.coordinates import Coordinate
-from geostructures.time import DateInterval, TimeInterval
+from geostructures.time import TimeInterval
 
 
 default_test_datetime = datetime(1970, 1, 1, 0, 0, tzinfo=timezone.utc)
@@ -97,9 +97,6 @@ def test_geoshape_start():
     )
     assert geopoint.start == datetime(1970, 1, 1, 0, 0, tzinfo=timezone.utc)
 
-    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=DateInterval(date(1970, 1, 1), date(1970, 1, 2)))
-    assert geopoint.start == date(1970, 1, 1)
-
     with pytest.raises(ValueError):
         _ = GeoCircle(Coordinate('0.0', '0.0'), 50).start
 
@@ -117,11 +114,40 @@ def test_geoshape_end():
     )
     assert geopoint.end == datetime(1970, 1, 1, 1, 0, tzinfo=timezone.utc)
 
-    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=DateInterval(date(1970, 1, 1), date(1970, 1, 2)))
-    assert geopoint.end == date(1970, 1, 2)
-
     with pytest.raises(ValueError):
         _ = GeoCircle(Coordinate('0.0', '0.0'), 50).end
+
+
+def test_geoshape_contains():
+    geopoint = GeoCircle(Coordinate('0.0', '0.0'), 500, dt=datetime(2020, 1, 1, 1))
+    assert Coordinate('0.0', '0.0') in geopoint
+    assert GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 1)) in geopoint
+    assert GeoPoint(Coordinate('0.0', '0.0'), dt=None) in geopoint
+    assert GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 1)) in GeoCircle(Coordinate('0.0', '0.0'), 500, dt=None)
+
+
+def test_geoshape_contains_time():
+    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 1))
+    assert geopoint.contains_time(datetime(2020, 1, 1, 1))
+    assert not geopoint.contains_time(datetime(2020, 1, 1, 1, 1))
+    assert not geopoint.contains_time(date(2020, 1, 1))
+    assert not geopoint.contains_time(TimeInterval(datetime(2020, 1, 1, 1), datetime(2020, 1, 1, 1, 1)))
+
+    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=date(2020, 1, 1))
+    assert geopoint.contains_time(datetime(2020, 1, 1))
+    assert not geopoint.contains_time(datetime(2020, 1, 2))
+    assert geopoint.contains_time(date(2020, 1, 1))
+    assert not geopoint.contains_time(date(2020, 1, 2))
+    assert geopoint.contains_time(TimeInterval(datetime(2020, 1, 1, 1), datetime(2020, 1, 1, 2)))
+    assert not geopoint.contains_time(TimeInterval(datetime(2020, 1, 1, 11), datetime(2020, 1, 2, 3)))
+
+    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 12), datetime(2020, 1, 3, 12)))
+    assert geopoint.contains_time(datetime(2020, 1, 2))
+    assert not geopoint.contains_time(datetime(2020, 1, 4, 12))
+    assert geopoint.contains_time(date(2020, 1, 2))
+    assert not geopoint.contains_time(date(2020, 1, 3))
+    assert geopoint.contains_time(TimeInterval(datetime(2020, 1, 1, 14),datetime(2020, 1, 1, 16)))
+    assert not geopoint.contains_time(TimeInterval(datetime(2020, 1, 3, 11), datetime(2020, 1, 3, 14)))
 
 
 def test_shape_to_geojson(geocircle):
@@ -273,12 +299,6 @@ def test_gt_to_json():
     assert geopoint._dt_to_json() == {
         'datetime_start': datetime(1970, 1, 1, 0, 0, tzinfo=timezone.utc).isoformat(),
         'datetime_end': datetime(1970, 1, 1, 1, 0, tzinfo=timezone.utc).isoformat()
-    }
-
-    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=DateInterval(date(1970, 1, 1), date(1970, 1, 2)))
-    assert geopoint._dt_to_json() == {
-        'date_start': date(1970, 1, 1).isoformat(),
-        'date_end': date(1970, 1, 2).isoformat()
     }
 
     geopoint = GeoCircle(Coordinate('0.0', '0.0'), 50)

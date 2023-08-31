@@ -13,7 +13,7 @@ import numpy as np
 
 from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoShape, GeoPoint, GeoPolygon
-from geostructures.time import DateInterval, TimeInterval
+from geostructures.time import TimeInterval
 from geostructures.calc import haversine_distance_meters
 from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
 
@@ -300,7 +300,7 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
             return dt
         return datetime(dt.year, dt.month, dt.day)
 
-    def _subset_by_dt(self, dt: Union[date, datetime, DateInterval, TimeInterval]):
+    def _subset_by_dt(self, dt: Union[date, datetime, TimeInterval]):
         """
         Subsets the tracks pings according to the date object provided.
 
@@ -318,11 +318,6 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
         if isinstance(dt, date):
             _start = self._date_to_datetime(dt)
             _end = self._date_to_datetime(dt + timedelta(days=1))
-            return self[_start:_end]  # type: ignore
-
-        if isinstance(dt, DateInterval):
-            _start = self._date_to_datetime(dt.start)
-            _end = self._date_to_datetime(dt.end + timedelta(days=1))
             return self[_start:_end]  # type: ignore
 
         if isinstance(dt, TimeInterval):
