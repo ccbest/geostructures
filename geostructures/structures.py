@@ -105,9 +105,6 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
                 'datetime_end': self.dt.isoformat(),
             }
 
-        if isinstance(self.dt, date):
-            return {'date_start': self.dt.isoformat(), 'date_end': self.dt.isoformat()}
-
         if isinstance(self.dt, TimeInterval):
             return {
                 'datetime_start': self.dt.start.isoformat(),
