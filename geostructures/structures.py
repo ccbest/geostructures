@@ -149,6 +149,8 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
 
             return time in self.dt
 
+        return False
+
     def to_geojson(
         self,
         k: Optional[int] = None,
