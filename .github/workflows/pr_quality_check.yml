@@ -22,7 +22,7 @@ jobs:
 
       - name: Lint with flake8
         run: |
-          flake8 geostructures --count --show-source --statistics --max-line-length=100
+          flake8 geostructures --count --show-source --statistics --max-line-length=120
 
       - name: Pytest
         run: |

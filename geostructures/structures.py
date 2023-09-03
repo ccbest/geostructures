@@ -9,7 +9,7 @@ __all__ = [
 ]
 
 from abc import abstractmethod
-from datetime import date, datetime
+from datetime import datetime
 import math
 import re
 import statistics
