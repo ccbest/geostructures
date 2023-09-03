@@ -4,7 +4,7 @@ from __future__ import annotations
 
 __all__ = ['TimeInterval']
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional, Union
 
 from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
@@ -38,13 +38,13 @@ class TimeInterval(LoggingMixin, DefaultZuluMixin):
         """REPL representation"""
         return f'<TimeInterval [{self.start.isoformat()} - {self.end.isoformat()})>'
 
-    def __contains__(self, dt: Union[datetime, TimeInterval]) -> bool:  # pylint: disable=invalid-name
+    def __contains__(self, time: Union[datetime, TimeInterval]) -> bool:
         """Returns true if datetime is within range"""
-        if isinstance(dt, datetime):
-            return self.start <= self._default_to_zulu(dt) < self.end
+        if isinstance(time, datetime):
+            return self.start <= self._default_to_zulu(time) < self.end
 
-        if isinstance(dt, TimeInterval):
-            return self.issuperset(dt)
+        if isinstance(time, TimeInterval):
+            return self.issuperset(time)
 
         raise ValueError('TimeIntervals may only contain datetimes and other TimeIntervals.')
 
