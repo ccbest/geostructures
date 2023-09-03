@@ -20,7 +20,7 @@ happily work with you on performance improvements.
 
 Pull requests must be limited to a singular logical enhancement (e.g. a single bug fix, feature, or documentation 
 update). Pull requests encompassing multiple enhancements will be reviewed on a case-by-case basis but most likely 
-rejected, and we will ask you to cherry pick your changes into multiple pull requests.
+rejected, and we will ask you to cherry-pick your changes into multiple pull requests.
 
 External dependencies must be minimized except where absolutely necessary. In general:
 * Merge requests introducing dependencies on Python standard libraries are ok
@@ -29,15 +29,34 @@ standard libraries) are less ok
 * Merge requests introducing dependencies on third-party non-leaf packages will be strictly scrutinized and likely not
 accepted, barring an extremely compelling reason.
 
-**Exception to the above**: Geostructures maintains a formal definition of "optional" dependencies (third-party packages
-required for additional functionality but not required for core operation). These dependencies will still be 
-scrutinized for necessity, however are much more likely to be accepted provided that their introduction does not 
-interfere with core functionality.
-
 Type assertions are required in virtually all instances except where extremely impractical (will be reviewed on a case-
 by-case basis). All pull requests must pass type checking via mypy.
 
 Over-document when in doubt and when meaningful.
+
+### Optional dependencies
+Geostructures maintains a formal definition of "optional" dependencies (third-party packages
+required for additional functionality but not required for core operation). These dependencies will still be 
+scrutinized for necessity, however are much more likely to be accepted provided that their introduction does not 
+interfere with core functionality.
+
+Whenever an optional dependency is utilized it must be imported only within the scope of its usage so that code
+which does not rely on the dependency may still be compiled. Please add a line comment `# pylint: disable=import-outside-toplevel` to all such imports. 
+
+### Definition Order
+Unless otherwise required, definitions in modules should follow the below order
+1. Constants
+2. Functions
+3. Classes
+
+Furthermore, class method/property definitions should be structured according to:
+1. Class variables
+2. Magic methods (\_\_init__() should always be first regardless of alphabetic order)
+3. Properties
+4. Private methods
+5. Public methods
+
+In all instances of the above, definitions should be sub-ordered alphabetically (init being the only exception).
 
 ### Pull Request Requirements
 
