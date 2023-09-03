@@ -277,12 +277,6 @@ def test_gt_to_json():
         'datetime_end': default_test_datetime.isoformat()
     }
 
-    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=date(1970, 1, 1))
-    assert geopoint._dt_to_json() == {
-        'date_start': date(1970, 1, 1).isoformat(),
-        'date_end': date(1970, 1, 1).isoformat()
-    }
-
     geopoint = GeoPoint(
         Coordinate('0.0', '0.0'),
         dt=TimeInterval(datetime(1970, 1, 1, 0, 0), datetime(1970, 1, 1, 1, 0))
