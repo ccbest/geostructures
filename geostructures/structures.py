@@ -76,23 +76,23 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         """REPL representation of this object"""
 
     @property
-    def start(self) -> Union[date, datetime]:
+    def start(self) -> datetime:
         """The start date/datetime, if present"""
         if not self.dt:
             raise ValueError("GeoShape has no associated time information.")
 
-        if isinstance(self.dt, (date, datetime)):
+        if isinstance(self.dt, datetime):
             return self.dt
 
         return self.dt.start
 
     @property
-    def end(self) -> Union[date, datetime]:
+    def end(self) -> datetime:
         """The end date/datetime, if present"""
         if not self.dt:
             raise ValueError("GeoShape has no associated time information.")
 
-        if isinstance(self.dt, (date, datetime)):
+        if isinstance(self.dt, datetime):
             return self.dt
 
         return self.dt.end
@@ -116,7 +116,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
 
         return {}
 
-    def contains_time(self, time: Union[datetime, date, TimeInterval]) -> bool:
+    def contains_time(self, time: Union[datetime, TimeInterval]) -> bool:
         """
         Test if the geoshape's time dimension fully contains either a date or a datetime.
 
@@ -127,29 +127,22 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         Returns:
             bool
         """
-        if isinstance(self.dt, datetime):
-            if isinstance(time, datetime):
-                return self._default_to_zulu(time) == self.dt
-
-            # Timestamps can never be inclusive of dates or time intervals
+        if self.dt is None:
             return False
 
-        if isinstance(self.dt, date):
-            if isinstance(time, datetime):
-                return time.date() == self.dt
-
-            if isinstance(time, TimeInterval):
-                return time.start.date() == self.dt == time.end.date()
-
-            return time == self.dt
-
-        if isinstance(self.dt, TimeInterval):
-            if isinstance(time, TimeInterval):
-                return time.issubset(self.dt)
+        if isinstance(time, datetime):
+            if isinstance(self.dt, datetime):
+                return self._default_to_zulu(time) == self.dt
 
             return time in self.dt
 
-        return False
+        if isinstance(time, TimeInterval):
+            if isinstance(self.dt, TimeInterval):
+                return time.issubset(self.dt)
+
+            return False  # TimeIntervals cant be a subset of datetimes
+
+        raise ValueError('Geoshapes may only contain datetimes and TimeIntervals.')
 
     def to_geojson(
         self,

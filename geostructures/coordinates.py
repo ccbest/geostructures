@@ -74,7 +74,7 @@ class Coordinate:
 
     def to_mgrs(self) -> str:
         """Convert this coordinate to a MGRS string"""
-        import mgrs
+        import mgrs  # pylint: disable=import-outside-toplevel
         _MGRS = mgrs.MGRS()
 
         return _MGRS.toMGRS(float(self.latitude), float(self.longitude))
@@ -82,7 +82,7 @@ class Coordinate:
     @classmethod
     def from_mgrs(cls, mgrs_str: str):
         """Create a Coordinate object from a MGRS string"""
-        import mgrs
+        import mgrs  # pylint: disable=import-outside-toplevel
         _MGRS = mgrs.MGRS()
 
         lat, lon = _MGRS.toLatLon(mgrs_str)

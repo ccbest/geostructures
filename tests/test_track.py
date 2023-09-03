@@ -1,5 +1,5 @@
 
-from datetime import datetime, date, timezone
+from datetime import datetime, timezone
 
 import numpy as np
 import pytest
@@ -508,12 +508,6 @@ def test_track_intersects():
     gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=datetime(2020, 1, 1))
     assert track1.intersects(gbox)
     gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=datetime(2019, 1, 1))
-    assert not track1.intersects(gbox)
-
-    # dt is Date
-    gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=date(2020, 1, 1))
-    assert track1.intersects(gbox)
-    gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=date(2019, 1, 1))
     assert not track1.intersects(gbox)
 
     gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=datetime(2020, 1, 1))

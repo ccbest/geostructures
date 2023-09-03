@@ -38,18 +38,15 @@ class TimeInterval(LoggingMixin, DefaultZuluMixin):
         """REPL representation"""
         return f'<TimeInterval [{self.start.isoformat()} - {self.end.isoformat()})>'
 
-    def __contains__(self, dt: Union[date, datetime]) -> bool:  # pylint: disable=invalid-name
+    def __contains__(self, dt: Union[datetime, TimeInterval]) -> bool:  # pylint: disable=invalid-name
         """Returns true if datetime is within range"""
         if isinstance(dt, datetime):
             return self.start <= self._default_to_zulu(dt) < self.end
 
-        end_time = dt + timedelta(days=1)
-        return self.issuperset(
-            TimeInterval(
-                datetime(dt.year, dt.month, dt.day, tzinfo=timezone.utc),
-                datetime(end_time.year, end_time.month, end_time.day, tzinfo=timezone.utc),
-            )
-        )
+        if isinstance(dt, TimeInterval):
+            return self.issuperset(dt)
+
+        raise ValueError('TimeIntervals may only contain datetimes and other TimeIntervals.')
 
     def __hash__(self) -> int:
         return hash((self.start, self.end))

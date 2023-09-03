@@ -34,6 +34,12 @@ def test_timeinterval_contains():
     assert datetime(2020, 1, 1) in TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 3))
     assert datetime(2020, 1, 3) not in TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 3))
 
+    assert TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 3)) in TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 3))
+    assert TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 2, 12)) in TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 3))
+    assert TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 4)) not in TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 3))
+
+    with pytest.raises(ValueError):
+        _ = date(2020, 1, 1) in TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 3))
 
 def test_timeinterval_hash():
 

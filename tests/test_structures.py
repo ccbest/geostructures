@@ -88,9 +88,6 @@ def test_geoshape_start():
     geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=default_test_datetime)
     assert geopoint.start == default_test_datetime
 
-    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=date(1970, 1, 1))
-    assert geopoint.start == date(1970, 1, 1)
-
     geopoint = GeoPoint(
         Coordinate('0.0', '0.0'),
         dt=TimeInterval(datetime(1970, 1, 1, 0, 0), datetime(1970, 1, 1, 1, 0))
@@ -104,9 +101,6 @@ def test_geoshape_start():
 def test_geoshape_end():
     geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=default_test_datetime)
     assert geopoint.end == default_test_datetime
-
-    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=date(1970, 1, 1))
-    assert geopoint.end == date(1970, 1, 1)
 
     geopoint = GeoPoint(
         Coordinate('0.0', '0.0'),
@@ -130,24 +124,21 @@ def test_geoshape_contains_time():
     geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 1))
     assert geopoint.contains_time(datetime(2020, 1, 1, 1))
     assert not geopoint.contains_time(datetime(2020, 1, 1, 1, 1))
-    assert not geopoint.contains_time(date(2020, 1, 1))
     assert not geopoint.contains_time(TimeInterval(datetime(2020, 1, 1, 1), datetime(2020, 1, 1, 1, 1)))
-
-    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=date(2020, 1, 1))
-    assert geopoint.contains_time(datetime(2020, 1, 1))
-    assert not geopoint.contains_time(datetime(2020, 1, 2))
-    assert geopoint.contains_time(date(2020, 1, 1))
-    assert not geopoint.contains_time(date(2020, 1, 2))
-    assert geopoint.contains_time(TimeInterval(datetime(2020, 1, 1, 1), datetime(2020, 1, 1, 2)))
-    assert not geopoint.contains_time(TimeInterval(datetime(2020, 1, 1, 11), datetime(2020, 1, 2, 3)))
 
     geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 12), datetime(2020, 1, 3, 12)))
     assert geopoint.contains_time(datetime(2020, 1, 2))
     assert not geopoint.contains_time(datetime(2020, 1, 4, 12))
-    assert geopoint.contains_time(date(2020, 1, 2))
-    assert not geopoint.contains_time(date(2020, 1, 3))
     assert geopoint.contains_time(TimeInterval(datetime(2020, 1, 1, 14),datetime(2020, 1, 1, 16)))
     assert not geopoint.contains_time(TimeInterval(datetime(2020, 1, 3, 11), datetime(2020, 1, 3, 14)))
+
+    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=None)
+    assert not geopoint.contains_time(datetime(2020, 1, 4, 12))
+    assert not geopoint.contains_time(TimeInterval(datetime(2020, 1, 1, 14), datetime(2020, 1, 1, 16)))
+
+    with pytest.raises(ValueError):
+        geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 12), datetime(2020, 1, 3, 12)))
+        geopoint.contains_time('not a date')
 
 
 def test_shape_to_geojson(geocircle):

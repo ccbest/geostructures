@@ -58,6 +58,8 @@ Furthermore, class method/property definitions should be structured according to
 
 In all instances of the above, definitions should be sub-ordered alphabetically (init being the only exception).
 
+Tests should follow the same order as defined in the actual code.
+
 ### Pull Request Requirements
 
 Code submitted within a merge request should be well-structured and commented. Specifically, all code must:
