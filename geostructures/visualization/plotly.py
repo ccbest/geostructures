@@ -80,7 +80,7 @@ def _draw_lines(
             {
                 'id': idx,
                 'weight': 1.0,
-                'lat': shape.centroid.to_float()[1],
+                'lat': point.to_float()[1],
                 'lon': point.to_float()[0],
                 'lat/lon': ', '.join(point.to_str()),
                 **{key: shape.properties.get(key, '') for key in hover_data}
