@@ -833,7 +833,7 @@ def test_geolinestring_to_geojson(geolinestring):
         'type': 'Feature',
         'geometry': {
             'type': 'LineString',
-            'coordinates': [x.to_float() for x in geolinestring.bounding_coords()],
+            'coordinates': [list(x.to_float()) for x in geolinestring.bounding_coords()],
         },
         'properties': {
             'test_prop': 2,
