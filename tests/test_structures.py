@@ -147,7 +147,7 @@ def test_shape_to_geojson(geocircle):
         'type': 'Feature',
         'geometry': {
             'type': 'Polygon',
-            'coordinates': [[x.to_float() for x in geocircle.bounding_coords()]],
+            'coordinates': [[list(x.to_float()) for x in geocircle.bounding_coords()]],
         },
         'properties': {
             'test_prop': 1,
@@ -162,7 +162,7 @@ def test_shape_to_geojson(geocircle):
         'type': 'Feature',
         'geometry': {
             'type': 'Polygon',
-            'coordinates': [[x.to_float() for x in geocircle.bounding_coords(k=10)]],
+            'coordinates': [[list(x.to_float()) for x in geocircle.bounding_coords(k=10)]],
         },
         'properties': {
             'datetime_start': default_test_datetime.isoformat(),
@@ -173,6 +173,21 @@ def test_shape_to_geojson(geocircle):
 
 def test_geoshape_to_shapely(geobox):
     assert geobox.to_shapely() == shapely.geometry.Polygon([[0.0,1.0],[1.0,1.0],[1.0,0.0],[0.0,0.0]])
+
+
+def test_geoshape_set_property():
+    point = GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 12))
+    assert point.properties == {
+        'datetime_start': datetime(2020, 1, 1, 12, tzinfo=timezone.utc),
+        'datetime_end': datetime(2020, 1, 1, 12, tzinfo=timezone.utc)
+    }
+
+    point.set_property('test_property', 1)
+    assert point.properties == {
+        'datetime_start': datetime(2020, 1, 1, 12, tzinfo=timezone.utc),
+        'datetime_end': datetime(2020, 1, 1, 12, tzinfo=timezone.utc),
+        'test_property': 1
+    }
 
 
 def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
