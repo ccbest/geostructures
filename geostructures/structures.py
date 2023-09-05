@@ -1052,7 +1052,7 @@ class GeoLineString(GeoShape):
             'type': 'Feature',
             'geometry': {
                 'type': 'LineString',
-                'coordinates': [x.to_float() for x in self.bounding_coords(k=k)],
+                'coordinates': [list(x.to_float()) for x in self.bounding_coords(k=k)],
             },
             'properties': {
                 **self.properties,
