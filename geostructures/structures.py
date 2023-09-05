@@ -13,7 +13,7 @@ from datetime import datetime
 import math
 import re
 import statistics
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
@@ -55,7 +55,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             dt = self._default_to_zulu(dt)
 
         self.dt = dt
-        self.properties = properties or {}
+        self._properties = properties or {}
 
     def __contains__(self, point: Union[Coordinate, 'GeoPoint']):
         """Test whether a coordinate or GeoPoint is contained within this geoshape"""
@@ -76,17 +76,6 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         """REPL representation of this object"""
 
     @property
-    def start(self) -> datetime:
-        """The start date/datetime, if present"""
-        if not self.dt:
-            raise ValueError("GeoShape has no associated time information.")
-
-        if isinstance(self.dt, datetime):
-            return self.dt
-
-        return self.dt.start
-
-    @property
     def end(self) -> datetime:
         """The end date/datetime, if present"""
         if not self.dt:
@@ -97,21 +86,35 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
 
         return self.dt.end
 
-    def _dt_to_json(self) -> Dict[str, str]:
-        """"""
+    @property
+    def properties(self):
+        props = self._properties.copy()
+        if self.dt:
+            props['datetime_start'] = self.start
+            props['datetime_end'] = self.end
+
+        return props
+
+    @property
+    def start(self) -> datetime:
+        """The start date/datetime, if present"""
+        if not self.dt:
+            raise ValueError("GeoShape has no associated time information.")
+
         if isinstance(self.dt, datetime):
-            return {
-                'datetime_start': self.dt.isoformat(),
-                'datetime_end': self.dt.isoformat(),
-            }
+            return self.dt
 
-        if isinstance(self.dt, TimeInterval):
-            return {
-                'datetime_start': self.dt.start.isoformat(),
-                'datetime_end': self.dt.end.isoformat(),
-            }
+        return self.dt.start
 
-        return {}
+    def _dt_to_json(self) -> Dict[str, str]:
+        """Safely convert time bounds to json"""
+        if not self.dt:
+            return {}
+
+        return {
+            'datetime_start': self.start.isoformat(),
+            'datetime_end': self.end.isoformat(),
+        }
 
     def contains_time(self, time: Union[datetime, TimeInterval]) -> bool:
         """
@@ -141,6 +144,22 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
 
         raise ValueError('Geoshapes may only contain datetimes and TimeIntervals.')
 
+    def set_property(self, key: str, value: Any):
+        """
+        Sets the value of a property on this geoshape.
+
+        Args:
+            key:
+                The property name
+
+            value:
+                The property value
+
+        Returns:
+            None
+        """
+        self._properties[key] = value
+
     def to_geojson(
         self,
         k: Optional[int] = None,
@@ -167,7 +186,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             'type': 'Feature',
             'geometry': {
                 'type': 'Polygon',
-                'coordinates': [[x.to_float() for x in self.bounding_coords(k=k)]],
+                'coordinates': [[list(x.to_float()) for x in self.bounding_coords(k=k)]],
             },
             'properties': {
                 **self.properties,
