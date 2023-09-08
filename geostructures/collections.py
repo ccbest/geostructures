@@ -60,13 +60,13 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
         hull = spatial.ConvexHull(points)
         return GeoPolygon([Coordinate(*points[x]) for x in hull.vertices])
 
-    def to_geopandas(self):
+    def to_geopandas(self, include_properties: Optional[List[str]] = None):
         """
 
         """
         import geopandas as gpd
 
-        keys = set(
+        keys = include_properties or set(
             _key for x in self.geoshapes
             for _key in x.properties.keys()
         )
@@ -76,7 +76,6 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
                 {
                     'geometry': x.to_wkt(),
                     **{key: x.properties.get(key) for key in keys},
-                    **x._dt_to_json()
                 } for x in self.geoshapes
             ]
         )
