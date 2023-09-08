@@ -2,11 +2,11 @@
 
 __all__ = [
     'bearing_degrees', 'haversine_distance_meters', 'inverse_haversine_degrees',
-    'inverse_haversine_radians', 'rotate_coordinates'
+    'inverse_haversine_radians', 'rotate_coordinates', 'find_line_intersection'
 ]
 
 import math
-from typing import List
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -174,6 +174,94 @@ def rotate_coordinates(
 
     precision = [min([x.latitude.precision, x.longitude.precision]) for x in coords]
     return [
-        Coordinate(*(round_half_up(_x, y) for _x in x))
+        Coordinate(*(round_half_up(_x, y) for _x in x))  # type: ignore
         for x, y in zip((R @ (p.T - o.T) + o.T).T, precision)
     ]
+
+
+def find_line_intersection(
+        line1: Tuple[Coordinate, Coordinate],
+        line2: Tuple[Coordinate, Coordinate]
+) -> Optional[Tuple[Coordinate, bool]]:
+    """
+    Finds the point of intersection between two lines, each defined by two Coordinates.
+    Each line's x and y values are bound between the Coordinate pairs.
+
+    Parallel overlapping lines are not considered intersecting.
+
+    Args:
+        line1:
+            A 2-tuple of two Coordinates
+
+        line2:
+            A second 2-tuple of two Coordinates
+
+    Returns:
+        If a point of intersection if found, returns a 2-tuple consisting of:
+            - The Coordinate of the intersection location
+            - A boolean "is_boundary" representing whether the intersection falls
+              directly on one of the points of the lines
+    """
+    def det(a, b):
+        return a[0] * b[1] - a[1] * b[0]
+
+    line1_flt = (line1[0].to_float(), line1[1].to_float())
+    if line1_flt[1][0] < line1_flt[0][0]:  # Flip order such that lower x value is first
+        line1_flt = (line1_flt[1], line1_flt[0])
+
+    line2_flt = (line2[0].to_float(), line2[1].to_float())
+    if line2_flt[1][0] < line2_flt[0][0]:
+        line2_flt = (line2_flt[1], line2_flt[0])
+
+    line1_y_bounds = (
+        min([line1_flt[0][1], line1_flt[1][1]]),
+        max([line1_flt[0][1], line1_flt[1][1]])
+    )
+    line2_y_bounds = (
+        min([line2_flt[0][1], line2_flt[1][1]]),
+        max([line2_flt[0][1], line2_flt[1][1]])
+    )
+
+    if not (
+            max([line1_flt[0][0], line2_flt[0][0]]) <= min([line1_flt[1][0], line2_flt[1][0]]) and
+            max(
+                [line1_y_bounds[0], line2_y_bounds[0]]
+            ) <= min(
+                [line1_y_bounds[1], line2_y_bounds[1]]
+            )
+    ):
+        # line bounds do not overlap
+        return None
+
+    line1_diff = (line1_flt[0][0] - line1_flt[1][0], line1_flt[0][1] - line1_flt[1][1])
+    xdiff = (line1_diff[0], line2_flt[0][0] - line2_flt[1][0])
+    ydiff = (line1_flt[0][1] - line1_flt[1][1], line2_flt[0][1] - line2_flt[1][1])
+    div = det(xdiff, (line1_diff[1], line2_flt[0][1] - line2_flt[1][1]))
+    if div == 0:
+        # lines are parallel
+        return None
+
+    d = (det(*line1_flt), det(*line2_flt))
+    x_intersection = round_half_up(det(d, xdiff) / div, 10)
+    y_intersection = round_half_up(det(d, ydiff) / div, 10)
+
+    # Check if any of the x values are exactly the same - could be boundary intersection
+    if (x_intersection, y_intersection) in (*line1_flt, *line2_flt):
+        # Intersection exactly on one of the coordinates - boundary intersection
+        return Coordinate(x_intersection, y_intersection), True
+
+    if (
+            max(
+                [line1_flt[0][0], line2_flt[0][0]]
+            ) <= x_intersection <= min(
+                [line1_flt[1][0], line2_flt[1][0]]
+            )
+            and max(
+                [line1_y_bounds[0], line2_y_bounds[0]]
+            ) <= y_intersection <= min(
+                [line1_y_bounds[1], line2_y_bounds[1]]
+            )
+    ):
+        return Coordinate(x_intersection, y_intersection), False
+
+    return None

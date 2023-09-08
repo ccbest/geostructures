@@ -5,7 +5,7 @@ Module for sequences of GeoShapes
 __all__ = ['FeatureCollection', 'Track']
 
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from functools import cached_property
 from typing import Any, List, Dict, Optional, Union
 
@@ -13,7 +13,7 @@ import numpy as np
 
 from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoShape, GeoPoint, GeoPolygon
-from geostructures.time import DateInterval, TimeInterval
+from geostructures.time import TimeInterval
 from geostructures.calc import haversine_distance_meters
 from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
 
@@ -51,7 +51,7 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
     @cached_property
     def convex_hull(self):
         """Creates a convex hull around the pings"""
-        from scipy import spatial
+        from scipy import spatial  # pylint: disable=import-outside-toplevel
 
         if len(self.geoshapes) <= 2 and all(isinstance(x, GeoPoint) for x in self.geoshapes):
             raise ValueError('Cannot create a convex hull from less than three points.')
@@ -189,10 +189,10 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
             )
 
         _start = self._default_to_zulu(
-            val.start or self._date_to_datetime(self.geoshapes[0].start)
+            val.start or self.geoshapes[0].start
         )
         _stop = self._default_to_zulu(
-            val.stop or self._date_to_datetime(self.geoshapes[-1].end + timedelta(seconds=1))
+            val.stop or self.geoshapes[-1].end + timedelta(seconds=1)
         )
         return Track(
             [x for x in self.geoshapes if _start <= x.start and x.end < _stop]
@@ -314,14 +314,7 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
 
         return Track(new_pings, self.metadata)
 
-    @staticmethod
-    def _date_to_datetime(dt: Union[date, datetime]) -> datetime:
-        """Converts a date into datetime (assumes midnight)"""
-        if isinstance(dt, datetime):
-            return dt
-        return datetime(dt.year, dt.month, dt.day)
-
-    def _subset_by_dt(self, dt: Union[date, datetime, DateInterval, TimeInterval]):
+    def _subset_by_dt(self, dt: Union[datetime, TimeInterval]):
         """
         Subsets the tracks pings according to the date object provided.
 
@@ -335,16 +328,6 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
         # Has to be checked before date - datetimes are dates, but dates are not datetimes
         if isinstance(dt, datetime):
             return self[dt]  # type: ignore
-
-        if isinstance(dt, date):
-            _start = self._date_to_datetime(dt)
-            _end = self._date_to_datetime(dt + timedelta(days=1))
-            return self[_start:_end]  # type: ignore
-
-        if isinstance(dt, DateInterval):
-            _start = self._date_to_datetime(dt.start)
-            _end = self._date_to_datetime(dt.end + timedelta(days=1))
-            return self[_start:_end]  # type: ignore
 
         if isinstance(dt, TimeInterval):
             _start = dt.start

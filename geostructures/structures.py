@@ -9,24 +9,40 @@ __all__ = [
 ]
 
 from abc import abstractmethod
-from datetime import date, datetime
+from datetime import datetime
 import math
 import re
 import statistics
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
     inverse_haversine_radians,
     haversine_distance_meters,
     bearing_degrees,
+    find_line_intersection
 )
 from geostructures.utils.functions import round_half_up
 from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
-from geostructures.time import DateInterval, TimeInterval
+from geostructures.time import TimeInterval
 
 
-_GEOTIME_TYPE = Union[date, datetime, DateInterval, TimeInterval]
+_GEOTIME_TYPE = Union[datetime, TimeInterval]
+
+_RE_COORD_STR = r'((?:\s?\d+\.?\d*\s\d+\.?\d*\s?\,?)+)'
+_RE_COORD = re.compile(_RE_COORD_STR)
+_RE_COORD_GROUPS_STR = r'(?:\(' + _RE_COORD_STR + r'\)\,?\s?)+'
+_RE_POINT_WKT = re.compile(r'POINT\s?\((\s?\d+\.?\d*\s\d+\.?\d*\s?)\)')
+_RE_POLYGON_WKT = re.compile(r'POLYGON\s?\(' + _RE_COORD_GROUPS_STR + r'\)')
+_RE_LINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_COORD_GROUPS_STR + r'\s?')
+
+
+def _parse_wkt_coord_group(group: str) -> List[Coordinate]:
+    """Parse wkt coordinate list into Coordinate objects"""
+    return [
+        Coordinate(*coord.strip().split(' '))  # type: ignore
+        for coord in group.split(',') if coord
+    ]
 
 _RE_COORD_GROUP_STR = r'\(((?:\s?\d+\.?\d*\s\d+\.?\d*\,?)+)\)'
 _RE_COORD_GROUP = re.compile(_RE_COORD_GROUP_STR)
@@ -50,11 +66,17 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             dt = self._default_to_zulu(dt)
 
         self.dt = dt
-        self.properties = properties or {}
+        self._properties = properties or {}
 
-    @abstractmethod
-    def __contains__(self, coord: Coordinate):
-        """Test whether a coordinate is contained within this geoshape"""
+    def __contains__(self, point: Union[Coordinate, 'GeoPoint']):
+        """Test whether a coordinate or GeoPoint is contained within this geoshape"""
+        if isinstance(point, Coordinate):
+            return self.contains_coordinate(point)
+
+        if point.dt is None or self.dt is None:
+            return self.contains_coordinate(point.centroid)
+
+        return self.contains_coordinate(point.centroid) and self.contains_time(point.dt)
 
     @abstractmethod
     def __hash__(self) -> int:
@@ -64,70 +86,152 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
     def __repr__(self):
         """REPL representation of this object"""
 
-    def _dt_to_json(self) -> Dict[str, str]:
-        """"""
-        if isinstance(self.dt, datetime):
-            return {
-                'datetime_start': self.dt.isoformat(),
-                'datetime_end': self.dt.isoformat(),
-            }
-
-        if isinstance(self.dt, date):
-            return {'date_start': self.dt.isoformat(), 'date_end': self.dt.isoformat()}
-
-        if isinstance(self.dt, TimeInterval):
-            return {
-                'datetime_start': self.dt.start.isoformat(),
-                'datetime_end': self.dt.end.isoformat(),
-            }
-
-        if isinstance(self.dt, DateInterval):
-            return {
-                'date_start': self.dt.start.isoformat(),
-                'date_end': self.dt.end.isoformat(),
-            }
-
-        return {}
-
     @property
-    def start(self) -> Union[date, datetime, None]:
-        """The start date/datetime, if present"""
-        if not self.dt:
-            return None
-
-        if isinstance(self.dt, (date, datetime)):
-            return self.dt
-
-        return self.dt.start
-
-    @property
-    def end(self) -> Union[date, datetime, None]:
+    def end(self) -> datetime:
         """The end date/datetime, if present"""
         if not self.dt:
             return None
 
-        if isinstance(self.dt, (date, datetime)):
+        if isinstance(self.dt, datetime):
             return self.dt
 
         return self.dt.end
 
-    @abstractmethod
-    def bounding_coords(self, **kwargs) -> List[Coordinate]:
+    @property
+    def properties(self):
+        props = self._properties.copy()
+        if self.dt:
+            props['datetime_start'] = self.start
+            props['datetime_end'] = self.end
+
+        return props
+
+    @property
+    def start(self) -> datetime:
+        """The start date/datetime, if present"""
+        if not self.dt:
+            return None
+
+        if isinstance(self.dt, datetime):
+            return self.dt
+
+        return self.dt.start
+
+    def _dt_to_json(self) -> Dict[str, str]:
+        """Safely convert time bounds to json"""
+        if not self.dt:
+            return {}
+
+        return {
+            'datetime_start': self.start.isoformat(),
+            'datetime_end': self.end.isoformat(),
+        }
+
+    def contains_time(self, time: Union[datetime, TimeInterval]) -> bool:
         """
-        Produce a list of bounding coordinates for the object. The coordinates will
-        necessary not represent smooth curves, therefore some data loss is implied.
+        Test if the geoshape's time dimension fully contains either a date or a datetime.
 
-        All shapes that represent a linear ring (e.g. a box or polygon) will return
-        self-closing coordinates, meaning the last coordinate is equal to the first.
+        Args:
+            time:
+                A date or a datetime.
 
-        For shapes with smooth curves (ellipsoids, circles, etc.) you may specify a
-        number k that will produce k-points along the curve.
+        Returns:
+            bool
+        """
+        if self.dt is None:
+            return False
+
+        if isinstance(time, datetime):
+            if isinstance(self.dt, datetime):
+                return self._default_to_zulu(time) == self.dt
+
+            return time in self.dt
+
+        if isinstance(time, TimeInterval):
+            if isinstance(self.dt, TimeInterval):
+                return time.issubset(self.dt)
+
+            return False  # TimeIntervals cant be a subset of datetimes
+
+        raise ValueError('Geoshapes may only contain datetimes and TimeIntervals.')
+
+    def set_property(self, key: str, value: Any):
+        """
+        Sets the value of a property on this geoshape.
+
+        Args:
+            key:
+                The property name
+
+            value:
+                The property value
+
+        Returns:
+            None
+        """
+        self._properties[key] = value
+
+    def to_geojson(
+        self,
+        k: Optional[int] = None,
+        properties: Optional[Dict] = None,
+        **kwargs
+    ) -> Dict:
+        """
+        Convert the shape to geojson format.
+
+        Optional Args:
+            k: (int)
+                For shapes with smooth curves, defines the number of points
+                generated along the curve.
+
+            properties: (dict)
+                Any number of properties to be included in the geojson properties. These
+                values will be unioned with the shape's already defined properties (and
+                override them where keys conflict)
+
+        Returns:
+            (dict)
+        """
+        return {
+            'type': 'Feature',
+            'geometry': {
+                'type': 'Polygon',
+                'coordinates': [[list(x.to_float()) for x in self.bounding_coords(k=k)]],
+            },
+            'properties': {
+                **self.properties,
+                **self._dt_to_json(),
+                **(properties or {})
+            },
+            **kwargs
+        }
+
+    def to_shapely(self):
+        """
+        Converts the geoshape into a Shapely shape.
+        """
+        import shapely  # pylint: disable=import-outside-toplevel
+
+        return shapely.geometry.Polygon(
+            [[float(x.longitude), float(x.latitude)] for x in self.bounding_coords()]
+        )
+
+    def to_wkt(self, **kwargs):
+        """
+        Converts the shape to its WKT string representation
 
         Keyword Args:
-            k: (int)
-                For shapes with smooth curves, increasing k increases the number of
-                points generated along the curve
+            Arguments to be passed to the .bounding_coords() method. Reference
+            that method for a list of corresponding kwargs.
+
+        Returns:
+            str
         """
+        bbox_str = ",".join(
+            " ".join(x.to_str()) for x in self.bounding_coords(**kwargs)
+        )
+        return f'POLYGON(({bbox_str}))'
 
     @property
     @abstractmethod
@@ -140,12 +244,21 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         """
 
     @abstractmethod
-    def to_polygon(self, **kwargs):
+    def bounding_coords(self, **kwargs) -> List[Coordinate]:
         """
-        Converts the shape to a GeoPolygon
+        Produce a list of bounding coordinates for the object. The coordinates will
+        not necessarily not represent smooth curves, therefore some data loss is implied.
 
-        Returns:
-            (GeoPolygon)
+        All shapes that represent a linear ring (e.g. a box or polygon) will return
+        self-closing coordinates, meaning the last coordinate is equal to the first.
+
+        For shapes with smooth curves (ellipsoids, circles, etc.) you may specify a
+        number k that will produce k-points along the curve.
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
         """
 
     @abstractmethod
@@ -166,65 +279,27 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             (GeoBox)
         """
 
-    def to_geojson(
-            self,
-            k: Optional[int] = None,
-            properties: Optional[Dict] = None,
-            **kwargs
-    ) -> Dict:
+    @abstractmethod
+    def contains_coordinate(self, coord: Coordinate) -> bool:
         """
-        Convert the shape to geojson format.
+        Test if a geoshape contains a coordinate.
 
         Args:
-            k: (int)
-                For shapes with smooth curves, defines the number of points
-                generated along the curve.
-
-            **properties:
-                Any number of properties to be included in the geojson properties.
+            coord:
+                A Coordinate
 
         Returns:
-            (dict)
+            bool
         """
-        return {
-            'type': 'Feature',
-            'geometry': {
-                'type': 'Polygon',
-                'coordinates': [[x.to_float() for x in self.bounding_coords(k=k)]],
-            },
-            'properties': {
-                **self.properties,
-                **self._dt_to_json(),
-                **(properties or {})
-            },
-            **kwargs
-        }
 
-    def to_wkt(self, **kwargs):
+    @abstractmethod
+    def to_polygon(self, **kwargs):
         """
-        Converts the shape to its WKT string representation
-
-        Keyword Args:
-            Arguments to be passed to the .bounding_coords() method. Reference
-            that method for a list of corresponding kwargs.
+        Converts the shape to a GeoPolygon
 
         Returns:
-            str
+            (GeoPolygon)
         """
-        bbox_str = ",".join(
-            " ".join(x.to_str()) for x in self.bounding_coords(**kwargs)
-        )
-        return f'POLYGON(({bbox_str}))'
-
-    def to_shapely(self):
-        """
-        Converts the geoshape into a Shapely shape.
-        """
-        import shapely
-
-        return shapely.geometry.Polygon(
-            [[float(x.longitude), float(x.latitude)] for x in self.bounding_coords()]
-        )
 
 
 class GeoPolygon(GeoShape):
@@ -237,11 +312,21 @@ class GeoPolygon(GeoShape):
         outline: (List[Coordinate])
             A list of coordinates that define the outside edges of the polygon
 
+        args: (List[Coordinate])
+            Additional lists of coordinates representing holes in the polygon
+
+        dt: (datetime | TimeInterval | None)
+
+
+        properties: dict
+            Additional properties that describe this geoshape.
+
     """
 
     def __init__(
         self,
         outline: List[Coordinate],
+        *args: List[Coordinate],
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
         hole: Optional[List[Coordinate]] = None,
@@ -253,26 +338,21 @@ class GeoPolygon(GeoShape):
                 'Polygon outlines must be self-closing; your final point will be '
                 'connected to your starting point.'
             )
-            outline.append(outline[0])
+            outline = [*outline, outline[0]]
 
         self.outline = outline
         self.hole = hole
 
-    def __contains__(self, coord: Coordinate) -> bool:
-        # First see if the point even falls inside the circumscribing rectangle
-        _coord = coord.to_float()
-        lons, lats = zip(*[y.to_float() for y in self.outline])
-        if (
-            min(lons) > _coord[0]
-            or min(lats) > _coord[1]
-            or max(lons) < _coord[0]
-            or max(lats) < _coord[1]
-        ):
-            # Falls outside rectangle - not in polygon
-            return False
+        self.holes = []
+        for hole in args:
+            if not hole[0] == hole[-1]:
+                self.logger.warning(
+                    'Polygon holes must be self-closing; your final point will be '
+                    'connected to your starting point.'
+                )
+                hole = [*hole, hole[0]]
 
-        # Use point in polygon to determine if its inside
-        return self._point_in_polygon(coord)
+            self.holes.append(hole)
 
     def __eq__(self, other):
         if not isinstance(other, GeoPolygon):
@@ -288,12 +368,23 @@ class GeoPolygon(GeoShape):
 
         s_outline = self.outline[0:-1]
         o_outline = other.outline[0:-1]
+        outline_eq = False
         for _ in range(0, len(o_outline)):
+            # Rotate the outline
             if s_outline in (o_outline, o_outline[::-1]):
-                return True
+                outline_eq = True
+                break
             o_outline = o_outline[1:] + [o_outline[0]]
 
-        return False
+        if not outline_eq:
+            return False
+
+        if len(self.holes) != len(other.holes):
+            return False
+
+        s_holes = set([tuple({(x, y) for x, y in zip(hole, hole[1:])}) for hole in self.holes])
+        o_holes = set([tuple({(x, y) for x, y in zip(hole, hole[1:])}) for hole in other.holes])
+        return s_holes == o_holes
 
     def __hash__(self):
         return hash((tuple(self.outline), self.dt))
@@ -301,7 +392,21 @@ class GeoPolygon(GeoShape):
     def __repr__(self):
         return f'<GeoPolygon of {len(self.outline) - 1} coordinates>'
 
-    def _point_in_polygon(self, coord: Coordinate) -> bool:
+    @property
+    def centroid(self):
+        return Coordinate(
+            *[
+                round_half_up(statistics.mean(x), 7)
+                for x in zip(*[y.to_float() for y in self.outline[:-1]])
+            ]
+        )
+
+    @staticmethod
+    def _point_in_polygon(
+            coord: Coordinate,
+            polygon: List[Coordinate],
+            include_boundary: bool = False,
+    ) -> bool:
         """
         Tests whether a point is in the polygon. From the point, draws
         a straight line along the latitude and determines how many sides
@@ -317,52 +422,29 @@ class GeoPolygon(GeoShape):
             coord:
                 A Coordinate
 
+            polygon:
+                A list of coordinates (self-closing) representing a linear ring
+
+            include_boundary:
+                Whether to count boundaries as intersecting (parallel overlapping
+                lines still do not count)
+
         Returns:
             bool
         """
-
-        def det(a, b):
-            return a[0] * b[1] - a[1] * b[0]
-
-        # Create a line from our point that extends eastward past the antimeridian
-        # (geo-equivalent of infinity)
-        line1 = (coord.to_float(), (181, float(coord.latitude)))
-        line1_diff = (line1[0][0] - line1[1][0], line1[0][1] - line1[1][1])
-
+        test_line = (coord, Coordinate(180, float(coord.latitude)))
         _intersections = 0
-        # zip together consecutive points in the bounding box, representing sides of the polygon
-        for line2_coord in zip(self.outline, [*self.outline[1:], self.outline[0]]):
-            line2 = (line2_coord[0].to_float(), line2_coord[1].to_float())
-            if line2[1][0] < line2[0][0]:
-                line2 = (line2[1], line2[0])
-
-            if max(x[0] for x in line2) < line1[0][0]:
-                # to the right of line, won't intersect
+        for vertex in zip(polygon, [*polygon[1:], polygon[0]]):
+            intersection = find_line_intersection(test_line, vertex)
+            if not intersection:
                 continue
 
-            xdiff = (line1_diff[0], line2[0][0] - line2[1][0])
-            div = det(xdiff, (line1_diff[1], line2[0][1] - line2[1][1]))
-            if div == 0:
-                # lines are parallel
-                continue
+            if intersection[1] and not include_boundary:
+                # Lies on boundary, no need to continue
+                return False
 
-            d = (det(line1[0], line1[1]), det(line2[0], line2[1]))
-            x_intersection = det(d, xdiff) / div
-
-            if line1[0][0] == x_intersection:
-                # point lies exactly at intersection - counts as being contained
-                continue
-
-            if line2[0][0] == x_intersection == line2[1][0]:
-                # line is vertical and intersects
-                _intersections += 1
-                continue
-
-            if (
-                line2[0][0] < x_intersection < line2[1][0]
-                and line1[0][0] < x_intersection
-            ):
-                # intersection within x bounds and to the right of the point
+            if include_boundary or not intersection[1]:
+                # If boundaries are allowed, or is not a boundary intersection
                 _intersections += 1
 
         return _intersections > 0 and _intersections % 2 != 0
@@ -386,14 +468,58 @@ class GeoPolygon(GeoShape):
             dt=self.dt,
         )
 
-    @property
-    def centroid(self):
-        return Coordinate(
-            *[
-                round_half_up(statistics.mean(x), 7)
-                for x in zip(*[y.to_float() for y in self.outline[:-1]])
-            ]
-        )
+    def contains_coordinate(self, coord: Coordinate) -> bool:
+        # First see if the point even falls inside the circumscribing rectangle
+        _coord = coord.to_float()
+        lons, lats = zip(*[y.to_float() for y in self.outline])
+        if (
+            min(lons) > _coord[0]
+            or min(lats) > _coord[1]
+            or max(lons) < _coord[0]
+            or max(lats) < _coord[1]
+        ):
+            # Falls outside rectangle - not in polygon
+            return False
+
+        # If not inside outline, no need to continue
+        if not self._point_in_polygon(coord, self.outline):
+            return False
+
+        for hole in self.holes:
+            if self._point_in_polygon(coord, hole):
+                return False
+
+        return True
+
+    @classmethod
+    def from_wkt(cls, wkt_str: str):
+        """Create a GeoPolygon from a wkt string"""
+        if not _RE_POLYGON_WKT.match(wkt_str):
+            raise ValueError(f'Invalid WKT Polygon: {wkt_str}')
+
+        coord_groups = _RE_COORD.findall(wkt_str)
+        outline = _parse_wkt_coord_group(coord_groups[0])
+        holes = []
+        if len(coord_groups) > 1:
+            holes = [_parse_wkt_coord_group(coord_group) for coord_group in coord_groups[1:]]
+
+        return GeoPolygon(outline, *holes)
+
+    def to_wkt(self, **kwargs):
+        """
+        Converts the shape to its WKT string representation
+
+        Keyword Args:
+            Arguments to be passed to the .bounding_coords() method. Reference
+            that method for a list of corresponding kwargs.
+
+        Returns:
+            str
+        """
+        bbox_str = f'({",".join(" ".join(x.to_str()) for x in self.outline)})'
+        for hole in self.holes:
+            bbox_str += f',({",".join(" ".join(x.to_str()) for x in hole)})'
+        return f'POLYGON({bbox_str})'
 
     @classmethod
     def from_wkt(cls, wkt_string: str):
@@ -442,15 +568,6 @@ class GeoBox(GeoShape):
         self.nw_bound = nw_bound
         self.se_bound = se_bound
 
-    def __contains__(self, coord: Coordinate):
-        lon, lat = coord.to_float()
-        if float(self.nw_bound.longitude) <= lon <= float(
-            self.se_bound.longitude
-        ) and float(self.se_bound.latitude) <= lat <= float(self.nw_bound.latitude):
-            return True
-
-        return False
-
     def __eq__(self, other):
         if not isinstance(other, GeoBox):
             return False
@@ -467,6 +584,15 @@ class GeoBox(GeoShape):
     def __repr__(self):
         return f'<GeoBox {self.nw_bound.to_float()} - {self.se_bound.to_float()}>'
 
+    @property
+    def centroid(self):
+        _nw = self.nw_bound.to_float()
+        _se = self.se_bound.to_float()
+        return Coordinate(
+            round_half_up(statistics.mean([_nw[0], _se[0]]), 7),
+            round_half_up(statistics.mean([_nw[1], _se[1]]), 7),
+        )
+
     def bounding_coords(self, **kwargs):
         _nw = self.nw_bound.to_str()
         _se = self.se_bound.to_str()
@@ -480,8 +606,14 @@ class GeoBox(GeoShape):
             self.nw_bound,
         ]
 
-    def to_polygon(self, **_):
-        return GeoPolygon(self.bounding_coords(), dt=self.dt)
+    def contains_coordinate(self, coord: Coordinate):
+        lon, lat = coord.to_float()
+        if float(self.nw_bound.longitude) <= lon <= float(
+            self.se_bound.longitude
+        ) and float(self.se_bound.latitude) <= lat <= float(self.nw_bound.latitude):
+            return True
+
+        return False
 
     def circumscribing_rectangle(self):
         return self
@@ -493,14 +625,8 @@ class GeoBox(GeoShape):
             dt=self.dt,
         )
 
-    @property
-    def centroid(self):
-        _nw = self.nw_bound.to_float()
-        _se = self.se_bound.to_float()
-        return Coordinate(
-            round_half_up(statistics.mean([_nw[0], _se[0]]), 7),
-            round_half_up(statistics.mean([_nw[1], _se[1]]), 7),
-        )
+    def to_polygon(self, **_):
+        return GeoPolygon(self.bounding_coords(), dt=self.dt)
 
 
 class GeoCircle(GeoShape):
@@ -529,9 +655,6 @@ class GeoCircle(GeoShape):
         self.center = center
         self.radius = radius
 
-    def __contains__(self, coord: Coordinate):
-        return haversine_distance_meters(coord, self.center) <= self.radius
-
     def __eq__(self, other):
         if not isinstance(other, GeoCircle):
             return False
@@ -548,8 +671,9 @@ class GeoCircle(GeoShape):
     def __repr__(self):
         return f'<GeoCircle at {self.centroid.to_float()}; radius {self.radius} meters>'
 
-    def to_polygon(self, **kwargs):
-        return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
+    @property
+    def centroid(self):
+        return self.center
 
     def bounding_coords(self, **kwargs) -> List[Coordinate]:
         k = kwargs.get('k') or 36
@@ -577,9 +701,11 @@ class GeoCircle(GeoShape):
     def circumscribing_circle(self):
         return self
 
-    @property
-    def centroid(self):
-        return self.center
+    def contains_coordinate(self, coord: Coordinate) -> bool:
+        return haversine_distance_meters(coord, self.center) <= self.radius
+
+    def to_polygon(self, **kwargs):
+        return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
 
 
 class GeoEllipse(GeoShape):
@@ -622,11 +748,6 @@ class GeoEllipse(GeoShape):
         self.minor_axis = minor_axis
         self.rotation = rotation
 
-    def __contains__(self, coord: Coordinate):
-        bearing = bearing_degrees(self.center, coord)
-        radius = self._radius_at_angle(math.radians(bearing - self.rotation))
-        return haversine_distance_meters(self.center, coord) <= radius
-
     def __eq__(self, other):
         if not isinstance(other, GeoEllipse):
             return False
@@ -650,6 +771,10 @@ class GeoEllipse(GeoShape):
             f'radius {self.major_axis}/{self.minor_axis}; '
             f'rotation {self.rotation}>'
         )
+
+    @property
+    def centroid(self):
+        return self.center
 
     def _radius_at_angle(self, angle: float) -> float:
         """
@@ -688,9 +813,6 @@ class GeoEllipse(GeoShape):
 
         return [*coords, coords[0]]
 
-    def to_polygon(self, **kwargs):
-        return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
-
     def circumscribing_rectangle(self):
         lons, lats = zip(*[y.to_float() for y in self.bounding_coords()])
         return GeoBox(
@@ -702,9 +824,13 @@ class GeoEllipse(GeoShape):
     def circumscribing_circle(self):
         return GeoCircle(self.center, self.major_axis, dt=self.dt)
 
-    @property
-    def centroid(self):
-        return self.center
+    def contains_coordinate(self, coord: Coordinate) -> bool:
+        bearing = bearing_degrees(self.center, coord)
+        radius = self._radius_at_angle(math.radians(bearing - self.rotation))
+        return haversine_distance_meters(self.center, coord) <= radius
+
+    def to_polygon(self, **kwargs):
+        return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
 
 
 class GeoRing(GeoShape):
@@ -755,16 +881,6 @@ class GeoRing(GeoShape):
         self.angle_min = angle_min or 0
         self.angle_max = angle_max or 360
 
-    def __contains__(self, coord):
-        # Make sure bearing within wedge, if a wedge
-        if self.angle_max - self.angle_min < 360:
-            bearing = bearing_degrees(self.center, coord)
-            if not self.angle_min <= bearing <= self.angle_max:
-                return False
-
-        radius = haversine_distance_meters(self.center, coord)
-        return self.inner_radius <= radius <= self.outer_radius
-
     def __eq__(self, other):
         if not isinstance(other, GeoRing):
             return False
@@ -796,6 +912,19 @@ class GeoRing(GeoShape):
             f'radii {self.inner_radius}/{self.outer_radius}'
             f'{f"; {self.angle_min}-{self.angle_max} degrees" if self.angle_min else ""}>'
         )
+
+    @property
+    def centroid(self):
+        if self.angle_min and self.angle_max:
+            # If shape is a wedge, centroid has to shift
+            return Coordinate(
+                *[
+                    round_half_up(statistics.mean(x), 7)
+                    for x in zip(*[y.to_float() for y in self.bounding_coords()])
+                ]
+            )
+
+        return self.center
 
     def bounding_coords(self, **kwargs):
         k = kwargs.get('k') or max(math.ceil((self.angle_max - self.angle_min) / 10), 10)
@@ -845,21 +974,33 @@ class GeoRing(GeoShape):
 
         return GeoCircle(self.centroid, self.outer_radius, dt=self.dt)
 
-    @property
-    def centroid(self):
-        if self.angle_min and self.angle_max:
-            # If shape is a wedge, centroid has to shift
-            return Coordinate(
-                *[
-                    round_half_up(statistics.mean(x), 7)
-                    for x in zip(*[y.to_float() for y in self.bounding_coords()])
-                ]
-            )
+    def contains_coordinate(self, coord: Coordinate) -> bool:
+        # Make sure bearing within wedge, if a wedge
+        if self.angle_max - self.angle_min < 360:
+            bearing = bearing_degrees(self.center, coord)
+            if not self.angle_min <= bearing <= self.angle_max:
+                return False
 
-        return self.center
+        radius = haversine_distance_meters(self.center, coord)
+        return self.inner_radius <= radius <= self.outer_radius
 
     def to_polygon(self, **kwargs):
         return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
+
+    def to_wkt(self, **kwargs) -> str:
+        if self.angle_min == 0 and self.angle_max == 360:
+            # Return as a polygon with hole
+            outer_circle = GeoCircle(self.center, self.outer_radius).bounding_coords(**kwargs)
+            outer_bbox_str = ",".join(
+                " ".join(x.to_str()) for x in outer_circle
+            )
+            inner_circle = GeoCircle(self.center, self.inner_radius).bounding_coords(**kwargs)
+            inner_bbox_str = ",".join(
+                " ".join(x.to_str()) for x in inner_circle
+            )
+            return f'POLYGON(({outer_bbox_str}), ({inner_bbox_str}))'
+
+        return super().to_wkt(**kwargs)
 
 
 class GeoLineString(GeoShape):
@@ -877,11 +1018,6 @@ class GeoLineString(GeoShape):
         super().__init__(dt, properties)
         self.coords = coords
 
-    def __contains__(self, coord: Coordinate):
-        # For now, just check for exact match. Will need update if buffering
-        # becomes a feature
-        return coord in self.coords
-
     def __eq__(self, other):
         if not isinstance(other, GeoLineString):
             return False
@@ -894,29 +1030,18 @@ class GeoLineString(GeoShape):
     def __repr__(self):
         return f'<GeoLineString with {len(self.coords)} points>'
 
+    @property
+    def centroid(self):
+        return Coordinate(
+            *[
+                round_half_up(statistics.mean(x), 7)
+                for x in zip(*[y.to_float() for y in self.coords])
+            ]
+        )
+
     def bounding_coords(self, **kwargs):
         # Is not self-closing
         return self.coords
-
-    def to_geojson(
-            self,
-            k: Optional[int] = None,
-            properties: Optional[Dict] = None,
-            **kwargs
-    ) -> Dict:
-        return {
-            'type': 'Feature',
-            'geometry': {
-                'type': 'LineString',
-                'coordinates': [x.to_float() for x in self.bounding_coords(k=k)],
-            },
-            'properties': {
-                **self.properties,
-                **self._dt_to_json(),
-                **(properties or {})
-            },
-            **kwargs
-        }
 
     def circumscribing_circle(self):
         centroid = self.centroid
@@ -931,23 +1056,51 @@ class GeoLineString(GeoShape):
             dt=self.dt,
         )
 
-    @property
-    def centroid(self):
-        return Coordinate(
-            *[
-                round_half_up(statistics.mean(x), 7)
-                for x in zip(*[y.to_float() for y in self.coords])
-            ]
-        )
+    def contains_coordinate(self, coord: Coordinate) -> bool:
+        # For now, just check for exact match. Will need update if buffering
+        # becomes a feature
+        return coord in self.coords
+
+    @classmethod
+    def from_wkt(cls, wkt_str: str):
+        """Create a GeoLineString from a wkt string"""
+        if not _RE_LINESTRING_WKT.match(wkt_str):
+            raise ValueError(f'Invalid WKT LineString: {wkt_str}')
+
+        coord_groups = _RE_COORD.findall(wkt_str)
+        if not len(coord_groups) == 1:
+            raise ValueError(f'Invalid WKT LineString: {wkt_str}')
+
+        return GeoLineString(_parse_wkt_coord_group(coord_groups[0]))
+
+    def to_geojson(
+            self,
+            k: Optional[int] = None,
+            properties: Optional[Dict] = None,
+            **kwargs
+    ) -> Dict:
+        return {
+            'type': 'Feature',
+            'geometry': {
+                'type': 'LineString',
+                'coordinates': [list(x.to_float()) for x in self.bounding_coords(k=k)],
+            },
+            'properties': {
+                **self.properties,
+                **self._dt_to_json(),
+                **(properties or {})
+            },
+            **kwargs
+        }
+
+    def to_polygon(self, **kwargs):
+        return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
 
     def to_wkt(self, **kwargs):
         bbox_str = ",".join(
             " ".join(x.to_str()) for x in self.bounding_coords(**kwargs)
         )
         return f'LINESTRING({bbox_str})'
-
-    def to_polygon(self, **kwargs):
-        return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
 
 
 class GeoPoint(GeoShape):
@@ -961,13 +1114,14 @@ class GeoPoint(GeoShape):
 
     """
 
-    def __init__(self, center: Coordinate, dt: _GEOTIME_TYPE, properties: Optional[Dict] = None):
+    def __init__(
+        self,
+        center: Coordinate,
+        dt: Optional[_GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
         super().__init__(dt, properties)
         self.center = center
-
-    def __contains__(self, coord: Coordinate):
-        # Points don't contain anything, even themselves
-        return False
 
     def __eq__(self, other):
         if not isinstance(other, GeoPoint):
@@ -981,8 +1135,31 @@ class GeoPoint(GeoShape):
     def __repr__(self):
         return f'<GeoPoint at {self.center.to_str()}>'
 
+    @property
+    def centroid(self):
+        return self.center
+
     def bounding_coords(self, **kwargs):
         return [self.center]
+
+    def circumscribing_circle(self):
+        raise NotImplementedError('Points cannot be circumscribed')
+
+    def circumscribing_rectangle(self):
+        raise NotImplementedError('Points cannot be circumscribed')
+
+    def contains_coordinate(self, coord: Coordinate) -> bool:
+        # Points don't contain anything, even themselves
+        return False
+
+    @classmethod
+    def from_wkt(cls, wkt_str: str):
+        """Create a GeoPoint from a wkt string"""
+        _match = _RE_POINT_WKT.match(wkt_str)
+        if not _match:
+            raise ValueError(f'Invalid WKT Point: {wkt_str}')
+
+        return GeoPoint(Coordinate(*_match.groups()[0].split(' ')))
 
     def to_geojson(
             self,
@@ -1004,24 +1181,14 @@ class GeoPoint(GeoShape):
             **kwargs
         }
 
+    def to_polygon(self, **kwargs):
+        raise NotImplementedError('Points cannot be converted to polygons')
+
     def to_shapely(self):
         import shapely
 
         return shapely.Point(*self.centroid.to_float())
 
-    def circumscribing_circle(self):
-        raise NotImplementedError('Points cannot be circumscribed')
-
-    def circumscribing_rectangle(self):
-        raise NotImplementedError('Points cannot be circumscribed')
-
-    @property
-    def centroid(self):
-        return self.center
-
     def to_wkt(self, **_):
         point_str = " ".join(self.center.to_str())
         return f'POINT(({point_str}))'
-
-    def to_polygon(self, **kwargs):
-        raise NotImplementedError('Points cannot be converted to polygons')

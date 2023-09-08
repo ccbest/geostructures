@@ -6,7 +6,7 @@ from shapely import wkt
 from geostructures.structures import *
 from geostructures.calc import inverse_haversine_degrees
 from geostructures.coordinates import Coordinate
-from geostructures.time import DateInterval, TimeInterval
+from geostructures.time import TimeInterval
 
 
 default_test_datetime = datetime(1970, 1, 1, 0, 0, tzinfo=timezone.utc)
@@ -88,17 +88,11 @@ def test_geoshape_start():
     geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=default_test_datetime)
     assert geopoint.start == default_test_datetime
 
-    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=date(1970, 1, 1))
-    assert geopoint.start == date(1970, 1, 1)
-
     geopoint = GeoPoint(
         Coordinate('0.0', '0.0'),
         dt=TimeInterval(datetime(1970, 1, 1, 0, 0), datetime(1970, 1, 1, 1, 0))
     )
     assert geopoint.start == datetime(1970, 1, 1, 0, 0, tzinfo=timezone.utc)
-
-    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=DateInterval(date(1970, 1, 1), date(1970, 1, 2)))
-    assert geopoint.start == date(1970, 1, 1)
 
     with pytest.raises(ValueError):
         _ = GeoCircle(Coordinate('0.0', '0.0'), 50).start
@@ -108,20 +102,43 @@ def test_geoshape_end():
     geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=default_test_datetime)
     assert geopoint.end == default_test_datetime
 
-    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=date(1970, 1, 1))
-    assert geopoint.end == date(1970, 1, 1)
-
     geopoint = GeoPoint(
         Coordinate('0.0', '0.0'),
         dt=TimeInterval(datetime(1970, 1, 1, 0, 0), datetime(1970, 1, 1, 1, 0))
     )
     assert geopoint.end == datetime(1970, 1, 1, 1, 0, tzinfo=timezone.utc)
 
-    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=DateInterval(date(1970, 1, 1), date(1970, 1, 2)))
-    assert geopoint.end == date(1970, 1, 2)
-
     with pytest.raises(ValueError):
         _ = GeoCircle(Coordinate('0.0', '0.0'), 50).end
+
+
+def test_geoshape_contains():
+    geopoint = GeoCircle(Coordinate('0.0', '0.0'), 500, dt=datetime(2020, 1, 1, 1))
+    assert Coordinate('0.0', '0.0') in geopoint
+    assert GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 1)) in geopoint
+    assert GeoPoint(Coordinate('0.0', '0.0'), dt=None) in geopoint
+    assert GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 1)) in GeoCircle(Coordinate('0.0', '0.0'), 500, dt=None)
+
+
+def test_geoshape_contains_time():
+    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 1))
+    assert geopoint.contains_time(datetime(2020, 1, 1, 1))
+    assert not geopoint.contains_time(datetime(2020, 1, 1, 1, 1))
+    assert not geopoint.contains_time(TimeInterval(datetime(2020, 1, 1, 1), datetime(2020, 1, 1, 1, 1)))
+
+    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 12), datetime(2020, 1, 3, 12)))
+    assert geopoint.contains_time(datetime(2020, 1, 2))
+    assert not geopoint.contains_time(datetime(2020, 1, 4, 12))
+    assert geopoint.contains_time(TimeInterval(datetime(2020, 1, 1, 14),datetime(2020, 1, 1, 16)))
+    assert not geopoint.contains_time(TimeInterval(datetime(2020, 1, 3, 11), datetime(2020, 1, 3, 14)))
+
+    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=None)
+    assert not geopoint.contains_time(datetime(2020, 1, 4, 12))
+    assert not geopoint.contains_time(TimeInterval(datetime(2020, 1, 1, 14), datetime(2020, 1, 1, 16)))
+
+    with pytest.raises(ValueError):
+        geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 12), datetime(2020, 1, 3, 12)))
+        geopoint.contains_time('not a date')
 
 
 def test_shape_to_geojson(geocircle):
@@ -130,7 +147,7 @@ def test_shape_to_geojson(geocircle):
         'type': 'Feature',
         'geometry': {
             'type': 'Polygon',
-            'coordinates': [[x.to_float() for x in geocircle.bounding_coords()]],
+            'coordinates': [[list(x.to_float()) for x in geocircle.bounding_coords()]],
         },
         'properties': {
             'test_prop': 1,
@@ -145,7 +162,7 @@ def test_shape_to_geojson(geocircle):
         'type': 'Feature',
         'geometry': {
             'type': 'Polygon',
-            'coordinates': [[x.to_float() for x in geocircle.bounding_coords(k=10)]],
+            'coordinates': [[list(x.to_float()) for x in geocircle.bounding_coords(k=10)]],
         },
         'properties': {
             'datetime_start': default_test_datetime.isoformat(),
@@ -156,6 +173,21 @@ def test_shape_to_geojson(geocircle):
 
 def test_geoshape_to_shapely(geobox):
     assert geobox.to_shapely() == shapely.geometry.Polygon([[0.0,1.0],[1.0,1.0],[1.0,0.0],[0.0,0.0]])
+
+
+def test_geoshape_set_property():
+    point = GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 12))
+    assert point.properties == {
+        'datetime_start': datetime(2020, 1, 1, 12, tzinfo=timezone.utc),
+        'datetime_end': datetime(2020, 1, 1, 12, tzinfo=timezone.utc)
+    }
+
+    point.set_property('test_property', 1)
+    assert point.properties == {
+        'datetime_start': datetime(2020, 1, 1, 12, tzinfo=timezone.utc),
+        'datetime_end': datetime(2020, 1, 1, 12, tzinfo=timezone.utc),
+        'test_property': 1
+    }
 
 
 def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
@@ -204,7 +236,53 @@ def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
     )
     assert geopolygon != p2
 
+    # Not a geopolygon
     assert 'test' != geopolygon
+
+    p1 = GeoPolygon(
+        [
+            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
+            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+        ]
+    )
+    p2 = GeoPolygon(
+        [
+            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
+            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+        ],
+        [
+            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+        ]
+    )
+    # Differing number of holes
+    assert p1 != p2
+
+    p1 = GeoPolygon(
+        [
+            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
+            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+        ],
+        [
+            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+        ],
+        [
+            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+        ]
+    )
+    p2 = GeoPolygon(
+        [
+            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
+            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+        ],
+        [
+            Coordinate(0.6, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+        ],
+        [
+            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+        ]
+    )
+    # Holes are not equal
+    assert p1 != p2
 
 
 def test_gt_to_json():
@@ -214,12 +292,6 @@ def test_gt_to_json():
         'datetime_end': default_test_datetime.isoformat()
     }
 
-    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=date(1970, 1, 1))
-    assert geopoint._dt_to_json() == {
-        'date_start': date(1970, 1, 1).isoformat(),
-        'date_end': date(1970, 1, 1).isoformat()
-    }
-
     geopoint = GeoPoint(
         Coordinate('0.0', '0.0'),
         dt=TimeInterval(datetime(1970, 1, 1, 0, 0), datetime(1970, 1, 1, 1, 0))
@@ -227,12 +299,6 @@ def test_gt_to_json():
     assert geopoint._dt_to_json() == {
         'datetime_start': datetime(1970, 1, 1, 0, 0, tzinfo=timezone.utc).isoformat(),
         'datetime_end': datetime(1970, 1, 1, 1, 0, tzinfo=timezone.utc).isoformat()
-    }
-
-    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=DateInterval(date(1970, 1, 1), date(1970, 1, 2)))
-    assert geopoint._dt_to_json() == {
-        'date_start': date(1970, 1, 1).isoformat(),
-        'date_end': date(1970, 1, 2).isoformat()
     }
 
     geopoint = GeoCircle(Coordinate('0.0', '0.0'), 50)
@@ -257,13 +323,17 @@ def test_geopolygon_repr(geopolygon):
 def test_geopolygon_contains():
     # Triangle
     polygon = GeoPolygon([
-        Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(1.0, .0)
+        Coordinate(0.0, 0.0), Coordinate(1.0, 1.0),
+        Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
     ])
     # Way outside
     assert Coordinate(1.5, 1.5) not in polygon
 
-    # Center along hypotenuse
-    assert Coordinate(0.5, 0.5) in polygon
+    # Center along hypotenuse - boundary intersection should not count
+    assert Coordinate(0.5, 0.5) not in polygon
+
+    # Nudge above to be just inside
+    assert Coordinate(0.5, 0.49) in polygon
 
     # Outside, to upper left
     assert Coordinate(0.1, 0.9) not in polygon
@@ -279,6 +349,21 @@ def test_geopolygon_contains():
     assert Coordinate(0.9, 0.1) not in polygon
     assert Coordinate(-0.9, 0.4) not in polygon
     assert Coordinate(-0.9, 0.1) not in polygon
+
+    # Box with hole in middle
+    polygon = GeoPolygon(
+        [
+            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
+            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+        ],
+        [
+            Coordinate(0.25, 0.25), Coordinate(0.25, 0.75), Coordinate(0.75, 0.75),
+            Coordinate(0.75, 0.25), Coordinate(0.25, 0.25)
+        ]
+    )
+    assert Coordinate(0.9, 0.9) in polygon  # outside hole
+    assert Coordinate(0.5, 0.5) not in polygon  # inside hole
+    assert Coordinate(0.75, 0.75) in polygon  # on hole edge
 
 
 def test_geopolygon_bounding_coords(geopolygon):
@@ -312,8 +397,45 @@ def test_geopolygon_to_polygon(geopolygon):
     assert geopolygon.to_polygon() == geopolygon
 
 
-def test_geoshape_to_wkt(geopolygon):
-    assert geopolygon.to_wkt() == 'POLYGON((0.0 0.0,0.0 1.0,1.0 1.0,1.0 0.0,0.0 0.0))'
+def test_geopolygon_from_wkt():
+    wkt_str = 'POLYGON ((30.123 10, 40 40, 20 40, 10.123 20, 30.123 10))'
+    assert GeoPolygon.from_wkt(wkt_str) == GeoPolygon([
+        Coordinate(30.123, 10), Coordinate(40, 40), Coordinate(20, 40),
+        Coordinate(10.123, 20), Coordinate(30.123, 10)
+    ])
+
+    wkt_str = 'POLYGON ((30.123 10, 40 40, 20 40, 10.123 20, 30.123 10), (15 20, 20 20, 15 15, 15 20))'
+    assert GeoPolygon.from_wkt(wkt_str) == GeoPolygon(
+        [
+            Coordinate(30.123, 10), Coordinate(40, 40), Coordinate(20, 40),
+            Coordinate(10.123, 20), Coordinate(30.123, 10)
+        ],
+        [
+            Coordinate(15, 20), Coordinate(20, 20), Coordinate(15, 15), Coordinate(15, 20)
+        ]
+    )
+
+    with pytest.raises(ValueError):
+        _ = GeoPolygon.from_wkt('NOT A POLYGON')
+
+
+def test_geopolygon_to_wkt():
+    polygon = GeoPolygon(
+        [
+            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
+            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+        ],
+        [
+            Coordinate(0.25, 0.25), Coordinate(0.25, 0.75), Coordinate(0.75, 0.75),
+            Coordinate(0.75, 0.25), Coordinate(0.25, 0.25)
+        ]
+    )
+    assert polygon.to_wkt() == 'POLYGON((0.0 0.0,0.0 1.0,1.0 1.0,1.0 0.0,0.0 0.0),(0.25 0.25,0.25 0.75,0.75 0.75,0.75 0.25,0.25 0.25))'
+
+
+def test_geoshape_to_wkt():
+    box = GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0))
+    assert box.to_wkt() == 'POLYGON((0.0 1.0,1.0 1.0,1.0 0.0,0.0 0.0,0.0 1.0))'
 
 
 def test_geobox_contains(geobox):
@@ -663,6 +785,11 @@ def test_georing_centroid(georing, geowedge):
     assert geowedge.centroid == Coordinate(0.0044104, -0.0040194)
 
 
+def test_georing_to_wkt(georing, geowedge):
+    assert georing.to_wkt() == 'POLYGON((0.0000000 0.0089932,0.0015617 0.0088566,0.0030759 0.0084509,0.0044966 0.0077884,0.0057807 0.0068892,0.0068892 0.0057807,0.0077884 0.0044966,0.0084509 0.0030759,0.0088566 0.0015617,0.0089932 0.0000000,0.0088566 -0.0015617,0.0084509 -0.0030759,0.0077884 -0.0044966,0.0068892 -0.0057807,0.0057807 -0.0068892,0.0044966 -0.0077884,0.0030759 -0.0084509,0.0015617 -0.0088566,0.0000000 -0.0089932,-0.0015617 -0.0088566,-0.0030759 -0.0084509,-0.0044966 -0.0077884,-0.0057807 -0.0068892,-0.0068892 -0.0057807,-0.0077884 -0.0044966,-0.0084509 -0.0030759,-0.0088566 -0.0015617,-0.0089932 -0.0000000,-0.0088566 0.0015617,-0.0084509 0.0030759,-0.0077884 0.0044966,-0.0068892 0.0057807,-0.0057807 0.0068892,-0.0044966 0.0077884,-0.0030759 0.0084509,-0.0015617 0.0088566,0.0000000 0.0089932), (0.0000000 0.0044966,0.0007808 0.0044283,0.0015379 0.0042254,0.0022483 0.0038942,0.0028904 0.0034446,0.0034446 0.0028904,0.0038942 0.0022483,0.0042254 0.0015379,0.0044283 0.0007808,0.0044966 0.0000000,0.0044283 -0.0007808,0.0042254 -0.0015379,0.0038942 -0.0022483,0.0034446 -0.0028904,0.0028904 -0.0034446,0.0022483 -0.0038942,0.0015379 -0.0042254,0.0007808 -0.0044283,0.0000000 -0.0044966,-0.0007808 -0.0044283,-0.0015379 -0.0042254,-0.0022483 -0.0038942,-0.0028904 -0.0034446,-0.0034446 -0.0028904,-0.0038942 -0.0022483,-0.0042254 -0.0015379,-0.0044283 -0.0007808,-0.0044966 -0.0000000,-0.0044283 0.0007808,-0.0042254 0.0015379,-0.0038942 0.0022483,-0.0034446 0.0028904,-0.0028904 0.0034446,-0.0022483 0.0038942,-0.0015379 0.0042254,-0.0007808 0.0044283,0.0000000 0.0044966))'
+    assert geowedge.to_wkt() == 'POLYGON((0.0089932 0.0000000,0.0088825 -0.0014068,0.0085531 -0.0027791,0.0080130 -0.0040828,0.0072757 -0.0052861,0.0063592 -0.0063592,0.0052861 -0.0072757,0.0040828 -0.0080130,0.0027791 -0.0085531,0.0014068 -0.0088825,0.0000000 -0.0089932,0.0000000 -0.0044966,0.0007034 -0.0044412,0.0013895 -0.0042765,0.0020414 -0.0040065,0.0026430 -0.0036378,0.0031796 -0.0031796,0.0036378 -0.0026430,0.0040065 -0.0020414,0.0042765 -0.0013895,0.0044412 -0.0007034,0.0044966 0.0000000,0.0089932 0.0000000))'
+
+
 def test_georing_to_polygon(georing):
     assert georing.to_polygon() == GeoPolygon(georing.bounding_coords(), dt=default_test_datetime)
 
@@ -706,7 +833,7 @@ def test_geolinestring_to_geojson(geolinestring):
         'type': 'Feature',
         'geometry': {
             'type': 'LineString',
-            'coordinates': [x.to_float() for x in geolinestring.bounding_coords()],
+            'coordinates': [list(x.to_float()) for x in geolinestring.bounding_coords()],
         },
         'properties': {
             'test_prop': 2,
@@ -735,6 +862,24 @@ def test_geolinestring_circumscribing_rectangle(geolinestring):
 
 def test_geolinestring_centroid(geolinestring):
     assert geolinestring.centroid == Coordinate(0.6666667, 0.3333333)
+
+
+def test_geolinestring_from_wkt():
+    wkt_str = 'LINESTRING (30.123 10, 10 30.123, 40 40)'
+    assert GeoLineString.from_wkt(wkt_str) == GeoLineString([
+        Coordinate(30.123, 10), Coordinate(10, 30.123), Coordinate(40, 40)
+    ])
+
+    wkt_str = 'LINESTRING(30 10,10 30,40 40)'
+    assert GeoLineString.from_wkt(wkt_str) == GeoLineString([
+        Coordinate(30, 10), Coordinate(10, 30), Coordinate(40, 40)
+    ])
+
+    with pytest.raises(ValueError):
+        _ = GeoLineString.from_wkt('BAD WKT')
+
+    with pytest.raises(ValueError):
+        _ = GeoLineString.from_wkt('LINESTRING(30 10,10 30,40 40) (1 2, 3 4)')
 
 
 def test_geolinestring_to_wkt(geolinestring):
@@ -815,6 +960,17 @@ def test_geopoint_circumscribing_rectangle(geopoint):
 
 def test_geopoint_centroid(geopoint):
     assert geopoint.centroid == geopoint.center
+
+
+def test_geopoint_from_wkt():
+    wkt_str = 'POINT (1.0 1.0)'
+    assert GeoPoint.from_wkt(wkt_str) == GeoPoint(Coordinate(1.0, 1.0))
+
+    wkt_str = 'POINT(1.0 1.0)'
+    assert GeoPoint.from_wkt(wkt_str) == GeoPoint(Coordinate(1.0, 1.0))
+
+    with pytest.raises(ValueError):
+        _ = GeoPoint.from_wkt('NOT WKT')
 
 
 def test_geopoint_to_wkt(geopoint):

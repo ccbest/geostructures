@@ -1,5 +1,5 @@
 
-from datetime import datetime, date, timezone
+from datetime import datetime, timezone
 
 import numpy as np
 import pytest
@@ -7,7 +7,7 @@ from scipy.spatial import ConvexHull
 
 from geostructures.coordinates import Coordinate
 from geostructures import GeoBox, GeoPoint, GeoPolygon
-from geostructures.time import DateInterval, TimeInterval
+from geostructures.time import TimeInterval
 from geostructures.collections import Track, FeatureCollection
 
 
@@ -510,21 +510,9 @@ def test_track_intersects():
     gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=datetime(2019, 1, 1))
     assert not track1.intersects(gbox)
 
-    # dt is Date
-    gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=date(2020, 1, 1))
-    assert track1.intersects(gbox)
-    gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=date(2019, 1, 1))
-    assert not track1.intersects(gbox)
-
     gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=datetime(2020, 1, 1))
     assert track1.intersects(gbox)
     gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=datetime(2019, 1, 1))
-    assert not track1.intersects(gbox)
-
-    # dt is DateInterval
-    gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=DateInterval(date(2020, 1, 1), date(2020, 1, 2)))
-    assert track1.intersects(gbox)
-    gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.),dt=DateInterval(date(2019, 1, 1), date(2019, 1, 2)))
     assert not track1.intersects(gbox)
 
     # dt is TimeInterval
