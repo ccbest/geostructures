@@ -539,6 +539,7 @@ def test_track_intersects():
 
 
 def test_track_intersection():
+    assert False
     track1 = Track(
         [
             GeoPoint(Coordinate('0.0000', '1.0000'), datetime(2020, 1, 1)),
