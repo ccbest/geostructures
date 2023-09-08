@@ -3,7 +3,7 @@
 
 A lightweight implementation of shapes drawn across a geo-temporal plane.
 
-![Pull Request Quality Check](https://github.com/ccbest/geostructures/actions/workflows/pr_quality_check.yml/badge.svg)
+[![Unit Tests](https://github.com/ccbest/geostructures/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/ccbest/geostructures/actions/workflows/unit-tests.yml)
 
 ### Installation
 
