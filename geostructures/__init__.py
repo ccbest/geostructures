@@ -9,6 +9,7 @@ from geostructures.utils.conditional_imports import ConditionalPackageIntercepto
 
 ConditionalPackageInterceptor.permit_packages(
     {
+        'geopandas': 'geopandas>=0.13,<1',
         'mgrs': 'mgrs>=1.4.5,<2',
         'pandas': 'pandas>=2,<3',
         'plotly': 'plotly>=5,<6',
