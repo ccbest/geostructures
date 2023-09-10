@@ -974,7 +974,7 @@ def test_geopoint_from_wkt():
 
 
 def test_geopoint_to_wkt(geopoint):
-    assert geopoint.to_wkt() == 'POINT((0.0 0.0))'
+    assert geopoint.to_wkt() == 'POINT(0.0 0.0)'
 
 
 def test_geopoint_to_polygon(geopoint):

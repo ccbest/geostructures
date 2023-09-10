@@ -1,12 +1,13 @@
 
 from datetime import datetime, timezone
 
+import geopandas as gpd
 import numpy as np
 import pytest
 from scipy.spatial import ConvexHull
 
 from geostructures.coordinates import Coordinate
-from geostructures import GeoBox, GeoPoint, GeoPolygon
+from geostructures import GeoBox, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
 from geostructures.collections import Track, FeatureCollection
 
@@ -54,6 +55,27 @@ def test_collection_len():
     assert len(track1) == 3
     track1.geoshapes.pop(0)
     assert len(track1) == 2
+
+
+def test_collection_from_geopandas():
+    col = FeatureCollection([
+        GeoPolygon(
+            [Coordinate(0.0, 1.0), Coordinate(1.0, 1.0), Coordinate(1.0, 0.0)],
+            dt=datetime(2020, 1, 1)
+        ),
+        GeoLineString(
+            [Coordinate(0.0, 1.0), Coordinate(1.0, 1.0), Coordinate(1.0, 0.0)],
+            dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))
+        ),
+        GeoPoint(
+            Coordinate(0.0, 1.0),
+            dt=None
+        )
+    ])
+    df = col.to_geopandas()
+    new_col = FeatureCollection.from_geopandas(df)
+
+    assert col == new_col
 
 
 def test_collection_to_geojson():

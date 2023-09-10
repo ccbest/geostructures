@@ -1183,4 +1183,4 @@ class GeoPoint(GeoShape):
 
     def to_wkt(self, **_):
         point_str = " ".join(self.center.to_str())
-        return f'POINT(({point_str}))'
+        return f'POINT({point_str})'
