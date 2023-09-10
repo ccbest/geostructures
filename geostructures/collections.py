@@ -56,15 +56,34 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
         time_end_field: str = 'datetime_end',
     ):
         """
+        Creates a Track or FeatureCollection from a geopandas dataframe.
+        Associates start and end times to the shape, if present, and
+        stores the remaining columns as shape properties.
 
+        Args:
+            df:
+                A GeoPandas dataframe
+            time_start_field:
+                The field name for the start time
+            time_end_field:
+                The field name for the end time. If a start time is present
+                but an end time is not, this value will default to the
+                start time.
+
+        Returns:
+            An object of this class's type
         """
         import geopandas as gpd
+        import pandas as pd
 
         def _get_dt(rec):
             """Grabs datetime data and returns appropriate struct"""
             dt_start = rec.get(time_start_field)
             dt_end = rec.get(time_end_field)
-            if not (dt_start or dt_end):
+            if not (
+                (not pd.isnull(dt_start) and isinstance(dt_start, datetime)) or
+                (not pd.isnull(dt_end) and isinstance(dt_end, datetime))
+            ):
                 return None
 
             if not (dt_start and dt_end) or dt_start == dt_end:
