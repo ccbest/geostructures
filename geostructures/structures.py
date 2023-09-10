@@ -29,7 +29,7 @@ from geostructures.time import TimeInterval
 
 _GEOTIME_TYPE = Union[datetime, TimeInterval]
 
-_RE_COORD_STR = r'((?:\s?\d+\.?\d*\s\d+\.?\d*\s?\,?)+)'
+_RE_COORD_STR = r'((?:\s?\-?\d+\.?\d*\s\-?\d+\.?\d*\s?\,?)+)'
 _RE_COORD = re.compile(_RE_COORD_STR)
 _RE_COORD_GROUPS_STR = r'(?:\(' + _RE_COORD_STR + r'\)\,?\s?)+'
 _RE_POINT_WKT = re.compile(r'POINT\s?\((\s?\d+\.?\d*\s\d+\.?\d*\s?)\)')
@@ -479,7 +479,12 @@ class GeoPolygon(GeoShape):
         return True
 
     @classmethod
-    def from_wkt(cls, wkt_str: str):
+    def from_wkt(
+        cls,
+        wkt_str: str,
+        dt: Optional[_GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
         """Create a GeoPolygon from a wkt string"""
         if not _RE_POLYGON_WKT.match(wkt_str):
             raise ValueError(f'Invalid WKT Polygon: {wkt_str}')
@@ -490,7 +495,7 @@ class GeoPolygon(GeoShape):
         if len(coord_groups) > 1:
             holes = [_parse_wkt_coord_group(coord_group) for coord_group in coord_groups[1:]]
 
-        return GeoPolygon(outline, *holes)
+        return GeoPolygon(outline, *holes, dt=dt, properties=properties)
 
     def to_wkt(self, **kwargs):
         """
@@ -1031,7 +1036,12 @@ class GeoLineString(GeoShape):
         return coord in self.coords
 
     @classmethod
-    def from_wkt(cls, wkt_str: str):
+    def from_wkt(
+        cls,
+        wkt_str: str,
+        dt: Optional[_GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
         """Create a GeoLineString from a wkt string"""
         if not _RE_LINESTRING_WKT.match(wkt_str):
             raise ValueError(f'Invalid WKT LineString: {wkt_str}')
@@ -1040,7 +1050,11 @@ class GeoLineString(GeoShape):
         if not len(coord_groups) == 1:
             raise ValueError(f'Invalid WKT LineString: {wkt_str}')
 
-        return GeoLineString(_parse_wkt_coord_group(coord_groups[0]))
+        return GeoLineString(
+            _parse_wkt_coord_group(coord_groups[0]),
+            dt=dt,
+            properties=properties
+        )
 
     def to_geojson(
             self,
@@ -1122,13 +1136,22 @@ class GeoPoint(GeoShape):
         return False
 
     @classmethod
-    def from_wkt(cls, wkt_str: str):
+    def from_wkt(
+        cls,
+        wkt_str: str,
+        dt: Optional[_GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
         """Create a GeoPoint from a wkt string"""
         _match = _RE_POINT_WKT.match(wkt_str)
         if not _match:
             raise ValueError(f'Invalid WKT Point: {wkt_str}')
 
-        return GeoPoint(Coordinate(*_match.groups()[0].split(' ')))
+        return GeoPoint(
+            Coordinate(*_match.groups()[0].split(' ')),
+            dt=dt,
+            properties=properties
+        )
 
     def to_geojson(
             self,
@@ -1160,4 +1183,4 @@ class GeoPoint(GeoShape):
 
     def to_wkt(self, **_):
         point_str = " ".join(self.center.to_str())
-        return f'POINT(({point_str}))'
+        return f'POINT({point_str})'

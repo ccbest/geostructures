@@ -7,12 +7,12 @@ __all__ = ['FeatureCollection', 'Track']
 from collections import defaultdict
 from datetime import datetime, timedelta
 from functools import cached_property
-from typing import Any, List, Dict, Optional, Union
+from typing import cast, List, Dict, Optional, Union
 
 import numpy as np
 
 from geostructures.coordinates import Coordinate
-from geostructures.structures import GeoShape, GeoPoint, GeoPolygon
+from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon, GeoShape
 from geostructures.time import TimeInterval
 from geostructures.calc import haversine_distance_meters
 from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
@@ -36,6 +36,87 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
         """The track length"""
         return self.geoshapes.__len__()
 
+    @cached_property
+    def convex_hull(self):
+        """Creates a convex hull around the pings"""
+        from scipy import spatial  # pylint: disable=import-outside-toplevel
+
+        if len(self.geoshapes) <= 2 and all(isinstance(x, GeoPoint) for x in self.geoshapes):
+            raise ValueError('Cannot create a convex hull from less than three points.')
+
+        points = [y.to_float() for x in self.geoshapes for y in x.bounding_coords()]
+        hull = spatial.ConvexHull(points)
+        return GeoPolygon([Coordinate(*points[x]) for x in hull.vertices])
+
+    @classmethod
+    def from_geopandas(
+        cls,
+        df,
+        time_start_field: str = 'datetime_start',
+        time_end_field: str = 'datetime_end',
+    ):
+        """
+        Creates a Track or FeatureCollection from a geopandas dataframe.
+        Associates start and end times to the shape, if present, and
+        stores the remaining columns as shape properties.
+
+        Args:
+            df:
+                A GeoPandas dataframe
+            time_start_field:
+                The field name for the start time
+            time_end_field:
+                The field name for the end time. If a start time is present
+                but an end time is not, this value will default to the
+                start time.
+
+        Returns:
+            An object of this class's type
+        """
+        import geopandas as gpd
+        import pandas as pd
+
+        def _get_dt(rec):
+            """Grabs datetime data and returns appropriate struct"""
+            dt_start = rec.get(time_start_field)
+            dt_end = rec.get(time_end_field)
+            if not (
+                (not pd.isnull(dt_start) and isinstance(dt_start, datetime)) or
+                (not pd.isnull(dt_end) and isinstance(dt_end, datetime))
+            ):
+                return None
+
+            if not (dt_start and dt_end) or dt_start == dt_end:
+                return dt_start or dt_end
+
+            return TimeInterval(dt_start, dt_end)
+
+        df = cast(gpd.GeoDataFrame, df)
+        prop_fields = [
+            x for x in df.columns if x not in (time_start_field, time_end_field, 'geometry')
+        ]
+        shapes = []
+        for record in df.to_dict('records'):
+            dt = _get_dt(record)
+            props = {k: v for k, v in record.items() if k in prop_fields}
+            if record['geometry'].startswith('POINT'):
+                shapes.append(GeoPoint.from_wkt(record['geometry'], dt, props))
+                continue
+
+            if record['geometry'].startswith('LINESTRING'):
+                shapes.append(
+                    GeoLineString.from_wkt(record['geometry'], dt, props)
+                )
+                continue
+
+            if record['geometry'].startswith('POLYGON'):
+                shapes.append(
+                    GeoPolygon.from_wkt(record['geometry'], dt, props)
+                )
+                continue
+
+        return cls(shapes)
+
     def to_geojson(self, properties: Optional[Dict] = None, **kwargs):
         return {
             'type': 'FeatureCollection',
@@ -48,17 +129,24 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
             ]
         }
 
-    @cached_property
-    def convex_hull(self):
-        """Creates a convex hull around the pings"""
-        from scipy import spatial  # pylint: disable=import-outside-toplevel
+    def to_geopandas(self, include_properties: Optional[List[str]] = None):
+        """
+        """
+        import geopandas as gpd
 
-        if len(self.geoshapes) <= 2 and all(isinstance(x, GeoPoint) for x in self.geoshapes):
-            raise ValueError('Cannot create a convex hull from less than three points.')
+        keys = include_properties or set(
+            _key for x in self.geoshapes
+            for _key in x.properties.keys()
+        )
 
-        points = [y.to_float() for x in self.geoshapes for y in x.bounding_coords()]
-        hull = spatial.ConvexHull(points)
-        return GeoPolygon([Coordinate(*points[x]) for x in hull.vertices])
+        return gpd.GeoDataFrame(
+            [
+                {
+                    'geometry': x.to_wkt(),
+                    **{key: x.properties.get(key) for key in keys},
+                } for x in self.geoshapes
+            ]
+        )
 
 
 class FeatureCollection(ShapeCollection):
@@ -119,13 +207,12 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
     A sequence of chronologically-ordered (by start time) GeoShapes
     """
 
-    def __init__(self, geoshapes: List[GeoShape], metadata: Optional[Dict[str, Any]] = None):
+    def __init__(self, geoshapes: List[GeoShape]):
         super().__init__()
         if not all(x.dt for x in geoshapes):
             raise ValueError('All track geoshapes must have an associated time value.')
 
         self.geoshapes = sorted(geoshapes, key=lambda x: x.start)
-        self.metadata = metadata or {}
 
     def __add__(self, other):
         if not isinstance(other, Track):
@@ -291,7 +378,7 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
                 )
             )
 
-        return Track(new_pings, self.metadata)
+        return Track(new_pings)
 
     def _subset_by_dt(self, dt: Union[datetime, TimeInterval]):
         """
