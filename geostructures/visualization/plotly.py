@@ -1,12 +1,16 @@
 
-from typing import List, Optional
+from collections import defaultdict
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.graph_objects import Figure
 
-from geostructures.structures import GeoLineString, GeoPoint, GeoShape
-from geostructures.collections import FeatureCollection
+from geostructures import Coordinate, GeoLineString, GeoPoint, GeoPolygon
+from geostructures.structures import GeoShape
+from geostructures.collections import FeatureCollection, ShapeCollection
+from geostructures.geohash import H3Hasher
 
 
 def _draw_points(
@@ -168,7 +172,7 @@ def draw_collection(
             set(key for geoshape in collection.geoshapes for key in geoshape.properties)
         )
 
-    avg_lat, avg_lon = [
+    avg_lon, avg_lat = [
         np.average(x)
         for x in list(zip(*[geoshape.centroid.to_float() for geoshape in collection.geoshapes]))
     ]
@@ -188,11 +192,145 @@ def draw_collection(
 
     _fig.update_geos(
         fitbounds='locations',
-        center={'lat': avg_lat, 'lon': avg_lon},
     )
     _fig.update_layout(
         coloraxis_showscale=False,  # legends will overlap if not removed
         showlegend=False,
         mapbox_style="carto-positron",
+        mapbox_center={'lat': avg_lat, 'lon': avg_lon},
     )
     return _fig
+
+
+def h3_choropleth(
+        hexmap: Dict[str, float],
+        min_weight: float = 0,
+        fig: Figure = None,
+        property_map: Optional[Dict[str, Any]] = None,
+):
+    """
+    Helper for quickly plotting h3 hashes on a map.
+
+    Args:
+        hexmap:
+            A dictionary of h3 hexagon ids to their corresponding weights.
+
+        min_weight (float):
+            The minimum weight a hex must have in order to be displayed.
+
+        fig (plotly.graph_objs.Figure): (Default None)
+            An existing plotly figure. If provided, the created visualization will be inserted
+            into this figure instead of returning a brand new one.
+
+        property_map:
+            A dictionary of additional properties to include. Keys should be a given hex id, and
+            values should be a dictionary of the properties. All values must contain the same
+            keys.
+
+    Returns:
+        (plotly.graph_objs.Figure)
+    """
+    import h3
+
+    property_map = property_map or {}
+    prop_keys = set(key for hex_id, props in property_map.items() for key in props)
+
+    if min_weight:
+        hexmap = {k: v for k, v in hexmap.items() if v > min_weight}
+
+    polygons = []
+    _lats, _lons = [], []
+    for _hex, weight in hexmap.items():
+        boundary = h3.h3_to_geo_boundary(_hex)
+        poly = GeoPolygon(
+            [Coordinate(*x[::-1]) for x in [*boundary, boundary[0]]],
+            properties={'weight': weight},
+        )
+        polygons.append(poly.to_geojson(id=_hex, properties=property_map))
+        _lat, _lon = h3.h3_to_geo(_hex)
+        _lats.append(_lat)
+        _lons.append(_lon)
+
+    avg_lat, avg_lon = np.average(_lats), np.average(_lons)
+    gjson = {
+        'type': 'FeatureCollection',
+        'features': polygons,
+    }
+
+    _fig = px.choropleth_mapbox(
+        [
+            {
+                'id': hex_id,
+                'weight': weight,
+                **{
+                    key: property_map.get(hex_id, {}).get(key, '')
+                    for key in prop_keys
+                },
+            } for hex_id, weight in hexmap.items()
+        ],
+        geojson=gjson,
+        locations='id',
+        color='weight',
+        mapbox_style="carto-positron",
+        opacity=0.5,
+        featureidkey='id',
+        hover_data=['id', 'weight', *prop_keys],
+    )
+    _fig.update_layout(
+        mapbox_center={'lat': avg_lat, 'lon': avg_lon},
+    )
+
+    if fig:
+        fig.add_trace(_fig.data[0])
+        return fig
+
+    _fig.update_geos(fitbounds='locations')
+
+    return _fig
+
+
+def collectionmap_h3_choropleth(
+    collection_map: Dict[str, ShapeCollection],
+    hasher: H3Hasher,
+    min_weight: float = 0,
+    fig: Figure = None
+):
+    """
+    Helper for quickly plotting h3 hashes on a map.
+
+    Args:
+        collection_map:
+            A dictionary of unique ids to their corresponding shape collections.
+
+        hasher:
+            A H3Hasher object, provided by the geostructures.geohash module.
+
+        min_weight:
+            The minimum weight a hex must have (cumulative between tracks) in order to be displayed.
+
+        fig: (Default None)
+            An existing plotly figure. If provided, the created visualization will be inserted
+            into this figure instead of returning a brand new one.
+
+    Returns:
+        (plotly.graph_objs.Figure)
+    """
+    display_hexes = defaultdict(lambda: 0)
+    hexid_to_trackid_map = defaultdict(set)
+    for trackid, collection in collection_map.items():
+        for shape in collection.geoshapes:
+            hexes = hasher.hash_shape(shape)
+            for hex_id in hexes:
+                display_hexes[hex_id] += 1
+                hexid_to_trackid_map[hex_id].add(str(trackid))
+
+    property_map = {
+        hex_id: {'collections': ', '.join(hexid_to_trackid_map[hex_id])}
+        for hex_id in display_hexes.keys()
+    }
+    return h3_choropleth(
+        display_hexes,
+        min_weight=min_weight,
+        property_map=property_map,
+        fig=fig
+    )

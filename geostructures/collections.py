@@ -2,7 +2,7 @@
 Module for sequences of GeoShapes
 """
 
-__all__ = ['FeatureCollection', 'Track']
+__all__ = ['FeatureCollection', 'ShapeCollection', 'Track']
 
 from collections import defaultdict
 from datetime import datetime, timedelta
