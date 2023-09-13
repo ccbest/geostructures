@@ -1,6 +1,6 @@
 
 from collections import defaultdict
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import plotly.express as px
