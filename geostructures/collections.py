@@ -20,7 +20,9 @@ from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
 
 class ShapeCollection(LoggingMixin, DefaultZuluMixin):
 
-    geoshapes: List[GeoShape]
+    def __init__(self, geoshapes: List[GeoShape]):
+        super().__init__()
+        self.geoshapes = geoshapes
 
     def __bool__(self):
         return bool(self.geoshapes)
@@ -95,7 +97,7 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
         prop_fields = [
             x for x in df.columns if x not in (time_start_field, time_end_field, 'geometry')
         ]
-        shapes = []
+        shapes: List[GeoShape] = []
         for record in df.to_dict('records'):
             dt = _get_dt(record)
             props = {k: v for k, v in record.items() if k in prop_fields}
@@ -155,10 +157,6 @@ class FeatureCollection(ShapeCollection):
     A collection of GeoShapes, in no particular order
     """
 
-    def __init__(self, geoshapes: List[GeoShape]):
-        super().__init__()
-        self.geoshapes = geoshapes
-
     def __add__(self, other):
         if not isinstance(other, FeatureCollection):
             raise ValueError(
@@ -208,11 +206,10 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
     """
 
     def __init__(self, geoshapes: List[GeoShape]):
-        super().__init__()
         if not all(x.dt for x in geoshapes):
             raise ValueError('All track geoshapes must have an associated time value.')
 
-        self.geoshapes = sorted(geoshapes, key=lambda x: x.start)
+        super().__init__(sorted(geoshapes, key=lambda x: x.start))
 
     def __add__(self, other):
         if not isinstance(other, Track):

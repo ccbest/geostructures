@@ -1,6 +1,6 @@
 
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 import numpy as np
 import plotly.express as px
@@ -315,7 +315,7 @@ def collectionmap_h3_choropleth(
     Returns:
         (plotly.graph_objs.Figure)
     """
-    display_hexes = defaultdict(lambda: 0)
+    display_hexes: Dict[str, float] = defaultdict(lambda: 0)
     hexid_to_trackid_map = defaultdict(set)
     for trackid, collection in collection_map.items():
         for shape in collection.geoshapes:

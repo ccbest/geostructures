@@ -123,7 +123,7 @@ class H3Hasher(Hasher):
             )
             # Test which hexes actually intersect the line
             for _hex in all_hexes:
-                bounds = [Coordinate(y, x) for x,y in h3.h3_to_geo_boundary(_hex)]
+                bounds = [Coordinate(y, x) for x, y in h3.h3_to_geo_boundary(_hex)]
                 for hex_edge in zip(bounds, [*bounds[1:], bounds[0]]):
                     if find_line_intersection(vertex, hex_edge):
                         _hexes.add(_hex)
