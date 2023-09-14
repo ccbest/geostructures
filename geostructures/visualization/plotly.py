@@ -17,6 +17,7 @@ def _draw_points(
     points: List[GeoPoint],
     hover_data: Optional[List] = None,
     opacity: Optional[float] = None,
+    **kwargs
 ):
     """
     Plots a series of GeoPoints to a plotly graph objects Figure
@@ -35,27 +36,31 @@ def _draw_points(
         go.Figure
     """
     hover_data = hover_data or []
+    color = kwargs.get('color', 'red')
 
     return px.scatter_mapbox(
         [
             {
                 'id': idx,
-                'weight': 1.0,
                 'lat': shape.centroid.to_float()[1],
                 'lon': shape.centroid.to_float()[0],
+                'color': color,
                 'lat/lon': ', '.join(shape.centroid.to_str()),
                 **{key: shape.properties.get(key, '') for key in hover_data}
             } for idx, shape in enumerate(points)
         ],
         lon='lon',
         lat='lat',
-        color='weight',
+        color='color',
+        color_discrete_map={color: color},
         mapbox_style="carto-positron",
         opacity=opacity or 0.5,
         hover_data={
+            'id': False,
             'lat': False,
             'lon': False,
-            **{k: True for k in ('id', 'weight', 'lat/lon', *hover_data)}
+            'color': False,
+            **{k: True for k in ('lat/lon', *hover_data)}
         }
     )
 
@@ -63,6 +68,7 @@ def _draw_points(
 def _draw_lines(
     lines: List[GeoLineString],
     hover_data: Optional[List] = None,
+    **kwargs
 ):
     """
     Plots a series of GeoLineStrings to a plotly graph objects Figure
@@ -78,26 +84,30 @@ def _draw_lines(
         go.Figure
     """
     hover_data = hover_data or []
+    color = kwargs.get('color', 'red')
 
     return px.line_mapbox(
         [
             {
                 'id': idx,
-                'weight': 1.0,
                 'lat': point.to_float()[1],
                 'lon': point.to_float()[0],
-                'lat/lon': ', '.join(point.to_str()),
+                'color': color,
+                'lat/lon': ', '.join(point.to_str()[::-1]),
                 **{key: shape.properties.get(key, '') for key in hover_data}
             } for idx, shape in enumerate(lines) for point in shape.bounding_coords()
         ],
         lon='lon',
         lat='lat',
-        color='id',
+        color='color',
+        color_discrete_map={color: color},
         mapbox_style="carto-positron",
         hover_data={
             'lat': False,
             'lon': False,
-            **{k: True for k in ('id', 'weight', 'lat/lon', *hover_data)}
+            'color': False,
+            'id': False,
+            **{k: True for k in ('lat/lon', *hover_data)}
         },
     )
 
@@ -106,6 +116,7 @@ def _draw_shapes(
     shapes: List[GeoShape],
     hover_data: Optional[List] = None,
     opacity: Optional[float] = None,
+    **kwargs
 ):
     """
     Plots a series of GeoShapes (excluding GeoPoints and GeoLineStrings) to a plotly
@@ -124,22 +135,28 @@ def _draw_shapes(
     Returns:
         go.Figure
     """
+    color = kwargs.get('color', 'red')
     hover_data = hover_data or []
     return px.choropleth_mapbox(
         [
             {
                 'id': idx,
-                'weight': 1.0,
+                'color': color,
                 **{key: shape.properties.get(key, '') for key in hover_data}
             } for idx, shape in enumerate(shapes)
         ],
         geojson=FeatureCollection(shapes).to_geojson(),
         locations='id',
-        color='weight',
+        color='color',
+        color_discrete_map={color: color},
         mapbox_style="carto-positron",
         opacity=opacity or 0.5,
         featureidkey='id',
-        hover_data=['id', *sorted(['weight', *hover_data])],
+        hover_data={
+            'color': False,
+            # 'id': False,
+            **{k: True for k in hover_data},
+        }
     )
 
 
@@ -147,6 +164,8 @@ def draw_collection(
     collection: FeatureCollection,
     hover_data: Optional[List] = None,
     opacity: Optional[float] = None,
+    color: Optional[str] = None,
+    fig: Optional[Figure] = None
 ):
     """
     Draws a FeatureCollection as a plotly choropleth.
@@ -172,23 +191,18 @@ def draw_collection(
             set(key for geoshape in collection.geoshapes for key in geoshape.properties)
         )
 
-    avg_lon, avg_lat = [
-        np.average(x)
-        for x in list(zip(*[geoshape.centroid.to_float() for geoshape in collection.geoshapes]))
-    ]
-
     _points = [x for x in collection if isinstance(x, GeoPoint)]
     _lines = [x for x in collection if isinstance(x, GeoLineString)]
     _shapes = [x for x in collection if not isinstance(x, (GeoLineString, GeoPoint))]
 
     _fig = go.Figure()
     if _points:
-        _fig.add_trace(_draw_points(_points, hover_data, opacity).data[0])
+        _fig.add_trace(_draw_points(_points, hover_data, opacity, color=color).data[0])
     if _lines:
-        for trace in _draw_lines(_lines, hover_data).data:
+        for trace in _draw_lines(_lines, hover_data, color=color).data:
             _fig.add_trace(trace)
     if _shapes:
-        _fig.add_trace(_draw_shapes(_shapes, hover_data, opacity).data[0])
+        _fig.add_trace(_draw_shapes(_shapes, hover_data, opacity, color=color).data[0])
 
     _fig.update_geos(
         fitbounds='locations',
@@ -197,8 +211,12 @@ def draw_collection(
         coloraxis_showscale=False,  # legends will overlap if not removed
         showlegend=False,
         mapbox_style="carto-positron",
-        mapbox_center={'lat': avg_lat, 'lon': avg_lon},
     )
+    if fig:
+        for trace in _fig.data:
+            fig.add_trace(trace)
+        return fig
+
     return _fig
 
 
