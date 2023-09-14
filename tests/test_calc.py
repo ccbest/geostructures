@@ -35,8 +35,8 @@ def test_rotate_coordinates():
         Coordinate('1.000', '0.000'),
         Coordinate('1.0', '0.000'),
     ]
-    assert rotate_coordinates(points, Coordinate(0.0, 0.0), 45) == [
-        Coordinate(0.7, 0.7),
+    assert rotate_coordinates(points, Coordinate(0.0, 0.0), 45, precision=3) == [
+        Coordinate(0.707, 0.707),
         Coordinate(0.707, 0.707),
         Coordinate(0.707, 0.707),
     ]

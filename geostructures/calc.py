@@ -35,14 +35,14 @@ def bearing_degrees(coord1: Coordinate, coord2: Coordinate, **kwargs) -> float:
     Returns:
         (float) the bearing in degrees
     """
-    d_lon = float(coord2.longitude) - float(coord1.longitude)
-    x_val = math.cos(math.radians(float(coord2.latitude))) * math.sin(
+    d_lon = coord2.longitude - coord1.longitude
+    x_val = math.cos(math.radians(coord2.latitude)) * math.sin(
         math.radians(d_lon)
     )
-    y_val = math.cos(math.radians(float(coord1.latitude))) * math.sin(
-        math.radians(float(coord2.latitude))
-    ) - math.sin(math.radians(float(coord1.latitude))) * math.cos(
-        math.radians(float(coord2.latitude))
+    y_val = math.cos(math.radians(coord1.latitude)) * math.sin(
+        math.radians(coord2.latitude)
+    ) - math.sin(math.radians(coord1.latitude)) * math.cos(
+        math.radians(coord2.latitude)
     ) * math.cos(
         math.radians(d_lon)
     )
@@ -68,8 +68,7 @@ def haversine_distance_meters(coord1: Coordinate, coord2: Coordinate) -> float:
     lon1, lat1 = math.radians(coord1.longitude), math.radians(coord1.latitude)
     lon2, lat2 = math.radians(coord2.longitude), math.radians(coord2.latitude)
 
-    d_lat = float(lat2 - lat1)
-    d_long = float(lon2 - lon1)
+    d_lat, d_long = lat2 - lat1, lon2 - lon1
     var1 = (math.sin(d_lat / 2) ** 2) + math.cos(lat1) * math.cos(lat2) * (
         math.sin(d_long / 2) ** 2
     )
@@ -125,8 +124,8 @@ def inverse_haversine_radians(
     """
     _rad = distance_meters / _EARTH_RADIUS
 
-    x0 = float(start.longitude) * math.pi / 180
-    y0 = float(start.latitude) * math.pi / 180
+    x0 = start.longitude * math.pi / 180
+    y0 = start.latitude * math.pi / 180
 
     final_lat = math.asin(
         math.sin(y0) * math.cos(_rad)
@@ -145,7 +144,8 @@ def inverse_haversine_radians(
 def rotate_coordinates(
         coords: List[Coordinate],
         origin: Coordinate,
-        degrees: float
+        degrees: float,
+        precision: int = 7,
 ) -> List[Coordinate]:
     """
     Rotate a set of coordinates around an origin. Returned Coordinate precision will be
@@ -161,6 +161,9 @@ def rotate_coordinates(
         degrees:
             The degrees of rotation to be applied
 
+        precision: (Default 7)
+            The decimal precision to round results to
+
     Returns:
         List[Coordinate]
     """
@@ -172,10 +175,9 @@ def rotate_coordinates(
     o = np.atleast_2d(origin.to_float())
     p = np.atleast_2d([x.to_float() for x in coords])
 
-    precision = [min([x.latitude.precision, x.longitude.precision]) for x in coords]
     return [
-        Coordinate(*(round_half_up(_x, y) for _x in x))  # type: ignore
-        for x, y in zip((R @ (p.T - o.T) + o.T).T, precision)
+        Coordinate(*[round_half_up(x, precision) for x in coord])
+        for coord in (R @ (p.T - o.T) + o.T).T
     ]
 
 

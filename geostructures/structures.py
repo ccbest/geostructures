@@ -568,8 +568,8 @@ class GeoBox(GeoShape):
         )
 
     def bounding_coords(self, **kwargs):
-        _nw = self.nw_bound.to_str()
-        _se = self.se_bound.to_str()
+        _nw = self.nw_bound.to_float()
+        _se = self.se_bound.to_float()
 
         # Is self-closing
         return [
@@ -581,10 +581,10 @@ class GeoBox(GeoShape):
         ]
 
     def contains_coordinate(self, coord: Coordinate):
-        lon, lat = coord.to_float()
-        if float(self.nw_bound.longitude) <= lon <= float(
-            self.se_bound.longitude
-        ) and float(self.se_bound.latitude) <= lat <= float(self.nw_bound.latitude):
+        if (
+            self.nw_bound.longitude <= coord.longitude <= self.se_bound.longitude and
+            self.se_bound.latitude <= coord.latitude <= self.nw_bound.latitude
+        ):
             return True
 
         return False
@@ -1116,7 +1116,7 @@ class GeoPoint(GeoShape):
         return hash((self.center, self.dt))
 
     def __repr__(self):
-        return f'<GeoPoint at {self.center.to_str()}>'
+        return f'<GeoPoint at {self.center.to_float()}>'
 
     @property
     def centroid(self):
@@ -1179,8 +1179,7 @@ class GeoPoint(GeoShape):
     def to_shapely(self):
         import shapely
 
-        return shapely.Point(*self.centroid.to_float())
+        return shapely.Point(self.centroid.longitude, self.centroid.latitude)
 
     def to_wkt(self, **_):
-        point_str = " ".join(self.center.to_str())
-        return f'POINT({point_str})'
+        return f'POINT({" ".join(self.center.to_str())})'
