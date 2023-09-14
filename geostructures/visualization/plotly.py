@@ -17,7 +17,7 @@ def _draw_points(
     points: List[GeoPoint],
     hover_data: Optional[List] = None,
     opacity: Optional[float] = None,
-    color: str = 'red',
+    **kwargs
 ):
     """
     Plots a series of GeoPoints to a plotly graph objects Figure
@@ -36,6 +36,7 @@ def _draw_points(
         go.Figure
     """
     hover_data = hover_data or []
+    color = kwargs.get('color', 'red')
 
     return px.scatter_mapbox(
         [
@@ -67,7 +68,7 @@ def _draw_points(
 def _draw_lines(
     lines: List[GeoLineString],
     hover_data: Optional[List] = None,
-    color: str = 'red',
+    **kwargs
 ):
     """
     Plots a series of GeoLineStrings to a plotly graph objects Figure
@@ -83,6 +84,7 @@ def _draw_lines(
         go.Figure
     """
     hover_data = hover_data or []
+    color = kwargs.get('color', 'red')
 
     return px.line_mapbox(
         [
@@ -114,7 +116,7 @@ def _draw_shapes(
     shapes: List[GeoShape],
     hover_data: Optional[List] = None,
     opacity: Optional[float] = None,
-    color: str = 'red',
+    **kwargs
 ):
     """
     Plots a series of GeoShapes (excluding GeoPoints and GeoLineStrings) to a plotly
@@ -133,6 +135,7 @@ def _draw_shapes(
     Returns:
         go.Figure
     """
+    color = kwargs.get('color', 'red')
     hover_data = hover_data or []
     return px.choropleth_mapbox(
         [
@@ -194,12 +197,12 @@ def draw_collection(
 
     _fig = go.Figure()
     if _points:
-        _fig.add_trace(_draw_points(_points, hover_data, opacity, color).data[0])
+        _fig.add_trace(_draw_points(_points, hover_data, opacity, color=color).data[0])
     if _lines:
-        for trace in _draw_lines(_lines, hover_data, color).data:
+        for trace in _draw_lines(_lines, hover_data, color=color).data:
             _fig.add_trace(trace)
     if _shapes:
-        _fig.add_trace(_draw_shapes(_shapes, hover_data, opacity, color).data[0])
+        _fig.add_trace(_draw_shapes(_shapes, hover_data, opacity, color=color).data[0])
 
     _fig.update_geos(
         fitbounds='locations',

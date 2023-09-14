@@ -37,6 +37,13 @@ def test_coordinate_repr():
     assert repr(Coordinate(0., 1.)) == '<Coordinate(0.0, 1.0)>'
 
 
+def test_coordinate_precision():
+    assert Coordinate('1.0', '1.0').precision == 1
+    assert Coordinate('1.000', '1.0', same_precision=False).precision == 1
+    assert Coordinate('1.000', '1.0').precision == 3
+    assert Coordinate('1.000', '1.000').precision == 3
+
+
 def test_coordinate_to_float():
     assert Coordinate(0., 1.).to_float() == (0.0, 1.0)
 
