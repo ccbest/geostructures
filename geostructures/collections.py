@@ -5,7 +5,7 @@ Module for sequences of GeoShapes
 __all__ = ['FeatureCollection', 'ShapeCollection', 'Track']
 
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from functools import cached_property
 from typing import cast, List, Dict, Optional, Union
 
@@ -398,6 +398,16 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
             return self[_start:_end]  # type: ignore
 
         raise ValueError(f"Unexpected dt object: {dt}")
+
+    def filter_by_time(self, start_time: time, end_time: time) -> 'Track':
+        return Track(
+            [
+                shape for shape in self.geoshapes
+                if start_time <= shape.end.time() <= end_time
+                or start_time <= shape.start.time() <= end_time
+                or shape.start.time() <= start_time <= end_time <= shape.end.time()
+            ]
+        )
 
     def intersects(self, shape: GeoShape):
         """
