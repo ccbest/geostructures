@@ -64,6 +64,11 @@ class Coordinate:
     def __repr__(self):
         return f'<Coordinate({self.longitude}, {self.latitude})>'
 
+    @property
+    def precision(self):
+        """Returns the minimum precision of the coordinate's 2 precise numbers"""
+        return min(self.latitude.precision, self.longitude.precision)
+
     def to_float(self) -> Tuple[float, float]:
         """Converts the coordinate to a 2-tuple of floats (longitude, latitude)"""
         return float(self.longitude), float(self.latitude)
