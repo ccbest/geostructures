@@ -42,8 +42,8 @@ def _draw_points(
         [
             {
                 'id': idx,
-                'lat': shape.centroid.to_float()[1],
-                'lon': shape.centroid.to_float()[0],
+                'lat': shape.centroid.latitude,
+                'lon': shape.centroid.longitude,
                 'color': color,
                 'lat/lon': ', '.join(shape.centroid.to_str()),
                 **{key: shape.properties.get(key, '') for key in hover_data}
@@ -90,8 +90,8 @@ def _draw_lines(
         [
             {
                 'id': idx,
-                'lat': point.to_float()[1],
-                'lon': point.to_float()[0],
+                'lat': point.latitude,
+                'lon': point.longitude,
                 'color': color,
                 'lat/lon': ', '.join(point.to_str()[::-1]),
                 **{key: shape.properties.get(key, '') for key in hover_data}
@@ -182,6 +182,13 @@ def draw_collection(
 
         opacity:
             The desired shape opacity
+
+        color:
+            The color to draw shapes as
+
+        fig:
+            A plotly figure. If passed the draw layer will be appended to the passed
+            fig instead of creating a new one.
 
     Returns:
         A plotly figure

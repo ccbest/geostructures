@@ -112,8 +112,8 @@ class H3Hasher(Hasher):
         for vertex in zip(linestring.bounding_coords(), linestring.bounding_coords()[1:]):
             # Get h3's straight line hexes
             line_hashes = h3.h3_line(
-                h3.geo_to_h3(*vertex[0].to_float()[::-1], resolution),
-                h3.geo_to_h3(*vertex[1].to_float()[::-1], resolution)
+                h3.geo_to_h3(vertex[0].latitude, vertex[0].longitude, resolution),
+                h3.geo_to_h3(vertex[1].latitude, vertex[1].longitude, resolution)
             )
             # Add single ring buffer
             all_hexes = set(
@@ -148,8 +148,8 @@ class H3Hasher(Hasher):
         """
         return {
             h3.geo_to_h3(
-                float(point.centroid.latitude),
-                float(point.centroid.longitude),
+                point.centroid.latitude,
+                point.centroid.longitude,
                 resolution
             )
         }
