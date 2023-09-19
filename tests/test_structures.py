@@ -421,7 +421,8 @@ def test_geopolygon_linear_rings():
             Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
         ]
     )
-    assert polygon.linear_rings() == [
+    rings = polygon.linear_rings()
+    assert rings == [
         [
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
@@ -431,6 +432,10 @@ def test_geopolygon_linear_rings():
             Coordinate(0.5, 0.5)
         ]
     ]
+
+    # Assert self-closing
+    assert rings[0][0] == rings[0][-1]
+    assert rings[1][0] == rings[1][-1]
 
 
 def test_geopolygon_to_polygon(geopolygon):
@@ -529,13 +534,18 @@ def test_geobox_linear_rings():
         Coordinate(0.0, 1.0),
         Coordinate(1.0, 0.0),
     )
-    assert box.linear_rings() == [[
+    rings = box.linear_rings()
+
+    assert rings == [[
         Coordinate(0.0, 1.0),
         Coordinate(1.0, 1.0),
         Coordinate(1.0, 0.0),
         Coordinate(0.0, 0.0),
         Coordinate(0.0, 1.0),
     ]]
+
+    # Assert self-closing
+    assert rings[0][0] == rings[0][-1]
 
 
 def test_geobox_to_geojson(geobox):
@@ -627,7 +637,11 @@ def test_geocircle_centroid(geocircle):
 
 
 def test_geocircle_linear_rings(geocircle):
-    assert geocircle.linear_rings() == [geocircle.bounding_coords()]
+    rings = geocircle.linear_rings()
+    assert rings == [geocircle.bounding_coords()]
+
+    # Assert self-closing
+    assert rings[0][0] == rings[0][-1]
 
 
 def test_geoellipse_contains(geoellipse):
@@ -695,7 +709,11 @@ def test_geoellipse_bounding_coords(geoellipse):
 
 
 def test_geoellipse_linear_rings(geoellipse):
-    assert geoellipse.linear_rings() == [geoellipse.bounding_coords()]
+    rings = geoellipse.linear_rings()
+    assert rings == [geoellipse.bounding_coords()]
+
+    # Assert self-closing
+    assert rings[0][0] == rings[0][-1]
 
 
 def test_geoellipse_to_polygon(geoellipse):
@@ -857,9 +875,13 @@ def test_georing_linear_rings(georing, geowedge):
         Coordinate(0.0044966, 0.0077884),
         Coordinate(0.0057807, 0.0068892)
     ]
+    # Assert self-closing
+    assert rings[0][0] == rings[0][-1]
+    assert rings[1][0] == rings[1][-1]
 
     rings = geowedge.linear_rings()
     assert len(rings) == 1
+    assert rings[0][0] == rings[0][-1]
 
 
 def test_georing_to_wkt(georing, geowedge):
