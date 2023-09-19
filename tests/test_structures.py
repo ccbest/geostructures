@@ -176,16 +176,19 @@ def test_geoshape_to_shapely(geobox):
         [[0.0,1.0],[1.0,1.0],[1.0,0.0],[0.0,0.0]]
     )
 
-    polygon = GeoPolygon(
-        [
-            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
-            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
-        ],
-        [
-            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ]
+    outline = [
+        Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
+        Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+    ]
+    hole = [
+        Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+    ]
+    polygon = GeoPolygon(outline, hole)
+    expected = shapely.geometry.Polygon(
+        [x.to_float() for x in outline],
+        holes=[[x.to_float() for x in hole]]
     )
-    assert polygon.to_shapely() == shapely.geometry.Polygon()
+    assert polygon.to_shapely() == expected
 
 
 def test_geoshape_set_property():
@@ -901,6 +904,11 @@ def test_geolinestring_bounding_coords(geolinestring):
     ]
 
 
+def test_geolinestring_linear_rings(geolinestring):
+    with pytest.raises(NotImplementedError):
+        _ = geolinestring.linear_rings()
+
+
 def test_geolinestring_to_geojson(geolinestring):
 
     assert geolinestring.to_geojson(properties={'test_prop': 2}, test_kwarg=1) == {
@@ -1034,6 +1042,11 @@ def test_geopoint_circumscribing_rectangle(geopoint):
 
 def test_geopoint_centroid(geopoint):
     assert geopoint.centroid == geopoint.center
+
+
+def test_geopoint_linear_rings(geopoint):
+    with pytest.raises(NotImplementedError):
+        _ = geopoint.linear_rings()
 
 
 def test_geopoint_from_wkt():
