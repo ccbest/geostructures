@@ -172,7 +172,23 @@ def test_shape_to_geojson(geocircle):
 
 
 def test_geoshape_to_shapely(geobox):
-    assert geobox.to_shapely() == shapely.geometry.Polygon([[0.0,1.0],[1.0,1.0],[1.0,0.0],[0.0,0.0]])
+    assert geobox.to_shapely() == shapely.geometry.Polygon(
+        [[0.0,1.0],[1.0,1.0],[1.0,0.0],[0.0,0.0]]
+    )
+
+    outline = [
+        Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
+        Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+    ]
+    hole = [
+        Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+    ]
+    polygon = GeoPolygon(outline, hole)
+    expected = shapely.geometry.Polygon(
+        [x.to_float() for x in outline],
+        holes=[[x.to_float() for x in hole]]
+    )
+    assert polygon.to_shapely() == expected
 
 
 def test_geoshape_set_property():
@@ -370,7 +386,7 @@ def test_geopolygon_bounding_coords(geopolygon):
     assert geopolygon.outline == geopolygon.bounding_coords()
 
     # assert self-closing
-    assert geopolygon.bounding_coords()[0] == geopolygon.bounding_coords()[0]
+    assert geopolygon.bounding_coords() == geopolygon.bounding_coords()
 
 
 def test_polygon_to_geojson(geopolygon):
@@ -391,6 +407,35 @@ def test_geopolygon_circumscribing_rectangle(geopolygon):
         Coordinate(1.0, 0.0),
         dt=default_test_datetime
     )
+
+
+def test_geopolygon_linear_rings():
+    polygon = GeoPolygon(
+        # Outline
+        [
+            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
+            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+        ],
+        # Hole
+        [
+            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+        ]
+    )
+    rings = polygon.linear_rings()
+    assert rings == [
+        [
+            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
+            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+        ],
+        [
+            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5),
+            Coordinate(0.5, 0.5)
+        ]
+    ]
+
+    # Assert self-closing
+    assert rings[0][0] == rings[0][-1]
+    assert rings[1][0] == rings[1][-1]
 
 
 def test_geopolygon_to_polygon(geopolygon):
@@ -484,6 +529,25 @@ def test_geobox_bounding_coords(geobox):
     assert geobox.bounding_coords()[0] == geobox.bounding_coords()[-1]
 
 
+def test_geobox_linear_rings():
+    box = GeoBox(
+        Coordinate(0.0, 1.0),
+        Coordinate(1.0, 0.0),
+    )
+    rings = box.linear_rings()
+
+    assert rings == [[
+        Coordinate(0.0, 1.0),
+        Coordinate(1.0, 1.0),
+        Coordinate(1.0, 0.0),
+        Coordinate(0.0, 0.0),
+        Coordinate(0.0, 1.0),
+    ]]
+
+    # Assert self-closing
+    assert rings[0][0] == rings[0][-1]
+
+
 def test_geobox_to_geojson(geobox):
     shapely.geometry.shape(geobox.to_geojson()['geometry'])
 
@@ -572,6 +636,14 @@ def test_geocircle_centroid(geocircle):
     assert geocircle.centroid == geocircle.center
 
 
+def test_geocircle_linear_rings(geocircle):
+    rings = geocircle.linear_rings()
+    assert rings == [geocircle.bounding_coords()]
+
+    # Assert self-closing
+    assert rings[0][0] == rings[0][-1]
+
+
 def test_geoellipse_contains(geoellipse):
     # Center
     assert Coordinate(0.0, 0.0) in geoellipse
@@ -634,6 +706,14 @@ def test_geoellipse_bounding_coords(geoellipse):
 
     # assert self-closing
     assert geoellipse.bounding_coords()[0] == geoellipse.bounding_coords()[-1]
+
+
+def test_geoellipse_linear_rings(geoellipse):
+    rings = geoellipse.linear_rings()
+    assert rings == [geoellipse.bounding_coords()]
+
+    # Assert self-closing
+    assert rings[0][0] == rings[0][-1]
 
 
 def test_geoellipse_to_polygon(geoellipse):
@@ -785,6 +865,25 @@ def test_georing_centroid(georing, geowedge):
     assert geowedge.centroid == Coordinate(0.0044104, -0.0040194)
 
 
+def test_georing_linear_rings(georing, geowedge):
+    rings = georing.linear_rings()
+    assert len(rings) == 2  # should have outer and inner shell
+    assert rings[0][:5] == [
+        Coordinate(0.0, 0.0089932),
+        Coordinate(0.0015617, 0.0088566),
+        Coordinate(0.0030759, 0.0084509),
+        Coordinate(0.0044966, 0.0077884),
+        Coordinate(0.0057807, 0.0068892)
+    ]
+    # Assert self-closing
+    assert rings[0][0] == rings[0][-1]
+    assert rings[1][0] == rings[1][-1]
+
+    rings = geowedge.linear_rings()
+    assert len(rings) == 1
+    assert rings[0][0] == rings[0][-1]
+
+
 def test_georing_to_wkt(georing, geowedge):
     assert georing.to_wkt() == 'POLYGON((0.0 0.0089932,0.0015617 0.0088566,0.0030759 0.0084509,0.0044966 0.0077884,0.0057807 0.0068892,0.0068892 0.0057807,0.0077884 0.0044966,0.0084509 0.0030759,0.0088566 0.0015617,0.0089932 0.0,0.0088566 -0.0015617,0.0084509 -0.0030759,0.0077884 -0.0044966,0.0068892 -0.0057807,0.0057807 -0.0068892,0.0044966 -0.0077884,0.0030759 -0.0084509,0.0015617 -0.0088566,0.0 -0.0089932,-0.0015617 -0.0088566,-0.0030759 -0.0084509,-0.0044966 -0.0077884,-0.0057807 -0.0068892,-0.0068892 -0.0057807,-0.0077884 -0.0044966,-0.0084509 -0.0030759,-0.0088566 -0.0015617,-0.0089932 -0.0,-0.0088566 0.0015617,-0.0084509 0.0030759,-0.0077884 0.0044966,-0.0068892 0.0057807,-0.0057807 0.0068892,-0.0044966 0.0077884,-0.0030759 0.0084509,-0.0015617 0.0088566,0.0 0.0089932), (0.0 0.0044966,0.0007808 0.0044283,0.0015379 0.0042254,0.0022483 0.0038942,0.0028904 0.0034446,0.0034446 0.0028904,0.0038942 0.0022483,0.0042254 0.0015379,0.0044283 0.0007808,0.0044966 0.0,0.0044283 -0.0007808,0.0042254 -0.0015379,0.0038942 -0.0022483,0.0034446 -0.0028904,0.0028904 -0.0034446,0.0022483 -0.0038942,0.0015379 -0.0042254,0.0007808 -0.0044283,0.0 -0.0044966,-0.0007808 -0.0044283,-0.0015379 -0.0042254,-0.0022483 -0.0038942,-0.0028904 -0.0034446,-0.0034446 -0.0028904,-0.0038942 -0.0022483,-0.0042254 -0.0015379,-0.0044283 -0.0007808,-0.0044966 -0.0,-0.0044283 0.0007808,-0.0042254 0.0015379,-0.0038942 0.0022483,-0.0034446 0.0028904,-0.0028904 0.0034446,-0.0022483 0.0038942,-0.0015379 0.0042254,-0.0007808 0.0044283,0.0 0.0044966))'
     assert geowedge.to_wkt() == 'POLYGON((0.0089932 0.0,0.0088825 -0.0014068,0.0085531 -0.0027791,0.008013 -0.0040828,0.0072757 -0.0052861,0.0063592 -0.0063592,0.0052861 -0.0072757,0.0040828 -0.008013,0.0027791 -0.0085531,0.0014068 -0.0088825,0.0 -0.0089932,0.0 -0.0044966,0.0007034 -0.0044412,0.0013895 -0.0042765,0.0020414 -0.0040065,0.002643 -0.0036378,0.0031796 -0.0031796,0.0036378 -0.002643,0.0040065 -0.0020414,0.0042765 -0.0013895,0.0044412 -0.0007034,0.0044966 0.0,0.0089932 0.0))'
@@ -825,6 +924,11 @@ def test_geolinestring_bounding_coords(geolinestring):
     assert geolinestring.bounding_coords() == [
         Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)
     ]
+
+
+def test_geolinestring_linear_rings(geolinestring):
+    with pytest.raises(NotImplementedError):
+        _ = geolinestring.linear_rings()
 
 
 def test_geolinestring_to_geojson(geolinestring):
@@ -960,6 +1064,11 @@ def test_geopoint_circumscribing_rectangle(geopoint):
 
 def test_geopoint_centroid(geopoint):
     assert geopoint.centroid == geopoint.center
+
+
+def test_geopoint_linear_rings(geopoint):
+    with pytest.raises(NotImplementedError):
+        _ = geopoint.linear_rings()
 
 
 def test_geopoint_from_wkt():
