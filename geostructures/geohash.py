@@ -87,7 +87,11 @@ class H3Hasher(Hasher):
         Returns:
             A set of H3 geohashes
         """
-        return h3.polyfill(polygon.to_geojson()['geometry'], resolution)
+        return h3.polyfill(
+            polygon.to_geojson()['geometry'],
+            resolution,
+            geo_json_conformant=True  # uses long/lat order
+        )
 
     @staticmethod
     def _hash_linestring(linestring: GeoLineString, resolution: int) -> Set[str]:

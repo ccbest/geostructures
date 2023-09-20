@@ -45,6 +45,15 @@ def test_collection_iter():
     ]
 
 
+def test_collection_centroid():
+    track1 = Track([
+        GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 1)),
+        GeoPoint(Coordinate(2.0, 2.0), datetime(2020, 1, 2)),
+        GeoPoint(Coordinate(3.0, 1.5), datetime(2020, 1, 3)),
+    ])
+    assert track1.centroid == Coordinate(2.0, 1.5)
+
+
 def test_collection_len():
     track1 = Track([
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 1)),
