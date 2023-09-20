@@ -84,6 +84,15 @@ def geopoint():
     return GeoPoint(Coordinate(0.0, 0.0), dt=default_test_datetime)
 
 
+def test_geoshape_init():
+    with pytest.raises(ValueError):
+        _ = GeoCircle(
+            Coordinate(0.0, 0.0), 1000, 
+            # Hole shape itself has a hole
+            GeoCircle(Coordinate(0.0, 0.0), 500, GeoCircle(Coordinate(0.0, 0.0), 250))
+        )
+
+
 def test_geoshape_start():
     geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=default_test_datetime)
     assert geopoint.start == default_test_datetime
@@ -173,20 +182,20 @@ def test_shape_to_geojson(geocircle):
 
 def test_geoshape_to_shapely(geobox):
     assert geobox.to_shapely() == shapely.geometry.Polygon(
-        [[0.0,1.0],[1.0,1.0],[1.0,0.0],[0.0,0.0]]
+        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]
     )
 
     outline = [
         Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
         Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
     ]
-    hole = [
-        Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-    ]
+    hole = GeoPolygon([
+        Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5), Coordinate(0.5, 0.5),
+    ])
     polygon = GeoPolygon(outline, hole)
     expected = shapely.geometry.Polygon(
         [x.to_float() for x in outline],
-        holes=[[x.to_float() for x in hole]]
+        holes=[[x.to_float() for x in hole.bounding_coords()]]
     )
     assert polygon.to_shapely() == expected
 
@@ -266,9 +275,9 @@ def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
-        [
+        GeoPolygon([
             Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ]
+        ])
     )
     # Differing number of holes
     assert p1 != p2
@@ -278,24 +287,24 @@ def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
-        [
+        GeoPolygon([
             Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ],
-        [
+        ]),
+        GeoPolygon([
             Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ]
+        ])
     )
     p2 = GeoPolygon(
         [
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
-        [
+        GeoPolygon([
             Coordinate(0.6, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ],
-        [
+        ]),
+        GeoPolygon([
             Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ]
+        ])
     )
     # Holes are not equal
     assert p1 != p2
@@ -372,10 +381,10 @@ def test_geopolygon_contains():
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
-        [
+        GeoPolygon([
             Coordinate(0.25, 0.25), Coordinate(0.25, 0.75), Coordinate(0.75, 0.75),
             Coordinate(0.75, 0.25), Coordinate(0.25, 0.25)
-        ]
+        ])
     )
     assert Coordinate(0.9, 0.9) in polygon  # outside hole
     assert Coordinate(0.5, 0.5) not in polygon  # inside hole
@@ -417,9 +426,9 @@ def test_geopolygon_linear_rings():
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
         # Hole
-        [
+        GeoPolygon([
             Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ]
+        ])
     )
     rings = polygon.linear_rings()
     assert rings == [
@@ -455,9 +464,9 @@ def test_geopolygon_from_wkt():
             Coordinate(30.123, 10), Coordinate(40, 40), Coordinate(20, 40),
             Coordinate(10.123, 20), Coordinate(30.123, 10)
         ],
-        [
+        GeoPolygon([
             Coordinate(15, 20), Coordinate(20, 20), Coordinate(15, 15), Coordinate(15, 20)
-        ]
+        ])
     )
 
     with pytest.raises(ValueError):
@@ -470,10 +479,10 @@ def test_geopolygon_to_wkt():
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
-        [
+        GeoPolygon([
             Coordinate(0.25, 0.25), Coordinate(0.25, 0.75), Coordinate(0.75, 0.75),
             Coordinate(0.75, 0.25), Coordinate(0.25, 0.25)
-        ]
+        ])
     )
     assert polygon.to_wkt() == 'POLYGON((0.0 0.0,0.0 1.0,1.0 1.0,1.0 0.0,0.0 0.0),(0.25 0.25,0.25 0.75,0.75 0.75,0.75 0.25,0.25 0.25))'
 
@@ -1027,7 +1036,8 @@ def test_geopoint_repr(geopoint):
 
 
 def test_geopoint_bounding_coords(geopoint):
-    assert geopoint.bounding_coords() == [Coordinate('0.0', '0.0')]
+    with pytest.raises(NotImplementedError):
+        _ = geopoint.bounding_coords()
 
 
 def test_geopoint_to_geojson(geopoint):
