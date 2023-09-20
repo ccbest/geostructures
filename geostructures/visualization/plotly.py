@@ -15,6 +15,7 @@ from geostructures.geohash import H3Hasher
 
 def _draw_points(
     points: List[GeoPoint],
+    color: str,
     hover_data: Optional[List] = None,
     opacity: Optional[float] = None,
     **kwargs
@@ -36,7 +37,6 @@ def _draw_points(
         go.Figure
     """
     hover_data = hover_data or []
-    color = kwargs.get('color', 'red')
 
     return px.scatter_mapbox(
         [
@@ -67,6 +67,7 @@ def _draw_points(
 
 def _draw_lines(
     lines: List[GeoLineString],
+    color: str,
     hover_data: Optional[List] = None,
     **kwargs
 ):
@@ -84,7 +85,6 @@ def _draw_lines(
         go.Figure
     """
     hover_data = hover_data or []
-    color = kwargs.get('color', 'red')
 
     return px.line_mapbox(
         [
@@ -114,9 +114,9 @@ def _draw_lines(
 
 def _draw_shapes(
     shapes: List[GeoShape],
+    color: str,
     hover_data: Optional[List] = None,
     opacity: Optional[float] = None,
-    **kwargs
 ):
     """
     Plots a series of GeoShapes (excluding GeoPoints and GeoLineStrings) to a plotly
@@ -135,7 +135,6 @@ def _draw_shapes(
     Returns:
         go.Figure
     """
-    color = kwargs.get('color', 'red')
     hover_data = hover_data or []
     return px.choropleth_mapbox(
         [
@@ -154,9 +153,26 @@ def _draw_shapes(
         featureidkey='id',
         hover_data={
             'color': False,
-            # 'id': False,
             **{k: True for k in hover_data},
         }
+    )
+
+
+def _get_zoom(lats: List[float], lons: List[float]) -> float:
+    """
+    Determines the appropriate zoom level for a collection of geoshapes
+
+    Args:
+        collection:
+            A FeatureCollection
+
+    Returns:
+        float
+    """
+    return np.interp(
+        x=(max(lats) - min(lats)) * (max(lons) - min(lons)),
+        xp=[0, 5 ** -10, 4 ** -10, 3 ** -10, 2 ** -10, 1 ** -10, 1 ** -5],
+        fp=[20, 15, 14, 13, 12, 7, 5],
     )
 
 
@@ -202,22 +218,26 @@ def draw_collection(
     _lines = [x for x in collection if isinstance(x, GeoLineString)]
     _shapes = [x for x in collection if not isinstance(x, (GeoLineString, GeoPoint))]
 
+    center = collection.centroid
+    color = color or 'red'
+
     _fig = go.Figure()
     if _points:
-        _fig.add_trace(_draw_points(_points, hover_data, opacity, color=color).data[0])
+        _fig.add_trace(_draw_points(_points, color, hover_data, opacity).data[0])
     if _lines:
-        for trace in _draw_lines(_lines, hover_data, color=color).data:
+        for trace in _draw_lines(_lines, color, hover_data).data:
             _fig.add_trace(trace)
     if _shapes:
-        _fig.add_trace(_draw_shapes(_shapes, hover_data, opacity, color=color).data[0])
+        _fig.add_trace(_draw_shapes(_shapes, color, hover_data, opacity).data[0])
 
-    _fig.update_geos(
-        fitbounds='locations',
-    )
     _fig.update_layout(
         coloraxis_showscale=False,  # legends will overlap if not removed
         showlegend=False,
         mapbox_style="carto-positron",
+    )
+    _fig.update_mapboxes(
+        center={'lat': center.latitude, 'lon': center.longitude},
+        zoom=_get_zoom(*zip(*[shape.centroid.to_float() for shape in collection.geoshapes])),
     )
     if fig:
         for trace in _fig.data:
@@ -301,15 +321,15 @@ def h3_choropleth(
         featureidkey='id',
         hover_data=['id', 'weight', *prop_keys],
     )
-    _fig.update_layout(
-        mapbox_center={'lat': avg_lat, 'lon': avg_lon},
-    )
 
     if fig:
         fig.add_trace(_fig.data[0])
         return fig
 
-    _fig.update_geos(fitbounds='locations')
+    _fig.update_mapboxes(
+        center={'lat': avg_lat, 'lon': avg_lon},
+        zoom=_get_zoom(_lats, _lons),
+    )
 
     return _fig
 

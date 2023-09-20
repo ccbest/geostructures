@@ -38,6 +38,13 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
         """The track length"""
         return self.geoshapes.__len__()
 
+    @property
+    def centroid(self):
+        lat, lon = tuple(
+            map(np.average, zip(*[shape.centroid.to_float() for shape in self.geoshapes]))
+        )
+        return Coordinate(lat, lon)
+
     @cached_property
     def convex_hull(self):
         """Creates a convex hull around the pings"""
