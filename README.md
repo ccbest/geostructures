@@ -3,7 +3,7 @@
 
 [![Unit Tests](https://github.com/ccbest/geostructures/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/ccbest/geostructures/actions/workflows/unit-tests.yml)
 
-A lightweight implementation of shapes drawn across a geo-temporal plane.
+A lightweight implementation of shapes drawn across a geo-temporal plane. Geostructures enables you to quickly draw shapes, convert to/from a variety of other geometric formats, and draw results. 
 
 <img src="./static/display_img.PNG" alt="plotting" width="800" height="300"/>
 
@@ -48,27 +48,27 @@ For an interactive introduction, please review our collection of [Jupyter notebo
 from geostructures import *
 
 box = GeoBox(
-    Coordinate(-0.154092, 51.539865),  # Northwest corner
-    Coordinate(-0.140592, 51.505665),    # Southeast corner
+    Coordinate(-0.154092, 51.539865),   # Northwest corner
+    Coordinate(-0.140592, 51.505665),   # Southeast corner
     properties={"name": "box"}
 )
 
 circle = GeoCircle(
-    Coordinate(-0.131092, 51.509865),  # centerpoint
+    Coordinate(-0.131092, 51.509865),   # centerpoint
     radius=500, 
     properties={"name": "circle"}
 )
 
 ellipse = GeoEllipse(
-    Coordinate(-0.093092, 51.529865), # centerpoint
-    major_axis=1_000, # The distance between the centerpoint and the furthest point along the circumference
-    minor_axis=250,   # The distance between the centerpoint and the closest point along the circumference
-    rotation=45,       # The angle of rotation (between 0 and 360)
+    Coordinate(-0.093092, 51.529865),   # centerpoint
+    major_axis=1_000,                   # The distance between the centerpoint and the furthest point along the circumference
+    minor_axis=250,                     # The distance between the centerpoint and the closest point along the circumference
+    rotation=45,                        # The angle of rotation (between 0 and 360)
     properties={"name": "ellipse"}
 )
 
 ring = GeoRing(
-    Coordinate(-0.116092, 51.519865),  # centerpoint
+    Coordinate(-0.116092, 51.519865),   # centerpoint
     inner_radius=800,
     outer_radius=1000,
     properties={"name": "ring"}
@@ -76,11 +76,11 @@ ring = GeoRing(
 
 # Same as a ring, but with a min/max angle
 wedge = GeoRing(
-    Coordinate(-0.101092, 51.514865),  # centerpoint
+    Coordinate(-0.101092, 51.514865),   # centerpoint
     inner_radius=300,
     outer_radius=500,
-    angle_min=60,    # The minimum angle of the wedge
-    angle_max=190,   # The maximum angle of the wedge
+    angle_min=60,                       # The minimum angle of the wedge
+    angle_max=190,                      # The maximum angle of the wedge
     properties={"name": "wedge"}
 )
 
@@ -92,7 +92,10 @@ linestring = GeoLineString(
     properties={"name": "linestring"}
 )
 
-point = GeoPoint(Coordinate(-0.116092, 51.519865), properties={"name": "point"})
+point = GeoPoint(
+    Coordinate(-0.116092, 51.519865), 
+    properties={"name": "point"}
+)
 
 polygon = GeoPolygon(
     [
@@ -137,12 +140,8 @@ from geostructures import *
 from geostructures.collections import FeatureCollection
 from geostructures.visualization.plotly import draw_collection
 
-box = GeoBox(
-    Coordinate(-0.154092, 51.539865),  # Northwest corner
-    Coordinate(-0.140592, 51.505665),    # Southeast corner
-    properties={"name": "box"}
-)
-circle = GeoCircle(Coordinate(-0.131092, 51.509865), radius=500, properties={"name": "circle"})
+box = GeoBox(Coordinate(-0.154092, 51.539865), Coordinate(-0.140592, 51.505665))
+circle = GeoCircle(Coordinate(-0.131092, 51.509865), radius=500)
 collection = FeatureCollection([box, circle])
 
 # Display the results
@@ -187,12 +186,8 @@ from geostructures.collections import FeatureCollection
 from geostructures.geohash import H3Hasher
 from geostructures.visualization.plotly import h3_choropleth
 
-box = GeoBox(
-    Coordinate(-0.154092, 51.539865),  # Northwest corner
-    Coordinate(-0.140592, 51.505665),    # Southeast corner
-    properties={"name": "box"}
-)
-circle = GeoCircle(Coordinate(-0.131092, 51.509865), radius=500, properties={"name": "circle"})
+box = GeoBox(Coordinate(-0.154092, 51.539865), Coordinate(-0.140592, 51.505665))
+circle = GeoCircle(Coordinate(-0.131092, 51.509865), radius=500)
 collection = FeatureCollection([box, circle])
 
 # Create a hasher
@@ -206,7 +201,7 @@ h3_choropleth(hashmap)
 ### Projections
 
 This library assumes that all geospatial terms and structures conform to the 
-[WGS84 standard](https://en.wikipedia.org/wiki/World_Geodetic_System).
+[WGS84 standard](https://en.wikipedia.org/wiki/World_Geodetic_System) (CRS 4326).
 
 ### Reporting Issues / Requesting Features
 
