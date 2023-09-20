@@ -53,10 +53,14 @@ box = GeoBox(
     properties={"name": "box"}
 )
 
-circle = GeoCircle(Coordinate(-0.131092, 51.509865), radius=500, properties={"name": "circle"})
+circle = GeoCircle(
+    Coordinate(-0.131092, 51.509865),  # centerpoint
+    radius=500, 
+    properties={"name": "circle"}
+)
 
 ellipse = GeoEllipse(
-    Coordinate(-0.093092, 51.529865), 
+    Coordinate(-0.093092, 51.529865), # centerpoint
     major_axis=1_000, # The distance between the centerpoint and the furthest point along the circumference
     minor_axis=250,   # The distance between the centerpoint and the closest point along the circumference
     rotation=45,       # The angle of rotation (between 0 and 360)
@@ -64,14 +68,15 @@ ellipse = GeoEllipse(
 )
 
 ring = GeoRing(
-    Coordinate(-0.116092, 51.519865),
+    Coordinate(-0.116092, 51.519865),  # centerpoint
     inner_radius=800,
     outer_radius=1000,
     properties={"name": "ring"}
 )
 
+# Same as a ring, but with a min/max angle
 wedge = GeoRing(
-    Coordinate(-0.101092, 51.514865),
+    Coordinate(-0.101092, 51.514865),  # centerpoint
     inner_radius=300,
     outer_radius=500,
     angle_min=60,    # The minimum angle of the wedge
@@ -115,7 +120,7 @@ polygon.to_geojson()
 polygon.from_geojson( { a geojson object } )
 
 polygon.to_wkt()
-polygon.from_wkt( '<a wkt polygon string> ')
+polygon.from_wkt( '<a wkt polygon string>' )
 
 polygon.to_shapely()
 polygon.from_shapely( a shapely polygon )
