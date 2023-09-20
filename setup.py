@@ -29,7 +29,7 @@ setuptools.setup(
     version=__version__,
     author="Carl Best",
     author_email="",
-    description="A pure-python implementation of shapes drawn across a geo-temporal plane",
+    description="A lightweight implementation of shapes drawn across a geo-temporal plane.",
     long_description=long_description,
     long_description_content_type='text/markdown',
     url="https://github.com/ccbest/geostructures",
