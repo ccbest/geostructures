@@ -5,8 +5,7 @@
 
 A lightweight implementation of shapes drawn across a geo-temporal plane.
 
-<img src="./static/plotting.PNG" alt="plotting" width="300" height="260"/>
-<img src="./static/geohash.PNG" alt="drawing" width="300" height="260">
+<img src="./static/display_img.PNG" alt="plotting" width="800" height="300"/>
 
 ### Installation
 
