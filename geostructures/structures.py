@@ -49,13 +49,21 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
 
     """Abstract base class for all geoshapes"""
 
-    def __init__(self, dt: Optional[_GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+    def __init__(
+            self,
+            *args: 'GeoShape',
+            dt: Optional[_GEOTIME_TYPE] = None,
+            properties: Optional[Dict] = None
+    ):
         super().__init__()
         if isinstance(dt, datetime):
             dt = self._default_to_zulu(dt)
 
         self.dt = dt
         self._properties = properties or {}
+        self.holes = list(args)
+        if any(x.holes for x in args):
+            raise ValueError('Holes cannot themselves contain holes.')
 
     def __contains__(self, point: Union[Coordinate, 'GeoPoint']):
         """Test whether a coordinate or GeoPoint is contained within this geoshape"""
@@ -158,6 +166,28 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             return False  # TimeIntervals cant be a subset of datetimes
 
         raise ValueError('Geoshapes may only contain datetimes and TimeIntervals.')
+
+    def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
+        """
+        Produce a list of linear rings for the object, where the first ring is the outermost
+        shell and the following rings are holes.
+
+        Using discrete coordinates to represent a continuous curve implies some level of data
+        loss. You can minimize this loss by specifying k, which represents the number of
+        points drawn.
+
+        All shapes that represent a linear ring (e.g. a box or polygon) will return
+        self-closing coordinates, meaning the last coordinate is equal to the first.
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+        """
+        return [
+            self.bounding_coords(**kwargs),
+            *[shape.bounding_coords() for shape in self.holes]
+        ]
 
     def set_property(self, key: str, value: Any):
         """
@@ -276,25 +306,6 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         """
 
     @abstractmethod
-    def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
-        """
-        Produce a list of linear rings for the object, where the first ring is the outermost
-        shell and the following rings are holes.
-
-        Using discrete coordinates to represent a continuous curve implies some level of data
-        loss. You can minimize this loss by specifying k, which represents the number of
-        points drawn.
-
-        All shapes that represent a linear ring (e.g. a box or polygon) will return
-        self-closing coordinates, meaning the last coordinate is equal to the first.
-
-        Keyword Args:
-            k: (int)
-                For shapes with smooth curves, increasing k increases the number of
-                points generated along the curve
-        """
-
-    @abstractmethod
     def circumscribing_circle(self):
         """
         Produces a circle that entirely encompasses the shape
@@ -359,11 +370,11 @@ class GeoPolygon(GeoShape):
     def __init__(
         self,
         outline: List[Coordinate],
-        *args: List[Coordinate],
+        *args: GeoShape,
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
-        super().__init__(dt, properties)
+        super().__init__(*args, dt=dt, properties=properties)
 
         if not outline[0] == outline[-1]:
             self.logger.warning(
@@ -373,17 +384,6 @@ class GeoPolygon(GeoShape):
             outline = [*outline, outline[0]]
 
         self.outline = outline
-
-        self.holes = []
-        for hole in args:
-            if not hole[0] == hole[-1]:
-                self.logger.warning(
-                    'Polygon holes must be self-closing; your final point will be '
-                    'connected to your starting point.'
-                )
-                hole = [*hole, hole[0]]
-
-            self.holes.append(hole)
 
     def __eq__(self, other):
         if not isinstance(other, GeoPolygon):
@@ -413,8 +413,18 @@ class GeoPolygon(GeoShape):
         if len(self.holes) != len(other.holes):
             return False
 
-        s_holes = set([tuple({(x, y) for x, y in zip(hole, hole[1:])}) for hole in self.holes])
-        o_holes = set([tuple({(x, y) for x, y in zip(hole, hole[1:])}) for hole in other.holes])
+        s_holes = set(
+            [
+                tuple({(x, y) for x, y in zip(hole.bounding_coords(), hole.bounding_coords()[1:])})
+                for hole in self.holes
+            ]
+        )
+        o_holes = set(
+            [
+                tuple({(x, y) for x, y in zip(hole.bounding_coords(), hole.bounding_coords()[1:])})
+                for hole in other.holes
+            ]
+        )
         return s_holes == o_holes
 
     def __hash__(self):
@@ -516,7 +526,7 @@ class GeoPolygon(GeoShape):
             return False
 
         for hole in self.holes:
-            if self._point_in_polygon(coord, hole):
+            if coord in hole:
                 return False
 
         return True
@@ -536,13 +546,12 @@ class GeoPolygon(GeoShape):
         outline = _parse_wkt_coord_group(coord_groups[0])
         holes = []
         if len(coord_groups) > 1:
-            holes = [_parse_wkt_coord_group(coord_group) for coord_group in coord_groups[1:]]
+            holes = [
+                GeoPolygon(_parse_wkt_coord_group(coord_group))
+                for coord_group in coord_groups[1:]
+            ]
 
         return GeoPolygon(outline, *holes, dt=dt, properties=properties)
-
-    def linear_rings(self, **_):
-        # Is self-closing
-        return [self.outline, *self.holes]
 
     def to_wkt(self, **kwargs):
         """
@@ -580,10 +589,11 @@ class GeoBox(GeoShape):
         self,
         nw_bound: Coordinate,
         se_bound: Coordinate,
+        *args: GeoShape,
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
-        super().__init__(dt, properties)
+        super().__init__(*args, dt=dt, properties=properties)
         self.nw_bound = nw_bound
         self.se_bound = se_bound
 
@@ -624,19 +634,6 @@ class GeoBox(GeoShape):
             Coordinate(_nw[0], _se[1]),
             self.nw_bound,
         ]
-
-    def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
-        _nw = self.nw_bound.to_float()
-        _se = self.se_bound.to_float()
-
-        # Is self-closing
-        return [[
-            self.nw_bound,
-            Coordinate(_se[0], _nw[1]),
-            self.se_bound,
-            Coordinate(_nw[0], _se[1]),
-            self.nw_bound,
-        ]]
 
     def contains_coordinate(self, coord: Coordinate):
         if (
@@ -680,10 +677,11 @@ class GeoCircle(GeoShape):
         self,
         center: Coordinate,
         radius: float,
+        *args: GeoShape,
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
-        super().__init__(dt, properties)
+        super().__init__(*args, dt=dt, properties=properties)
         self.center = center
         self.radius = radius
 
@@ -735,10 +733,6 @@ class GeoCircle(GeoShape):
     def contains_coordinate(self, coord: Coordinate) -> bool:
         return haversine_distance_meters(coord, self.center) <= self.radius
 
-    def linear_rings(self, **kwargs):
-        # Is self-closing
-        return [self.bounding_coords(**kwargs)]
-
     def to_polygon(self, **kwargs):
         return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
 
@@ -773,10 +767,11 @@ class GeoEllipse(GeoShape):
         major_axis: float,
         minor_axis: float,
         rotation: int,
+        *args: GeoShape,
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
-        super().__init__(dt, properties)
+        super().__init__(*args, dt=dt, properties=properties)
 
         self.center = center
         self.major_axis = major_axis
@@ -862,9 +857,6 @@ class GeoEllipse(GeoShape):
         radius = self._radius_at_angle(math.radians(bearing - self.rotation))
         return haversine_distance_meters(self.center, coord) <= radius
 
-    def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
-        return [self.bounding_coords(**kwargs)]
-
     def to_polygon(self, **kwargs):
         return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
 
@@ -906,10 +898,11 @@ class GeoRing(GeoShape):
         outer_radius: float,
         angle_min: Optional[int] = None,
         angle_max: Optional[int] = None,
+        *args: GeoShape,
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
-        super().__init__(dt, properties)
+        super().__init__(*args, dt=dt, properties=properties)
         self.center = center
         self.inner_radius = inner_radius
         self.outer_radius = outer_radius
@@ -1034,11 +1027,15 @@ class GeoRing(GeoShape):
             # Shape is really a circle with hole
             return [
                 [*outer_bounds, outer_bounds[0]],
-                [*inner_bounds, inner_bounds[0]]
+                [*inner_bounds, inner_bounds[0]],
+                *[shape.bounding_coords(**kwargs) for shape in self.holes]
             ]
 
         # Is self-closing
-        return [[*outer_bounds, *inner_bounds[::-1], outer_bounds[0]]]
+        return [
+            [*outer_bounds, *inner_bounds[::-1], outer_bounds[0]],
+            *[shape.bounding_coords(**kwargs) for shape in self.holes]
+        ]
 
     def to_polygon(self, **kwargs):
         return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
@@ -1071,7 +1068,7 @@ class GeoLineString(GeoShape):
             dt: Optional[_GEOTIME_TYPE] = None,
             properties: Optional[Dict] = None
     ):
-        super().__init__(dt, properties)
+        super().__init__(dt=dt, properties=properties)
         self.coords = coords
 
     def __eq__(self, other):
@@ -1096,7 +1093,6 @@ class GeoLineString(GeoShape):
         )
 
     def bounding_coords(self, **kwargs):
-        # Is not self-closing
         return self.coords
 
     def circumscribing_circle(self):
@@ -1165,10 +1161,8 @@ class GeoLineString(GeoShape):
         return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
 
     def to_wkt(self, **kwargs):
-        bbox_str = ",".join(
-            " ".join(x.to_str()) for x in self.bounding_coords(**kwargs)
-        )
-        return f'LINESTRING({bbox_str})'
+        bbox_str = self._linear_ring_to_wkt(self.bounding_coords(**kwargs))
+        return f'LINESTRING{bbox_str}'
 
 
 class GeoPoint(GeoShape):
@@ -1188,7 +1182,7 @@ class GeoPoint(GeoShape):
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
     ):
-        super().__init__(dt, properties)
+        super().__init__(dt=dt, properties=properties)
         self.center = center
 
     def __eq__(self, other):
@@ -1208,7 +1202,7 @@ class GeoPoint(GeoShape):
         return self.center
 
     def bounding_coords(self, **kwargs):
-        return [self.center]
+        raise NotImplementedError('Points are not bounded')
 
     def circumscribing_circle(self):
         raise NotImplementedError('Points cannot be circumscribed')

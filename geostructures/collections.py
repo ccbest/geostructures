@@ -53,7 +53,14 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
         if len(self.geoshapes) <= 2 and all(isinstance(x, GeoPoint) for x in self.geoshapes):
             raise ValueError('Cannot create a convex hull from less than three points.')
 
-        points = [y.to_float() for x in self.geoshapes for y in x.bounding_coords()]
+        _points = filter(lambda x: isinstance(x, GeoPoint), self.geoshapes)
+        _lines = cast(List[GeoLineString], filter(lambda x: isinstance(x, GeoLineString), self.geoshapes))
+        _shapes = filter(lambda x: not isinstance(x, (GeoPoint, GeoLineString)), self.geoshapes)
+
+        points = []
+        points += [y.to_float() for x in _shapes for y in x.bounding_coords()]
+        points += [y.to_float() for x in _lines for y in x.coords]
+        points += [x.centroid.to_float() for x in _points]
         hull = spatial.ConvexHull(points)
         return GeoPolygon([Coordinate(*points[x]) for x in hull.vertices])
 
