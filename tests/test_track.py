@@ -1,12 +1,12 @@
 
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 
 import numpy as np
 import pytest
 from scipy.spatial import ConvexHull
 
 from geostructures.coordinates import Coordinate
-from geostructures import GeoBox, GeoPoint, GeoPolygon
+from geostructures import GeoBox, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
 from geostructures.collections import Track, FeatureCollection
 
@@ -54,6 +54,27 @@ def test_collection_len():
     assert len(track1) == 3
     track1.geoshapes.pop(0)
     assert len(track1) == 2
+
+
+def test_collection_from_geopandas():
+    col = FeatureCollection([
+        GeoPolygon(
+            [Coordinate(0.0, 1.0), Coordinate(1.0, 1.0), Coordinate(1.0, 0.0)],
+            dt=datetime(2020, 1, 1)
+        ),
+        GeoLineString(
+            [Coordinate(0.0, 1.0), Coordinate(1.0, 1.0), Coordinate(1.0, 0.0)],
+            dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))
+        ),
+        GeoPoint(
+            Coordinate(0.0, 1.0),
+            dt=None
+        )
+    ])
+    df = col.to_geopandas()
+    new_col = FeatureCollection.from_geopandas(df)
+
+    assert col == new_col
 
 
 def test_collection_to_geojson():
@@ -483,6 +504,28 @@ def test_track_convolve_duplicate_timestamps():
         ]
     )
     assert track.convolve_duplicate_timestamps() == track
+
+
+def test_track_filter_by_time():
+    track1 = Track(
+        [
+            GeoPoint(Coordinate('0.0000', '1.0000'), datetime(2020, 1, 1)),
+            GeoPoint(Coordinate('0.0010', '1.0010'), datetime(2020, 1, 1, 1)),
+            GeoPoint(Coordinate('0.0020', '1.0020'), datetime(2020, 1, 1, 2)),
+            GeoPoint(Coordinate('0.0030', '1.0030'), datetime(2020, 1, 1, 3)),
+            GeoPoint(Coordinate('0.0040', '1.0040'), datetime(2020, 1, 1, 4)),
+            GeoPoint(Coordinate('0.0050', '1.0050'), datetime(2020, 1, 1, 5)),
+            GeoPoint(Coordinate('0.0060', '1.0060'), datetime(2020, 1, 1, 6)),
+            GeoPoint(Coordinate('0.0070', '1.0070'), datetime(2020, 1, 1, 7)),
+            GeoPoint(Coordinate('0.0070', '1.0070'), TimeInterval(datetime(2020, 1, 1, 1), datetime(2020, 1, 1, 7))),
+        ]
+    )
+    assert track1.filter_by_time(time(2, 30), time(5, 30)) == Track([
+        GeoPoint(Coordinate('0.0030', '1.0030'), datetime(2020, 1, 1, 3)),
+        GeoPoint(Coordinate('0.0040', '1.0040'), datetime(2020, 1, 1, 4)),
+        GeoPoint(Coordinate('0.0050', '1.0050'), datetime(2020, 1, 1, 5)),
+        GeoPoint(Coordinate('0.0070', '1.0070'), TimeInterval(datetime(2020, 1, 1, 1), datetime(2020, 1, 1, 7))),
+    ])
 
 
 def test_track_intersects():

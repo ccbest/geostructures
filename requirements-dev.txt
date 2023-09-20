@@ -1,5 +1,7 @@
 coverage>=5.5
 flake8
+geopandas>=0.13,<1
+h3>=3.7,<4
 mgrs>=1.4.5,<2
 pylint>=2.15,<3
 pytest>=7,<8

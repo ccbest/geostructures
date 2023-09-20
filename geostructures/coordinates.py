@@ -4,69 +4,47 @@ Representation of a specific point on earth
 
 __all__ = ['Coordinate']
 
-from dataclasses import dataclass
-from typing import Optional, Tuple, Union
-
-from precisenumbers import PreciseNumber, parse_number
+from typing import Tuple, Union
 
 from geostructures.utils.functions import round_half_up
 
 
-class Longitude(PreciseNumber):
-    """PreciseNumber to represent a longitude value"""
-
-    MAXIMUM = 180
-    MINIMUM = -180
-
-
-class Latitude(PreciseNumber):
-    """PreciseNumber to represent a latitude value"""
-
-    MAXIMUM = 90
-    MINIMUM = -90
-
-
-@dataclass
 class Coordinate:
     """Representation of a coordinate on the globe (i.e., a lon/lat pair) using PreciseNumbers"""
-
-    longitude: Longitude
-    latitude: Latitude
 
     def __init__(
         self,
         longitude: Union[float, int, str],
         latitude: Union[float, int, str],
-        precision: Optional[int] = None,
-        same_precision: bool = True,
     ):
-        if precision and not same_precision:
-            raise ValueError('`precision` cannot be set if `same_precision=False`')
+        lon, lat = float(longitude), float(latitude)
+        while not -90 <= lat <= 90:
+            # Crosses one of the poles
+            lat = 90 - (lat - 90) if lat > 90 else -90 - (lat + 90)
+            lon = lon + 180 if lon < 0 else lon - 180
 
-        if same_precision and not precision:
-            _, _, _, inferred_lon_precision = parse_number(longitude)
-            _, _, _, inferred_lat_precision = parse_number(latitude)
-            precision = max(inferred_lon_precision, inferred_lat_precision)
+        while not -180 <= lon <= 180:
+            # Crosses the antimeridian
+            lon = lon - 360 if lon > 180 else lon + 360
 
-        self.longitude = Longitude(number=longitude, precision=precision)
-        self.latitude = Latitude(number=latitude, precision=precision)
+        self.longitude = lon
+        self.latitude = lat
+
+    def __eq__(self, other):
+        if not isinstance(other, Coordinate):
+            return False
+
+        return self.latitude == other.latitude and self.longitude == other.longitude
 
     def __hash__(self):
-        return hash(
-            (
-                str(self.longitude),
-                self.longitude.precision,
-                str(self.latitude),
-                self.latitude.precision,
-            )
-        )
+        return hash((self.longitude, self.latitude))
 
     def __repr__(self):
         return f'<Coordinate({self.longitude}, {self.latitude})>'
 
     def to_float(self) -> Tuple[float, float]:
         """Converts the coordinate to a 2-tuple of floats (longitude, latitude)"""
-        return float(self.longitude), float(self.latitude)
+        return self.longitude, self.latitude
 
     def to_str(self) -> Tuple[str, str]:
         """Converts the coordinate to a 2-tuple of strings (longitude, latitude)"""
@@ -77,7 +55,7 @@ class Coordinate:
         import mgrs  # pylint: disable=import-outside-toplevel
         _MGRS = mgrs.MGRS()
 
-        return _MGRS.toMGRS(float(self.latitude), float(self.longitude))
+        return _MGRS.toMGRS(self.latitude, self.longitude)
 
     @classmethod
     def from_mgrs(cls, mgrs_str: str):
@@ -107,7 +85,7 @@ class Coordinate:
 
             return int(degrees), int(minutes), round_half_up(seconds, 5)
 
-        return convert(float(self.longitude)), convert(float(self.latitude))
+        return convert(self.longitude), convert(self.latitude)
 
     @classmethod
     def from_dms(cls, lon: Tuple[float, float, float], lat: Tuple[float, float, float]):

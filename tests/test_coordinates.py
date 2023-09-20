@@ -1,25 +1,27 @@
 
-import pytest
-
 from geostructures import Coordinate
-from geostructures.coordinates import Latitude, Longitude
 
 
 def test_coordinate_init():
-    c = Coordinate(0., 0.)
-    assert c.longitude == Longitude(0.)
-    assert c.latitude == Latitude(0.)
+    c = Coordinate(0., 1.)
+    assert c.longitude == 0.
+    assert c.latitude == 1.
 
-    c = Coordinate('0.0', '0.0')
-    assert c.longitude == Longitude(0.)
-    assert c.latitude == Latitude(0.)
+    c = Coordinate('0.0', '1.0')
+    assert c.longitude == 0.
+    assert c.latitude == 1.
 
-    c = Coordinate('0.0', '0.001', same_precision=False)
-    assert c.longitude == Longitude(0.001)
-    assert c.latitude == Latitude(0.)
+    # Test longitude adjustment
+    assert Coordinate(181., 0) == Coordinate(-179., 0)
+    assert Coordinate(361., 0) == Coordinate(1., 0.)
+    assert Coordinate(-181, 0) == Coordinate(179, 0)
+    assert Coordinate(-361, 0) == Coordinate(-1, 0)
 
-    with pytest.raises(ValueError):
-        _ = Coordinate('0.', '0.001', same_precision=False, precision=2)
+    # Test latitude adjustment
+    assert Coordinate(1, 91) == Coordinate(-179, 89)
+    assert Coordinate(1, 271) == Coordinate(1, -89)
+    assert Coordinate(1, -91) == Coordinate(-179, -89)
+    assert Coordinate(1, -271) == Coordinate(1, 89)
 
 
 def test_coordinate_hash():
@@ -31,6 +33,12 @@ def test_coordinate_hash():
     assert len(set(coords)) == 2
     assert Coordinate(0., 0.) in set(coords)
     assert Coordinate(1., 1.) in set(coords)
+
+
+def test_coordinate_eq():
+    assert Coordinate(0., 0.) == Coordinate(0., 0.)
+    assert Coordinate(0., 0.) != Coordinate(1., 0.)
+    assert Coordinate(0., 0.) != (0., 0.)
 
 
 def test_coordinate_repr():
@@ -50,7 +58,7 @@ def test_coordinate_to_mgrs():
 
 
 def test_coordinate_from_mgrs():
-    assert Coordinate.from_mgrs('31NAA6602100000') == Coordinate(0., 0.)
+    assert [round(x, 5) for x in Coordinate.from_mgrs('31NAA6602100000').to_float()] == [0., 0.]
 
 
 def test_coordinate_to_dms():
