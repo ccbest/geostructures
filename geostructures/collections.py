@@ -133,6 +133,35 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
 
         return cls(shapes)
 
+    @classmethod
+    def from_shapely(cls, geometry_collection):
+        """
+        Creates a geostructures FeatureCollection from a shapely GeometryCollection
+
+        Args:
+            geometry_collection:
+                A shapely GeometryCollection
+
+        Returns:
+            FeatureCollection
+        """
+        from shapely.geometry import LineString, Point, Polygon
+
+        shapes = []
+        for shape in geometry_collection.geoms:
+            if isinstance(shape, Point):
+                shapes.append(GeoPoint.from_shapely(shape))
+                continue
+
+            if isinstance(shape, Polygon):
+                shapes.append(GeoPolygon.from_shapely(shape))
+                continue
+
+            if isinstance(shape, LineString):
+                shapes.append(GeoLineString.from_shapely(shape))
+
+        return FeatureCollection(shapes)
+
     def to_geojson(self, properties: Optional[Dict] = None, **kwargs):
         return {
             'type': 'FeatureCollection',

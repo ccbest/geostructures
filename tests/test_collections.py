@@ -3,6 +3,7 @@ from datetime import datetime, time, timezone
 
 import numpy as np
 import pytest
+import shapely
 from scipy.spatial import ConvexHull
 
 from geostructures.coordinates import Coordinate
@@ -84,6 +85,16 @@ def test_collection_from_geopandas():
     new_col = FeatureCollection.from_geopandas(df)
 
     assert col == new_col
+
+
+def test_collection_from_shapely():
+    gls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 2.0)])
+    gpolygon = GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)])
+    gpoint = GeoPoint(Coordinate(0.0, 0.0))
+    expected = FeatureCollection([gls, gpolygon, gpoint])
+
+    gcol = shapely.GeometryCollection([x.to_shapely() for x in expected])
+    assert FeatureCollection.from_shapely(gcol) == expected
 
 
 def test_collection_to_geojson():

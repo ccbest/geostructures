@@ -418,6 +418,13 @@ def test_geopolygon_circumscribing_rectangle(geopolygon):
     )
 
 
+def test_geopolygon_from_shapely():
+    expected = GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)])
+    polygon = shapely.geometry.Polygon([(0.0, 0.0), (1.0, 1.0), (2.0, 0.0), (0.0, 0.0)])
+    gpolygon = GeoPolygon.from_shapely(polygon)
+    assert gpolygon == expected
+
+
 def test_geopolygon_linear_rings():
     polygon = GeoPolygon(
         # Outline
@@ -977,6 +984,13 @@ def test_geolinestring_centroid(geolinestring):
     assert geolinestring.centroid == Coordinate(0.6666667, 0.3333333)
 
 
+def test_geolinestring_from_shapely():
+    expected = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 2.0)])
+    ls = shapely.geometry.LineString([(0.0, 0.0), (1.0, 1.0), (2.0, 2.0)])
+    gls = GeoLineString.from_shapely(ls)
+    assert gls == expected
+
+
 def test_geolinestring_from_wkt():
     wkt_str = 'LINESTRING (30.123 10, 10 30.123, 40 40)'
     assert GeoLineString.from_wkt(wkt_str) == GeoLineString([
@@ -1038,6 +1052,13 @@ def test_geopoint_repr(geopoint):
 def test_geopoint_bounding_coords(geopoint):
     with pytest.raises(NotImplementedError):
         _ = geopoint.bounding_coords()
+
+
+def test_geopoint_from_shapely():
+    expected = GeoPoint(Coordinate(0.0, 0.0))
+    point = shapely.geometry.Point(0.0, 0.0)
+    gpoint = GeoPoint.from_shapely(point)
+    assert gpoint == expected
 
 
 def test_geopoint_to_geojson(geopoint):
