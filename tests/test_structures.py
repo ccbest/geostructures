@@ -398,6 +398,39 @@ def test_geopolygon_bounding_coords(geopolygon):
     assert geopolygon.bounding_coords() == geopolygon.bounding_coords()
 
 
+def test_geopolygon_from_geojson():
+    gjson = {
+        'type': 'Feature',
+        'geometry': {
+            'type': 'Polygon',
+            'coordinates': [
+                [[0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [0.0, 0.0]],
+                [[0.25, 0.25], [0.5, 0.5], [1.0, 0.25], [0.25, 0.25]],
+            ]
+        },
+        'properties': {'example': 'prop'}
+    }
+    expected = GeoPolygon(
+        [Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)],
+        GeoPolygon([Coordinate(0.25, 0.25), Coordinate(0.5, 0.5), Coordinate(1.0, 0.25), Coordinate(0.25, 0.25)]),
+        properties={'example': 'prop'}
+    )
+    assert GeoPolygon.from_geojson(gjson) == expected
+
+    with pytest.raises(ValueError):
+        bad_gjson = {
+            'type': 'Feature',
+            'geometry': {
+                'type': 'Error',
+                'coordinates': [
+                    [[0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [0.0, 0.0]],
+                ]
+            },
+            'properties': {'example': 'prop'}
+        }
+        GeoPolygon.from_geojson(bad_gjson)
+
+
 def test_polygon_to_geojson(geopolygon):
     shapely.geometry.shape(geopolygon.to_geojson()['geometry'])
 
@@ -942,6 +975,35 @@ def test_geolinestring_bounding_coords(geolinestring):
     ]
 
 
+def test_geolinestring_from_geojson():
+    gls = {
+        'type': 'Feature',
+        'geometry': {
+            'type': 'LineString',
+            'coordinates': [[0.0, 0.0], [1.0, 1.5], [2.0, 2.0]]
+        },
+        'properties': {'example': 'prop'}
+    }
+    expected = GeoLineString(
+        [Coordinate(0.0, 0.0), Coordinate(1.0, 1.5), Coordinate(2.0, 2.0)],
+        properties={'example': 'prop'}
+    )
+    assert GeoLineString.from_geojson(gls) == expected
+
+    with pytest.raises(ValueError):
+        bad_gjson = {
+            'type': 'Feature',
+            'geometry': {
+                'type': 'Error',
+                'coordinates': [
+                    [0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [0.0, 0.0],
+                ]
+            },
+            'properties': {'example': 'prop'}
+        }
+        GeoLineString.from_geojson(bad_gjson)
+
+
 def test_geolinestring_linear_rings(geolinestring):
     with pytest.raises(NotImplementedError):
         _ = geolinestring.linear_rings()
@@ -1052,6 +1114,33 @@ def test_geopoint_repr(geopoint):
 def test_geopoint_bounding_coords(geopoint):
     with pytest.raises(NotImplementedError):
         _ = geopoint.bounding_coords()
+
+
+def test_geopoint_from_geojson():
+    gpoint = {
+        'type': 'Feature',
+        'geometry': {
+            'type': 'Point',
+            'coordinates': [1.0, 0.0]
+        },
+        'properties': {'example': 'prop'}
+    }
+    expected = GeoPoint(
+        Coordinate(1.0, 0.0),
+        properties={'example': 'prop'}
+    )
+    assert GeoPoint.from_geojson(gpoint) == expected
+
+    with pytest.raises(ValueError):
+        bad_gjson = {
+            'type': 'Feature',
+            'geometry': {
+                'type': 'Error',
+                'coordinates': [0.0, 0.0],
+            },
+            'properties': {'example': 'prop'}
+        }
+        GeoPoint.from_geojson(bad_gjson)
 
 
 def test_geopoint_from_shapely():

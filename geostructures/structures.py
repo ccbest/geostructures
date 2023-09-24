@@ -532,6 +532,32 @@ class GeoPolygon(GeoShape):
         return True
 
     @classmethod
+    def from_geojson(cls, gjson: Dict[str, Any]):
+        """
+        Creates a GeoPolygon from a GeoJSON polygon.
+
+        Args:
+            gjson:
+                A geojson dictionary
+
+        Returns:
+
+        """
+        geom = gjson.get('geometry', {})
+        if not geom.get('type') == 'Polygon':
+            raise ValueError(
+                f'Geometry represents a {geom.get("type")}; expected Polygon.'
+            )
+
+        rings = [[Coordinate(x, y) for x, y in ring] for ring in geom.get('coordinates', [])]
+        properties = gjson.get('properties')
+        holes = []
+        if len(rings) > 1:
+            holes = [GeoPolygon(ring) for ring in rings[1:]]
+
+        return GeoPolygon(rings[0], *holes, properties=properties)
+
+    @classmethod
     def from_shapely(
         cls,
         polygon
@@ -1132,6 +1158,28 @@ class GeoLineString(GeoShape):
         return coord in self.coords
 
     @classmethod
+    def from_geojson(cls, gjson: Dict[str, Any]):
+        """
+        Creates a GeoLineString from a GeoJSON LineString.
+
+        Args:
+            gjson:
+                A geojson object, representing a linestring
+
+        Returns:
+            GeoLineString
+        """
+        geom = gjson.get('geometry', {})
+        if not geom.get('type') == 'LineString':
+            raise ValueError(
+                f'Geometry represents a {geom.get("type")}; expected LineString.'
+            )
+
+        coords = [Coordinate(x, y) for x, y in geom.get('coordinates', [])]
+        properties = gjson.get('properties')
+        return GeoLineString(coords, properties=properties)
+
+    @classmethod
     def from_shapely(cls, linestring):
         """
         Creates a GeoLinestring from a shapely Linestring
@@ -1249,6 +1297,29 @@ class GeoPoint(GeoShape):
     def contains_coordinate(self, coord: Coordinate) -> bool:
         # Points don't contain anything, even themselves
         return False
+
+    @classmethod
+    def from_geojson(cls, gjson: Dict[str, Any]):
+        """
+        Creates a GeoPoint from a GeoJSON point.
+
+        Args:
+            gjson:
+                A geojson dictionary
+
+        Returns:
+            GeoPoint
+        """
+        geom = gjson.get('geometry', {})
+        if not geom.get('type') == 'Point':
+            raise ValueError(
+                f'Geometry represents a {geom.get("type")}; expected Point.'
+            )
+
+        coordinates = geom['coordinates']
+        coord = Coordinate(coordinates[0], coordinates[1])
+        properties = gjson.get('properties')
+        return GeoPoint(coord, properties=properties)
 
     @classmethod
     def from_shapely(cls, point):
