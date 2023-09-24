@@ -532,6 +532,24 @@ class GeoPolygon(GeoShape):
         return True
 
     @classmethod
+    def from_shapely(
+        cls,
+        polygon
+    ):
+        """
+        Creates a GeoPolygon from a shapely polygon
+
+        Args:
+            polygon:
+                A shapely polygon
+
+        Returns:
+            GeoPolygon
+        """
+
+        return cls.from_wkt(polygon.wkt)
+
+    @classmethod
     def from_wkt(
         cls,
         wkt_str: str,
@@ -1114,6 +1132,19 @@ class GeoLineString(GeoShape):
         return coord in self.coords
 
     @classmethod
+    def from_shapely(cls, linestring):
+        """
+        Creates a GeoLinestring from a shapely Linestring
+        Args:
+            linestring:
+                A shapely linestring
+
+        Returns:
+            GeoLinestring
+        """
+        return cls.from_wkt(linestring.wkt)
+
+    @classmethod
     def from_wkt(
         cls,
         wkt_str: str,
@@ -1159,6 +1190,11 @@ class GeoLineString(GeoShape):
 
     def to_polygon(self, **kwargs):
         return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
+
+    def to_shapely(self):
+        import shapely
+
+        return shapely.LineString([x.to_float() for x in self.coords])
 
     def to_wkt(self, **kwargs):
         bbox_str = self._linear_ring_to_wkt(self.bounding_coords(**kwargs))
@@ -1213,6 +1249,19 @@ class GeoPoint(GeoShape):
     def contains_coordinate(self, coord: Coordinate) -> bool:
         # Points don't contain anything, even themselves
         return False
+
+    @classmethod
+    def from_shapely(cls, point):
+        """
+        Creates a GeoPoint from a shapely Point
+        Args:
+            point:
+                A shapely Point
+
+        Returns:
+            GeoPoint
+        """
+        return cls.from_wkt(point.wkt)
 
     @classmethod
     def from_wkt(
