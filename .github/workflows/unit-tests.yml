@@ -30,3 +30,7 @@ jobs:
       - name: Pytest
         run: |
           coverage run --source geostructures/ -m pytest && coverage report -m --fail-under 99
+
+      - name: MyPy
+        run: |
+          mypy geostructures --ignore-missing-imports

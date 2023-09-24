@@ -37,6 +37,7 @@ setuptools.setup(
         include=('geostructures*', ),
         exclude=('*tests', 'tests*')
     ),
+    package_data={"geostructures": ["py.typed"]},
     classifiers=[
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent"
