@@ -89,7 +89,7 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
         """
 
         if gjson.get('type') != 'FeatureCollection':
-            raise ValueError(f'Malformed GeoJSON; expected FeatureCollection')
+            raise ValueError('Malformed GeoJSON; expected FeatureCollection')
 
         shapes = []
         for feature in gjson.get('features', []):
