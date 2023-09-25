@@ -4,9 +4,10 @@ Module for sequences of GeoShapes
 
 __all__ = ['FeatureCollection', 'ShapeCollection', 'Track']
 
-from collections import defaultdict
-from datetime import datetime, time, timedelta
+from collections import defaultdict, Counter
+from datetime import date, datetime, time, timedelta
 from functools import cached_property
+from pathlib import Path
 from typing import cast, Any, List, Dict, Optional, Union
 
 import numpy as np
@@ -245,6 +246,107 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
                 } for x in self.geoshapes
             ]
         )
+
+    def to_shapefile(
+        self,
+        filepath: Union[str, Path],
+        include_properties: Optional[List[str]] = None,
+    ) -> None:
+        """
+        Writes the collection to a ESRI shapefile. Note that shape"file"s actually
+        consist of several files, so you should provide a directory rather than
+        a file name.
+
+        Requires the pyshp library (canonically imported as 'shapefile').
+
+        Args:
+            filepath:
+                The **directory** to save files to.
+
+            include_properties: (Default None)
+                A list of properties to include. If None, all properties will be included.
+
+        Returns:
+            None
+        """
+        import shapefile
+
+        def _convert(val: Any):
+            """Convert date/datetime values to string"""
+            if isinstance(val, (datetime, date)):
+                return val.isoformat()
+            return val
+
+        if not (
+            all(isinstance(shape, GeoPoint) for shape in self.geoshapes) or
+            all(isinstance(shape, GeoLineString) for shape in self.geoshapes) or
+            all(not isinstance(shape, (GeoPoint, GeoLineString)) for shape in self.geoshapes)
+        ):
+            raise ValueError(
+                'ESRI shapefiles may only contain one geometry type '
+                '(points, polygons, or linestrings).'
+            )
+
+        path: Path = Path(filepath)
+        if not path.parent.exists():
+            raise ValueError(f'Directory {path.parent} not found.')
+
+        path.mkdir()
+
+        # 2-Tuples of properties and their datatypes
+        _types = set(
+            (_key, type(_val)) for x in self.geoshapes
+            for _key, _val in x.properties.items()
+            if (not include_properties) or _key in include_properties
+        )
+
+        if _types:
+            # Check to make sure data types are consistent
+            c = Counter(x[0] for x in _types)
+            if c.most_common(1)[0][1] > 1:
+                # Just log a warning - still want to try to write the file
+                self.logger.warning('Conflicting data types found in properties')
+
+        typemap = {k: v for k, v in _types}
+        writer = shapefile.Writer(str(path / path.name))
+
+        # Declare fields
+        for field, _type in typemap.items():
+            if issubclass(_type, (float, int)):
+                writer.field(field, 'N')
+            elif issubclass(_type, bool):
+                writer.field(field, 'L')
+            else:
+                writer.field(field, 'C')
+
+        writer.field('ID', 'N')
+
+        for idx, shape in enumerate(self.geoshapes):
+            # Write out properties
+            writer.record(*[_convert(v) for k, v in shape.properties.items() if k in typemap], idx)
+
+            if isinstance(shape, GeoPoint):
+                writer.point(*shape.centroid.to_float())
+
+            elif isinstance(shape, GeoLineString):
+                writer.line([[list(x.to_float()) for x in shape.bounding_coords()]])
+
+            else:
+                writer.poly(
+                    [
+                        [list(coord.to_float()) for coord in ring]
+                        for ring in shape.linear_rings()
+                    ]
+                )
+
+        with open(str(path / f'{path.name}.prj'), 'w+') as f:
+            f.write(
+                'GEOGCS["GCS_WGS_1984",'
+                'DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],'
+                'PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]'
+            )
+
+        return
 
 
 class FeatureCollection(ShapeCollection):
