@@ -45,6 +45,5 @@ setuptools.setup(
     python_requires='>=3.6',
     install_requires=[
         'numpy>=1,<2',
-        'precisenumbers>=0.0.4,<1.0',
     ],
 )
