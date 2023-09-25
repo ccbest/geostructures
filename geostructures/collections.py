@@ -70,6 +70,7 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
         gjson: Dict[str, Any],
         time_start_property: str = 'datetime_start',
         time_end_property: str = 'datetime_end',
+        time_format: Optional[str] = None,
     ):
         """
         Creates a Track or FeatureCollection from a GeoJSON FeatureCollection.
@@ -83,6 +84,9 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
 
             time_end_property:
                 The name of the property describing the end time (if available)
+
+            time_format: (Optional)
+                The format of the timestamps in the above time fields.
 
         Returns:
             Track or FeatureCollection

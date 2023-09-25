@@ -417,6 +417,23 @@ def test_geopolygon_from_geojson():
     )
     assert GeoPolygon.from_geojson(gjson) == expected
 
+    # Test custom timestamp format
+    gjson = {
+        'type': 'Feature',
+        'geometry': {
+            'type': 'Polygon',
+            'coordinates': [
+                [[0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [0.0, 0.0]],
+            ]
+        },
+        'properties': {'datetime_start': '2020-01-01'}
+    }
+    expected = GeoPolygon(
+        [Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)],
+        dt=datetime(2020, 1, 1)
+    )
+    assert GeoPolygon.from_geojson(gjson, time_format='%Y-%m-%d') == expected
+
     with pytest.raises(ValueError):
         bad_gjson = {
             'type': 'Feature',

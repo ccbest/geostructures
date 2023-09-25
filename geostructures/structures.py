@@ -566,6 +566,7 @@ class GeoPolygon(GeoShape):
         gjson: Dict[str, Any],
         time_start_property: str = 'datetime_start',
         time_end_property: str = 'datetime_end',
+        time_format: Optional[str] = None,
     ):
         """
         Creates a GeoPolygon from a GeoJSON polygon.
@@ -580,8 +581,11 @@ class GeoPolygon(GeoShape):
             time_end_property:
                 The geojson property containing hte ned time, if available
 
-        Returns:
+            time_format: (Optional)
+                The format of the timestamps in the above time fields.
 
+        Returns:
+            GeoPolygon
         """
         geom = gjson.get('geometry', {})
         if not geom.get('type') == 'Polygon':
@@ -595,7 +599,12 @@ class GeoPolygon(GeoShape):
             holes = [GeoPolygon(ring) for ring in rings[1:]]
 
         properties = gjson.get('properties', {})
-        dt = _get_dt_from_geojson_props(properties, time_start_property, time_end_property)
+        dt = _get_dt_from_geojson_props(
+            properties,
+            time_start_property,
+            time_end_property,
+            time_format
+        )
 
         return GeoPolygon(rings[0], *holes, dt=dt, properties=properties)
 
@@ -1205,6 +1214,7 @@ class GeoLineString(GeoShape):
         gjson: Dict[str, Any],
         time_start_property: str = 'datetime_start',
         time_end_property: str = 'datetime_end',
+        time_format: Optional[str] = None,
     ):
         """
         Creates a GeoLineString from a GeoJSON LineString.
@@ -1219,6 +1229,9 @@ class GeoLineString(GeoShape):
             time_end_property:
                 The geojson property containing hte ned time, if available
 
+            time_format: (Optional)
+                The format of the timestamps in the above time fields.
+
         Returns:
             GeoLineString
         """
@@ -1230,7 +1243,12 @@ class GeoLineString(GeoShape):
 
         coords = [Coordinate(x, y) for x, y in geom.get('coordinates', [])]
         properties = gjson.get('properties', {})
-        dt = _get_dt_from_geojson_props(properties, time_start_property, time_end_property)
+        dt = _get_dt_from_geojson_props(
+            properties,
+            time_start_property,
+            time_end_property,
+            time_format
+        )
         return GeoLineString(coords, dt=dt, properties=properties)
 
     @classmethod
@@ -1358,6 +1376,7 @@ class GeoPoint(GeoShape):
         gjson: Dict[str, Any],
         time_start_property: str = 'datetime_start',
         time_end_property: str = 'datetime_end',
+        time_format: Optional[str] = None,
     ):
         """
         Creates a GeoPoint from a GeoJSON point.
@@ -1372,6 +1391,9 @@ class GeoPoint(GeoShape):
             time_end_property:
                 The geojson property containing hte ned time, if available
 
+            time_format: (Optional)
+                The format of the timestamps in the above time fields.
+
         Returns:
             GeoPoint
         """
@@ -1384,7 +1406,12 @@ class GeoPoint(GeoShape):
         coordinates = geom['coordinates']
         coord = Coordinate(coordinates[0], coordinates[1])
         properties = gjson.get('properties', {})
-        dt = _get_dt_from_geojson_props(properties, time_start_property, time_end_property)
+        dt = _get_dt_from_geojson_props(
+            properties,
+            time_start_property,
+            time_end_property,
+            time_format
+        )
 
         return GeoPoint(coord, dt=dt, properties=properties)
 
