@@ -37,6 +37,35 @@ _RE_POLYGON_WKT = re.compile(r'POLYGON\s?\(' + _RE_COORD_GROUPS_STR + r'\)')
 _RE_LINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_COORD_GROUPS_STR + r'\s?')
 
 
+def _get_dt_from_geojson_props(
+    rec: Dict[str, Any],
+    time_start_field: str = 'datetime_start',
+    time_end_field: str = 'datetime_end',
+    time_format: Optional[str] = None
+) -> Union[datetime, TimeInterval, None]:
+    """Grabs datetime data and returns appropriate struct"""
+    def _convert(dt: Optional[str], _format: Optional[str] = None):
+        if not dt:
+            return
+
+        if _format:
+            return datetime.strptime(dt, _format)
+
+        return datetime.fromisoformat(dt)
+
+    # Pop the field so it doesn't remain in properties
+    dt_start = _convert(rec.pop(time_start_field, None), time_format)
+    dt_end = _convert(rec.pop(time_end_field, None), time_format)
+
+    if dt_start is None and dt_end is None:
+        return None
+
+    if not (dt_start and dt_end) or dt_start == dt_end:
+        return dt_start or dt_end
+
+    return TimeInterval(dt_start, dt_end)
+
+
 def _parse_wkt_coord_group(group: str) -> List[Coordinate]:
     """Parse wkt coordinate list into Coordinate objects"""
     return [
@@ -530,6 +559,72 @@ class GeoPolygon(GeoShape):
                 return False
 
         return True
+
+    @classmethod
+    def from_geojson(
+        cls,
+        gjson: Dict[str, Any],
+        time_start_property: str = 'datetime_start',
+        time_end_property: str = 'datetime_end',
+        time_format: Optional[str] = None,
+    ):
+        """
+        Creates a GeoPolygon from a GeoJSON polygon.
+
+        Args:
+            gjson:
+                A geojson dictionary
+
+            time_start_property:
+                The geojson property containing the start time, if available
+
+            time_end_property:
+                The geojson property containing hte ned time, if available
+
+            time_format: (Optional)
+                The format of the timestamps in the above time fields.
+
+        Returns:
+            GeoPolygon
+        """
+        geom = gjson.get('geometry', {})
+        if not geom.get('type') == 'Polygon':
+            raise ValueError(
+                f'Geometry represents a {geom.get("type")}; expected Polygon.'
+            )
+
+        rings = [[Coordinate(x, y) for x, y in ring] for ring in geom.get('coordinates', [])]
+        holes = []
+        if len(rings) > 1:
+            holes = [GeoPolygon(ring) for ring in rings[1:]]
+
+        properties = gjson.get('properties', {})
+        dt = _get_dt_from_geojson_props(
+            properties,
+            time_start_property,
+            time_end_property,
+            time_format
+        )
+
+        return GeoPolygon(rings[0], *holes, dt=dt, properties=properties)
+
+    @classmethod
+    def from_shapely(
+        cls,
+        polygon
+    ):
+        """
+        Creates a GeoPolygon from a shapely polygon
+
+        Args:
+            polygon:
+                A shapely polygon
+
+        Returns:
+            GeoPolygon
+        """
+
+        return cls.from_wkt(polygon.wkt)
 
     @classmethod
     def from_wkt(
@@ -1114,6 +1209,62 @@ class GeoLineString(GeoShape):
         return coord in self.coords
 
     @classmethod
+    def from_geojson(
+        cls,
+        gjson: Dict[str, Any],
+        time_start_property: str = 'datetime_start',
+        time_end_property: str = 'datetime_end',
+        time_format: Optional[str] = None,
+    ):
+        """
+        Creates a GeoLineString from a GeoJSON LineString.
+
+        Args:
+            gjson:
+                A geojson object, representing a linestring
+
+            time_start_property:
+                The geojson property containing the start time, if available
+
+            time_end_property:
+                The geojson property containing hte ned time, if available
+
+            time_format: (Optional)
+                The format of the timestamps in the above time fields.
+
+        Returns:
+            GeoLineString
+        """
+        geom = gjson.get('geometry', {})
+        if not geom.get('type') == 'LineString':
+            raise ValueError(
+                f'Geometry represents a {geom.get("type")}; expected LineString.'
+            )
+
+        coords = [Coordinate(x, y) for x, y in geom.get('coordinates', [])]
+        properties = gjson.get('properties', {})
+        dt = _get_dt_from_geojson_props(
+            properties,
+            time_start_property,
+            time_end_property,
+            time_format
+        )
+        return GeoLineString(coords, dt=dt, properties=properties)
+
+    @classmethod
+    def from_shapely(cls, linestring):
+        """
+        Creates a GeoLinestring from a shapely Linestring
+        Args:
+            linestring:
+                A shapely linestring
+
+        Returns:
+            GeoLinestring
+        """
+        return cls.from_wkt(linestring.wkt)
+
+    @classmethod
     def from_wkt(
         cls,
         wkt_str: str,
@@ -1159,6 +1310,11 @@ class GeoLineString(GeoShape):
 
     def to_polygon(self, **kwargs):
         return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
+
+    def to_shapely(self):
+        import shapely
+
+        return shapely.LineString([x.to_float() for x in self.coords])
 
     def to_wkt(self, **kwargs):
         bbox_str = self._linear_ring_to_wkt(self.bounding_coords(**kwargs))
@@ -1213,6 +1369,64 @@ class GeoPoint(GeoShape):
     def contains_coordinate(self, coord: Coordinate) -> bool:
         # Points don't contain anything, even themselves
         return False
+
+    @classmethod
+    def from_geojson(
+        cls,
+        gjson: Dict[str, Any],
+        time_start_property: str = 'datetime_start',
+        time_end_property: str = 'datetime_end',
+        time_format: Optional[str] = None,
+    ):
+        """
+        Creates a GeoPoint from a GeoJSON point.
+
+        Args:
+            gjson:
+                A geojson dictionary
+
+            time_start_property:
+                The geojson property containing the start time, if available
+
+            time_end_property:
+                The geojson property containing hte ned time, if available
+
+            time_format: (Optional)
+                The format of the timestamps in the above time fields.
+
+        Returns:
+            GeoPoint
+        """
+        geom = gjson.get('geometry', {})
+        if not geom.get('type') == 'Point':
+            raise ValueError(
+                f'Geometry represents a {geom.get("type")}; expected Point.'
+            )
+
+        coordinates = geom['coordinates']
+        coord = Coordinate(coordinates[0], coordinates[1])
+        properties = gjson.get('properties', {})
+        dt = _get_dt_from_geojson_props(
+            properties,
+            time_start_property,
+            time_end_property,
+            time_format
+        )
+
+        return GeoPoint(coord, dt=dt, properties=properties)
+
+    @classmethod
+    def from_shapely(cls, point):
+        """
+        Creates a GeoPoint from a shapely Point
+        Args:
+            point:
+                A shapely Point
+
+        Returns:
+            GeoPoint
+        """
+        return cls.from_wkt(point.wkt)
 
     @classmethod
     def from_wkt(

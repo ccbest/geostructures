@@ -169,11 +169,11 @@ def _get_zoom(lats: List[float], lons: List[float]) -> float:
     Returns:
         float
     """
-    return np.interp(
+    return float(np.interp(
         x=(max(lats) - min(lats)) * (max(lons) - min(lons)),
         xp=[0, 5 ** -10, 4 ** -10, 3 ** -10, 2 ** -10, 1 ** -10, 1 ** -5],
         fp=[20, 15, 14, 13, 12, 7, 5],
-    )
+    ))
 
 
 def draw_collection(

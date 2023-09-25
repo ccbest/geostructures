@@ -398,6 +398,56 @@ def test_geopolygon_bounding_coords(geopolygon):
     assert geopolygon.bounding_coords() == geopolygon.bounding_coords()
 
 
+def test_geopolygon_from_geojson():
+    gjson = {
+        'type': 'Feature',
+        'geometry': {
+            'type': 'Polygon',
+            'coordinates': [
+                [[0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [0.0, 0.0]],
+                [[0.25, 0.25], [0.5, 0.5], [1.0, 0.25], [0.25, 0.25]],
+            ]
+        },
+        'properties': {'example': 'prop'}
+    }
+    expected = GeoPolygon(
+        [Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)],
+        GeoPolygon([Coordinate(0.25, 0.25), Coordinate(0.5, 0.5), Coordinate(1.0, 0.25), Coordinate(0.25, 0.25)]),
+        properties={'example': 'prop'}
+    )
+    assert GeoPolygon.from_geojson(gjson) == expected
+
+    # Test custom timestamp format
+    gjson = {
+        'type': 'Feature',
+        'geometry': {
+            'type': 'Polygon',
+            'coordinates': [
+                [[0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [0.0, 0.0]],
+            ]
+        },
+        'properties': {'datetime_start': '2020-01-01'}
+    }
+    expected = GeoPolygon(
+        [Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)],
+        dt=datetime(2020, 1, 1)
+    )
+    assert GeoPolygon.from_geojson(gjson, time_format='%Y-%m-%d') == expected
+
+    with pytest.raises(ValueError):
+        bad_gjson = {
+            'type': 'Feature',
+            'geometry': {
+                'type': 'Error',
+                'coordinates': [
+                    [[0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [0.0, 0.0]],
+                ]
+            },
+            'properties': {'example': 'prop'}
+        }
+        GeoPolygon.from_geojson(bad_gjson)
+
+
 def test_polygon_to_geojson(geopolygon):
     shapely.geometry.shape(geopolygon.to_geojson()['geometry'])
 
@@ -416,6 +466,13 @@ def test_geopolygon_circumscribing_rectangle(geopolygon):
         Coordinate(1.0, 0.0),
         dt=default_test_datetime
     )
+
+
+def test_geopolygon_from_shapely():
+    expected = GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)])
+    polygon = shapely.geometry.Polygon([(0.0, 0.0), (1.0, 1.0), (2.0, 0.0), (0.0, 0.0)])
+    gpolygon = GeoPolygon.from_shapely(polygon)
+    assert gpolygon == expected
 
 
 def test_geopolygon_linear_rings():
@@ -935,6 +992,35 @@ def test_geolinestring_bounding_coords(geolinestring):
     ]
 
 
+def test_geolinestring_from_geojson():
+    gls = {
+        'type': 'Feature',
+        'geometry': {
+            'type': 'LineString',
+            'coordinates': [[0.0, 0.0], [1.0, 1.5], [2.0, 2.0]]
+        },
+        'properties': {'example': 'prop'}
+    }
+    expected = GeoLineString(
+        [Coordinate(0.0, 0.0), Coordinate(1.0, 1.5), Coordinate(2.0, 2.0)],
+        properties={'example': 'prop'}
+    )
+    assert GeoLineString.from_geojson(gls) == expected
+
+    with pytest.raises(ValueError):
+        bad_gjson = {
+            'type': 'Feature',
+            'geometry': {
+                'type': 'Error',
+                'coordinates': [
+                    [0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [0.0, 0.0],
+                ]
+            },
+            'properties': {'example': 'prop'}
+        }
+        GeoLineString.from_geojson(bad_gjson)
+
+
 def test_geolinestring_linear_rings(geolinestring):
     with pytest.raises(NotImplementedError):
         _ = geolinestring.linear_rings()
@@ -975,6 +1061,13 @@ def test_geolinestring_circumscribing_rectangle(geolinestring):
 
 def test_geolinestring_centroid(geolinestring):
     assert geolinestring.centroid == Coordinate(0.6666667, 0.3333333)
+
+
+def test_geolinestring_from_shapely():
+    expected = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 2.0)])
+    ls = shapely.geometry.LineString([(0.0, 0.0), (1.0, 1.0), (2.0, 2.0)])
+    gls = GeoLineString.from_shapely(ls)
+    assert gls == expected
 
 
 def test_geolinestring_from_wkt():
@@ -1038,6 +1131,40 @@ def test_geopoint_repr(geopoint):
 def test_geopoint_bounding_coords(geopoint):
     with pytest.raises(NotImplementedError):
         _ = geopoint.bounding_coords()
+
+
+def test_geopoint_from_geojson():
+    gpoint = {
+        'type': 'Feature',
+        'geometry': {
+            'type': 'Point',
+            'coordinates': [1.0, 0.0]
+        },
+        'properties': {'example': 'prop'}
+    }
+    expected = GeoPoint(
+        Coordinate(1.0, 0.0),
+        properties={'example': 'prop'}
+    )
+    assert GeoPoint.from_geojson(gpoint) == expected
+
+    with pytest.raises(ValueError):
+        bad_gjson = {
+            'type': 'Feature',
+            'geometry': {
+                'type': 'Error',
+                'coordinates': [0.0, 0.0],
+            },
+            'properties': {'example': 'prop'}
+        }
+        GeoPoint.from_geojson(bad_gjson)
+
+
+def test_geopoint_from_shapely():
+    expected = GeoPoint(Coordinate(0.0, 0.0))
+    point = shapely.geometry.Point(0.0, 0.0)
+    gpoint = GeoPoint.from_shapely(point)
+    assert gpoint == expected
 
 
 def test_geopoint_to_geojson(geopoint):
