@@ -87,6 +87,52 @@ def test_collection_from_geopandas():
     assert col == new_col
 
 
+def test_collection_from_geojson():
+    gjson = {
+        'type': 'FeatureCollection',
+        'features': [
+            {
+                'type': 'Feature',
+                'geometry': {
+                    'type': 'Polygon',
+                    'coordinates': [[[0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [0.0, 0.0]]]
+                },
+                'properties': {'datetime_start': '2020-01-01T00:00:00+00:00'},
+                'id': 0
+            },
+            {
+                'type': 'Feature',
+                'geometry': {'type': 'Point', 'coordinates': [0.0, 2.0]},
+                'properties': {
+                    'datetime_start': '2020-01-01T00:00:00+00:00',
+                    'datetime_end': '2020-01-02T00:00:00+00:00'
+                },
+                'id': 1
+            },
+            {
+                'type': 'Feature',
+                'geometry': {'type': 'LineString', 'coordinates': [[0.0, 0.0], [1.0, 1.0]]},
+                'properties': {'datetime_end': '2020-01-02T00:00:00+00:00'},
+                'id': 2
+            }
+        ]
+    }
+    expected_shapes = [
+        GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)], dt=datetime(2020, 1, 1)),
+        GeoPoint(Coordinate(0.0, 2.0), dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))),
+        GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)], dt=datetime(2020, 1, 2))
+    ]
+    expected = FeatureCollection(expected_shapes)
+    assert FeatureCollection.from_geojson(gjson) == expected
+
+    with pytest.raises(ValueError):
+        gjson = {
+            'type': 'Not a FeatureCollection',
+            'features': []
+        }
+        _ = FeatureCollection.from_geojson(gjson)
+
+
 def test_collection_from_shapely():
     gls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 2.0)])
     gpolygon = GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)])
