@@ -42,7 +42,7 @@ def _get_dt_from_geojson_props(
     time_start_field: str = 'datetime_start',
     time_end_field: str = 'datetime_end',
     time_format: Optional[str] = None
-) -> Union[datetime, TimeInterval]:
+) -> Union[datetime, TimeInterval, None]:
     """Grabs datetime data and returns appropriate struct"""
     def _convert(dt: Optional[str], _format: Optional[str] = None):
         if not dt:
