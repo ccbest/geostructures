@@ -7,7 +7,7 @@ __all__ = ['FeatureCollection', 'ShapeCollection', 'Track']
 from collections import defaultdict
 from datetime import datetime, time, timedelta
 from functools import cached_property
-from typing import cast, List, Dict, Optional, Union
+from typing import cast, Any, List, Dict, Optional, Union
 
 import numpy as np
 
@@ -63,6 +63,55 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
         points += [x.centroid.to_float() for x in _points]
         hull = spatial.ConvexHull(points)
         return GeoPolygon([Coordinate(*points[x]) for x in hull.vertices])
+
+    @classmethod
+    def from_geojson(
+        cls,
+        gjson: Dict[str, Any],
+        time_start_property: str = 'datetime_start',
+        time_end_property: str = 'datetime_end',
+    ):
+        """
+        Creates a Track or FeatureCollection from a GeoJSON FeatureCollection.
+
+        Args:
+            gjson:
+                A geojson object (dictionary)
+
+            time_start_property:
+                The name of the property describing the start time (if available)
+
+            time_end_property:
+                The name of the property describing the end time (if available)
+
+        Returns:
+            Track or FeatureCollection
+        """
+
+        if gjson.get('type') != 'FeatureCollection':
+            raise ValueError(f'Malformed GeoJSON; expected FeatureCollection')
+
+        shapes = []
+        for feature in gjson.get('features', []):
+            geom_type = feature.get('geometry', {}).get('type')
+            if geom_type == 'Point':
+                shapes.append(
+                    GeoPoint.from_geojson(feature, time_start_property, time_end_property)
+                )
+                continue
+
+            if geom_type == 'LineString':
+                shapes.append(
+                    GeoLineString.from_geojson(feature, time_start_property, time_end_property)
+                )
+                continue
+
+            if geom_type == 'Polygon':
+                shapes.append(
+                    GeoPolygon.from_geojson(feature, time_start_property, time_end_property)
+                )
+
+        return cls(shapes)
 
     @classmethod
     def from_geopandas(
