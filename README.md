@@ -219,3 +219,5 @@ https://github.com/ccbest/
 Jessica Moore (Sr. Data Scientist)\
 https://github.com/jessica-writes-code
 
+Richard Marshall (Data Scientist/SME)
+https://github.com/RichardMarshall13
