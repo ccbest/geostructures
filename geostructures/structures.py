@@ -215,7 +215,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         """
         return [
             self.bounding_coords(**kwargs),
-            *[shape.bounding_coords() for shape in self.holes]
+            *[list(reversed(shape.bounding_coords())) for shape in self.holes]
         ]
 
     def set_property(self, key: str, value: Any):
@@ -1122,14 +1122,14 @@ class GeoRing(GeoShape):
             # Shape is really a circle with hole
             return [
                 [*outer_bounds, outer_bounds[0]],
-                [*inner_bounds, inner_bounds[0]],
-                *[shape.bounding_coords(**kwargs) for shape in self.holes]
+                list(reversed([*inner_bounds, inner_bounds[0]])),
+                *[list(reversed(shape.bounding_coords(**kwargs))) for shape in self.holes]
             ]
 
         # Is self-closing
         return [
             [*outer_bounds, *inner_bounds[::-1], outer_bounds[0]],
-            *[shape.bounding_coords(**kwargs) for shape in self.holes]
+            *[list(reversed(shape.bounding_coords(**kwargs))) for shape in self.holes]
         ]
 
     def to_polygon(self, **kwargs):
