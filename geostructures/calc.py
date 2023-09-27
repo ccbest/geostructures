@@ -141,6 +141,73 @@ def inverse_haversine_radians(
     return Coordinate(final_lon, final_lat)
 
 
+def test_intersection(
+    vertices_a: List[Tuple[Coordinate, Coordinate]],
+    vertices_b: List[Tuple[Coordinate, Coordinate]],
+):
+
+    class _Event:
+        def __init__(
+                self,
+                x: float,
+                is_start: bool,
+                segment: Tuple[Coordinate, Coordinate],
+                group: str
+        ):
+            self.x = x
+            self.group = group
+            self.is_start = is_start
+            self.segment = segment
+
+        def __lt__(self, other):
+            return self.x < other.x
+
+        def __hash__(self):
+            return hash((self.segment, self.group))
+
+        def __eq__(self, other):
+            return self.segment == other.segment and self.group == other.group
+
+    def _create_events(vertices, group):
+        _events = []
+        for vertex in vertices:
+            if vertex[0].latitude > vertex[1].latitude:
+                vertex = (vertex[1], vertex[0])
+
+            _events += [
+                _Event(vertex[0].latitude, vertex[0].latitude <= vertex[1].latitude, vertex, group),
+                _Event(vertex[1].latitude, vertex[1].latitude <= vertex[0].latitude, vertex, group)
+            ]
+        return _events
+
+    events = _create_events(vertices_a, 'a')
+    events += _create_events(vertices_b, 'b')
+
+    events.sort()
+    active_events = set()
+    for event in events:
+        if not event.is_start:
+            active_events.remove(event)
+            continue
+
+        # All vertices belong to same group
+        if len(set(x.group for x in active_events)) <= 1:
+            active_events.add(event)
+            continue
+
+        for active_event in active_events:
+            if event.group == active_event.group:
+                continue
+
+            intersection = find_line_intersection(active_event.segment, event.segment)
+            if intersection and not intersection[1]:
+                return True
+
+        active_events.add(event)
+
+    return False
+
+
 def rotate_coordinates(
         coords: List[Coordinate],
         origin: Coordinate,
