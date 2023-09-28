@@ -70,9 +70,9 @@ def test_coordinate_from_dms():
 
 
 def test_coordinate_to_qdms():
-    assert Coordinate(0., 0.).to_qdms() == ('N000000000', 'E00000000')
+    assert Coordinate(-0.118092, 51.509865).to_qdms() == ('E000070513', 'N51303551')
 
 
 def test_coordinate_from_qdms():
-    assert Coordinate.from_qdms('N000000000', 'E00000000') == Coordinate(0., 0.)
+    assert Coordinate.from_qdms('E000070513', 'N51303551') == Coordinate(-0.118092, 51.509865)
 
