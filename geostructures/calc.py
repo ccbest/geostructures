@@ -144,9 +144,30 @@ def inverse_haversine_radians(
 def test_intersection(
     vertices_a: List[Tuple[Coordinate, Coordinate]],
     vertices_b: List[Tuple[Coordinate, Coordinate]],
-):
+) -> bool:
+    """
+    Tests whether two sets of vertices ever intersect. Uses the sweep line algorithm
+    to minimize the number of intersections calculated.
 
+    Args:
+        vertices_a:
+            The list of vertices from the first group/shape
+
+        vertices_b:
+            The list of vertices from the second group/shape
+
+    Returns:
+        bool
+    """
     class _Event:
+        """
+        The start or stop of a segment. Each segment gets two events that hash to
+        the same value so they can be added and removed from the set of active
+        events.
+
+        Additionally stores the group id of the segment, so that segments from the same
+        group are not intersected.
+        """
         def __init__(
                 self,
                 x: float,
@@ -160,15 +181,20 @@ def test_intersection(
             self.segment = segment
 
         def __lt__(self, other):
+            """Required for sorting events"""
             return self.x < other.x
 
         def __hash__(self):
+            """Required for creating a set of events"""
             return hash((self.segment, self.group))
 
         def __eq__(self, other):
+            """Required for creating a set of events"""
             return self.segment == other.segment and self.group == other.group
 
     def _create_events(vertices, group):
+        """Creates 2x events per vertex from a list of vertices. Ensures the lesser x
+        value corresponds to the start event."""
         _events = []
         for vertex in vertices:
             if vertex[0].latitude > vertex[1].latitude:
