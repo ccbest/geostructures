@@ -1,8 +1,9 @@
 """ Geometric calculations for Coordinates and Geostructures """
 
-__all__ = [
+do_vertices_intersect = [
     'bearing_degrees', 'haversine_distance_meters', 'inverse_haversine_degrees',
-    'inverse_haversine_radians', 'rotate_coordinates', 'find_line_intersection'
+    'inverse_haversine_radians', 'rotate_coordinates', 'find_line_intersection',
+    'test_intersection'
 ]
 
 import math
@@ -141,7 +142,7 @@ def inverse_haversine_radians(
     return Coordinate(final_lon, final_lat)
 
 
-def test_intersection(
+def do_vertices_intersect(
     vertices_a: List[Tuple[Coordinate, Coordinate]],
     vertices_b: List[Tuple[Coordinate, Coordinate]],
 ) -> bool:

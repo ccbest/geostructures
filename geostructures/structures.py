@@ -13,14 +13,15 @@ from datetime import datetime
 import math
 import re
 import statistics
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
     inverse_haversine_radians,
     haversine_distance_meters,
     bearing_degrees,
-    find_line_intersection
+    find_line_intersection,
+    do_vertices_intersect
 )
 from geostructures.utils.functions import round_half_up
 from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
@@ -168,6 +169,62 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         """
         return f'({",".join(" ".join(coord.to_str()) for coord in ring)})'
 
+    def bounding_vertices(self, **kwargs) -> List[Tuple[Coordinate, Coordinate]]:
+        """
+        Returns a list of vertices, defined as a 2-tuple (start and end) of coordinates, that
+        represent the polygon's boundary.
+
+        Using discrete coordinates to represent a continuous curve implies some level of data
+        loss. You can minimize this loss by specifying k, which represents the number of
+        points drawn.
+
+        Does not include information about holes - see the vertices method.
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+
+        Returns:
+            A list of 2-tuples representing the vertices
+        """
+        bounding_coords = self.bounding_coords(**kwargs)
+        return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
+
+    def contains(self, shape: 'GeoShape', **kwargs) -> bool:
+        """
+        Tests whether this shape fully contains another one.
+
+        Args:
+            shape:
+                A geoshape
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+
+        Returns:
+            bool
+        """
+        # Make sure the times overlap, if present on both
+        if self.dt and shape.dt:
+            if not self.contains_time(shape.dt):
+                return False
+
+        s_vertices = self.vertices(**kwargs)
+        o_vertices = shape.vertices(**kwargs)
+        if do_vertices_intersect(
+            [x for vertex_ring in s_vertices for x in vertex_ring],
+            [x for vertex_ring in o_vertices for x in vertex_ring]
+        ):
+            # At least one vertex pair intersects - cannot be contained
+            return False
+
+        # No vertices intersect, so make sure one point along the boundary is
+        # contained
+        return o_vertices[0][0][0] in self
+
     def contains_time(self, time: Union[datetime, TimeInterval]) -> bool:
         """
         Test if the geoshape's time dimension fully contains either a date or a datetime.
@@ -195,6 +252,41 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             return False  # TimeIntervals cant be a subset of datetimes
 
         raise ValueError('Geoshapes may only contain datetimes and TimeIntervals.')
+
+    def intersects(self, shape: 'GeoShape', **kwargs) -> bool:
+        """
+        Tests whether another shape intersects this one.
+
+        Args:
+            shape:
+                A geoshape
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+
+        Returns:
+
+        """
+        # Make sure the times overlap, if present on both
+        if self.dt and shape.dt:
+            if not self.contains_time(shape.dt):
+                return False
+
+        s_vertices = self.vertices(**kwargs)
+        o_vertices = shape.vertices(**kwargs)
+        if do_vertices_intersect(
+            [x for vertex_ring in s_vertices for x in vertex_ring],
+            [x for vertex_ring in o_vertices for x in vertex_ring]
+        ):
+            # At least one vertex pair intersects
+            return True
+
+        # If no vertices intersect, one shape could still contain the other
+        # which counts as intersection. Have to use a point from the boundary
+        # because the centroid may fall in a hole
+        return o_vertices[0][0][0] in self or s_vertices[0][0][0] in shape
 
     def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
         """
@@ -303,6 +395,35 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             [self._linear_ring_to_wkt(ring) for ring in self.linear_rings(**kwargs)]
         )
         return f'POLYGON({bbox_str})'
+
+    def vertices(self, **kwargs) -> List[List[Tuple[Coordinate, Coordinate]]]:
+        """
+        Returns lists of vertices, defined as a 2-tuple (start and end) of coordinates, for the
+        outer boundary as well as holes in the polygon.
+
+        Operates similar to the `bounding_vertices` method but includes information about holes
+        in the shape.
+
+        Using discrete coordinates to represent a continuous curve implies some level of data
+        loss. You can minimize this loss by specifying k, which represents the number of
+        points drawn.
+
+        Does not include information about holes - see the vertices method.
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+
+        Returns:
+            Lists of 2-tuples representing vertices. The first list will always represent
+            the shape's boundary, and any following lists will represent holes.
+        """
+        rings = self.linear_rings(**kwargs)
+        return [
+            list(zip(ring, [*ring[1:], ring[0]]))
+            for ring in rings
+        ]
 
     @property
     @abstractmethod
@@ -1187,8 +1308,11 @@ class GeoLineString(GeoShape):
             ]
         )
 
-    def bounding_coords(self, **kwargs):
+    def bounding_coords(self, **_):
         return self.coords
+
+    def bounding_vertices(self, **_) -> List[Tuple[Coordinate, Coordinate]]:
+        return list(zip(self.bounding_coords(), self.bounding_coords()[1:]))
 
     def circumscribing_circle(self):
         centroid = self.centroid
@@ -1202,6 +1326,27 @@ class GeoLineString(GeoShape):
             Coordinate(max(lons), min(lats)),
             dt=self.dt,
         )
+
+    def contains(self, shape: 'GeoShape', **kwargs) -> bool:
+        def is_sub(s, l):
+            """Tests if a list is a subset of another, order matters"""
+            ln = len(s)
+            return any(
+                (all(s[j] == l[i + j] for j in range(ln)) for i in range(len(l) - ln + 1))
+            )
+
+        # Make sure the times overlap, if present on both
+        if self.dt and shape.dt:
+            if not self.contains_time(shape.dt):
+                return False
+
+        if not isinstance(shape, (GeoPoint, GeoLineString)):
+            return False
+
+        if isinstance(shape, GeoPoint):
+            return shape in self
+
+        return is_sub(shape.coords, self.coords)
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         # For now, just check for exact match. Will need update if buffering
@@ -1320,6 +1465,9 @@ class GeoLineString(GeoShape):
         bbox_str = self._linear_ring_to_wkt(self.bounding_coords(**kwargs))
         return f'LINESTRING{bbox_str}'
 
+    def vertices(self, **_) -> List[List[Tuple[Coordinate, Coordinate]]]:
+        return [self.bounding_vertices()]
+
 
 class GeoPoint(GeoShape):
 
@@ -1360,11 +1508,17 @@ class GeoPoint(GeoShape):
     def bounding_coords(self, **kwargs):
         raise NotImplementedError('Points are not bounded')
 
+    def bounding_vertices(self, **kwargs):
+        raise NotImplementedError('Points are not bounded')
+
     def circumscribing_circle(self):
         raise NotImplementedError('Points cannot be circumscribed')
 
     def circumscribing_rectangle(self):
         raise NotImplementedError('Points cannot be circumscribed')
+
+    def contains(self, shape: 'GeoShape', **kwargs) -> bool:
+        return False
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         # Points don't contain anything, even themselves
@@ -1479,3 +1633,6 @@ class GeoPoint(GeoShape):
 
     def to_wkt(self, **_):
         return f'POINT({" ".join(self.center.to_str())})'
+
+    def vertices(self, **kwargs):
+        raise NotImplementedError('Points are not bounded')
