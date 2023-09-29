@@ -88,15 +88,17 @@ class Coordinate:
     @classmethod
     def from_dms(cls, lon: Tuple[int, int, float, str], lat: Tuple[int, int, float, str]):
         """
-        Creates a Coordinate from a Degree Minutes Seconds (lon, lat) pair
+        Creates a Coordinate from a Degree Minutes Seconds (lon, lat) pair.
+
+        The quadrant value should consist of either 'E'/'W' (longitude) or 'N'/'S' (latitude)
 
         Args:
             lon:
-                Longitude, as a 3-tuple of
-                ( <degrees> (float),  <minutes> (float), <seconds> (float) )
+                Longitude, as a 4-tuple of
+                ( <degrees> (float),  <minutes> (float), <seconds> (float), <quadrant> (str))
             lat:
-                Latitude, as a 3-tuple of
-                ( <degrees> (float),  <minutes> (float), <seconds> (float) )
+                Latitude, as a 4-tuple of
+                ( <degrees> (float),  <minutes> (float), <seconds> (float), <quadrant> (str) )
 
         Returns:
             Coordinate
