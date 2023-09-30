@@ -89,7 +89,7 @@ def test_geoshape_init():
         _ = GeoCircle(
             Coordinate(0.0, 0.0), 1000, 
             # Hole shape itself has a hole
-            GeoCircle(Coordinate(0.0, 0.0), 500, GeoCircle(Coordinate(0.0, 0.0), 250))
+            holes=[GeoCircle(Coordinate(0.0, 0.0), 500, holes=[GeoCircle(Coordinate(0.0, 0.0), 250)])]
         )
 
 
@@ -243,7 +243,7 @@ def test_geoshape_to_shapely(geobox):
     hole = GeoPolygon([
         Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5), Coordinate(0.5, 0.5),
     ])
-    polygon = GeoPolygon(outline, hole)
+    polygon = GeoPolygon(outline, holes=[hole])
     expected = shapely.geometry.Polygon(
         [x.to_float() for x in outline],
         holes=[[x.to_float() for x in hole.bounding_coords()]]
@@ -326,9 +326,9 @@ def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
-        GeoPolygon([
+        holes=[GeoPolygon([
             Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ])
+        ])]
     )
     # Differing number of holes
     assert p1 != p2
@@ -338,24 +338,28 @@ def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
-        GeoPolygon([
-            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ]),
-        GeoPolygon([
-            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ])
+        holes=[
+            GeoPolygon([
+                Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+            ]),
+            GeoPolygon([
+                Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+            ])
+        ]
     )
     p2 = GeoPolygon(
         [
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
-        GeoPolygon([
-            Coordinate(0.6, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ]),
-        GeoPolygon([
-            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ])
+        holes=[
+            GeoPolygon([
+                Coordinate(0.6, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+            ]),
+            GeoPolygon([
+                Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+            ])
+        ]
     )
     # Holes are not equal
     assert p1 != p2
@@ -432,10 +436,10 @@ def test_geopolygon_contains():
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
-        GeoPolygon([
+        holes=[GeoPolygon([
             Coordinate(0.25, 0.25), Coordinate(0.25, 0.75), Coordinate(0.75, 0.75),
             Coordinate(0.75, 0.25), Coordinate(0.25, 0.25)
-        ])
+        ])]
     )
     assert Coordinate(0.9, 0.9) in polygon  # outside hole
     assert Coordinate(0.5, 0.5) not in polygon  # inside hole
@@ -463,7 +467,7 @@ def test_geopolygon_from_geojson():
     }
     expected = GeoPolygon(
         [Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)],
-        GeoPolygon([Coordinate(0.25, 0.25), Coordinate(0.5, 0.5), Coordinate(1.0, 0.25), Coordinate(0.25, 0.25)]),
+        holes=[GeoPolygon([Coordinate(0.25, 0.25), Coordinate(0.5, 0.5), Coordinate(1.0, 0.25), Coordinate(0.25, 0.25)])],
         properties={'example': 'prop'}
     )
     assert GeoPolygon.from_geojson(gjson) == expected
@@ -519,6 +523,24 @@ def test_geopolygon_circumscribing_rectangle(geopolygon):
     )
 
 
+def test_geopolygon_contains_coordinate():
+    polygon = GeoPolygon([Coordinate(0., 1.), Coordinate(1., 1.), Coordinate(0.5, 0.), Coordinate(0., 1.)])
+    assert polygon.contains_coordinate(Coordinate(0.5, 0.5))
+
+    # Outside bounds
+    assert not polygon.contains_coordinate(Coordinate(2.0, 2.0))
+
+    # In bounds, not in polygon
+    assert not polygon.contains_coordinate(Coordinate(0.75, 0.25))
+
+    # In hole
+    polygon = GeoPolygon(
+        [Coordinate(0., 1.), Coordinate(1., 1.), Coordinate(0.5, 0.), Coordinate(0., 1.)],
+        holes=[GeoCircle(Coordinate(0.5, 0.5), 5_000)]
+    )
+    assert not polygon.contains_coordinate(Coordinate(0.5, 0.5))
+
+
 def test_geopolygon_from_shapely():
     expected = GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)])
     polygon = shapely.geometry.Polygon([(0.0, 0.0), (1.0, 1.0), (2.0, 0.0), (0.0, 0.0)])
@@ -534,9 +556,9 @@ def test_geopolygon_linear_rings():
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
         # Hole
-        GeoPolygon([
+        holes=[GeoPolygon([
             Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ])
+        ])]
     )
     rings = polygon.linear_rings()
     assert rings == [
@@ -572,9 +594,9 @@ def test_geopolygon_from_wkt():
             Coordinate(30.123, 10), Coordinate(40, 40), Coordinate(20, 40),
             Coordinate(10.123, 20), Coordinate(30.123, 10)
         ],
-        GeoPolygon([
+        holes=[GeoPolygon([
             Coordinate(15, 20), Coordinate(20, 20), Coordinate(15, 15), Coordinate(15, 20)
-        ])
+        ])]
     )
 
     with pytest.raises(ValueError):
@@ -587,10 +609,10 @@ def test_geopolygon_to_wkt():
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
-        GeoPolygon([
+        holes=[GeoPolygon([
             Coordinate(0.25, 0.25), Coordinate(0.25, 0.75), Coordinate(0.75, 0.75),
             Coordinate(0.75, 0.25), Coordinate(0.25, 0.25)
-        ])
+        ])]
     )
     assert polygon.to_wkt() == 'POLYGON((0.0 0.0,0.0 1.0,1.0 1.0,1.0 0.0,0.0 0.0),(0.25 0.25,0.25 0.75,0.75 0.75,0.75 0.25,0.25 0.25))'
 
@@ -646,6 +668,19 @@ def test_geobox_bounding_coords(geobox):
     assert geobox.bounding_coords()[0] == geobox.bounding_coords()[-1]
 
 
+def test_geobox_contains_coordinate(geobox):
+    box = GeoBox(Coordinate(0., 1.), Coordinate(1., 0.))
+    assert box.contains_coordinate(Coordinate(0.5, 0.5))
+
+    assert not box.contains_coordinate(Coordinate(2.0, 2.0))
+
+    box = GeoBox(
+        Coordinate(0., 1.), Coordinate(1., 0.),
+        holes=[GeoCircle(Coordinate(0.5, 0.5), 5_000)]
+    )
+    assert not box.contains_coordinate(Coordinate(0.5, 0.5))
+
+
 def test_geobox_linear_rings():
     box = GeoBox(
         Coordinate(0.0, 1.0),
@@ -685,10 +720,15 @@ def test_geobox_centroid(geobox):
     assert geobox.centroid == Coordinate(0.5, 0.5)
 
 
-def test_geocircle_contains(geocircle):
-    assert Coordinate(0.0, 0.0) in geocircle
-    assert Coordinate(0.001, 0.001) in geocircle
-    assert Coordinate(1.0, 1.0) not in geocircle
+def test_geocircle_contains_coordinate():
+    circle = GeoCircle(Coordinate(0.0, 0.0), 1000)
+
+    assert circle.contains_coordinate(Coordinate(0.0, 0.0))
+    assert circle.contains_coordinate(Coordinate(0.001, 0.001))
+    assert not circle.contains_coordinate(Coordinate(1.0, 1.0))
+
+    circle = GeoCircle(Coordinate(0.0, 0.0), 1000, holes=[GeoCircle(Coordinate(0.0, 0.0), 1000)])
+    assert not circle.contains_coordinate(Coordinate(0., 0.))
 
 
 def test_geocircle_geojson(geocircle):
@@ -761,25 +801,31 @@ def test_geocircle_linear_rings(geocircle):
     assert rings[0][0] == rings[0][-1]
 
 
-def test_geoellipse_contains(geoellipse):
+def test_geoellipse_contains():
+    ellipse = GeoEllipse(Coordinate(0.0, 0.0), 1000, 500, 90)
+
     # Center
-    assert Coordinate(0.0, 0.0) in geoellipse
+    assert ellipse.contains_coordinate(Coordinate(0.0, 0.0))
 
     # 900 meters east
-    assert Coordinate(0.0080939, 0.) in geoellipse
+    assert ellipse.contains_coordinate(Coordinate(0.0080939, 0.))
 
     # 900 meters north (outside)
-    assert Coordinate(0.0, 0.0080939) not in geoellipse
+    assert not ellipse.contains_coordinate(Coordinate(0.0, 0.0080939))
 
     # 1000 meters east - on edge
-    assert Coordinate(0.0089932, 0.) in geoellipse
+    assert ellipse.contains_coordinate(Coordinate(0.0089932, 0.))
 
     # 45-degree line
-    assert Coordinate(0.005, 0.005) in GeoEllipse(Coordinate(0.0, 0.0), 1000, 1, 45)
-    assert Coordinate(-0.005, -0.005) in GeoEllipse(Coordinate(0.0, 0.0), 1000, 1, 45)
-    assert Coordinate(0, 0.005) not in GeoEllipse(Coordinate(0.0, 0.0), 1000, 1, 45)
-    assert Coordinate(-0.005, 0.005) not in GeoEllipse(Coordinate(0.0, 0.0), 1000, 1, 45)
+    ellipse = GeoEllipse(Coordinate(0.0, 0.0), 1000, 1, 45)
+    assert ellipse.contains_coordinate(Coordinate(0.005, 0.005))
+    assert ellipse.contains_coordinate(Coordinate(-0.005, -0.005))
+    assert not ellipse.contains_coordinate(Coordinate(0, 0.005))
+    assert not ellipse.contains_coordinate(Coordinate(-0.005, 0.005))
 
+    # Hole
+    ellipse = GeoEllipse(Coordinate(0.0, 0.0), 1000, 500, 90, holes=[GeoCircle(Coordinate(0., 0.), 200)])
+    assert not ellipse.contains_coordinate(Coordinate(0., 0))
 
 def test_geoellipse_eq(geoellipse):
     e2 = GeoEllipse(Coordinate(0.0, 0.0), 1000, 500, 90, dt=default_test_datetime)
@@ -862,21 +908,26 @@ def test_geoellipse_centroid(geoellipse):
 
 
 def test_georing_contains(georing, geowedge):
+    ring = GeoRing(Coordinate(0.0, 0.0), 500, 1000)
+    wedge = GeoRing(Coordinate(0.0, 0.0), 500, 1000, 90, 180)
     # 750 meters east
-    assert inverse_haversine_degrees(georing.center, 90, 750) in georing
-    assert inverse_haversine_degrees(georing.center, 90, 750) in geowedge
+    assert ring.contains_coordinate(Coordinate(0.0067449, 0.0))
+    assert wedge.contains_coordinate(Coordinate(0.0067449, 0.0))
 
     # 750 meters west (outside geowedge angle)
-    assert inverse_haversine_degrees(georing.center, -90, 750) in georing
-    assert inverse_haversine_degrees(georing.center, -90, 750) not in geowedge
+    assert ring.contains_coordinate(Coordinate(-0.0067449, 0.0))
+    assert not wedge.contains_coordinate(Coordinate(-0.0067449, 0.0))
 
     # Centerpoint (not in shape)
-    assert georing.center not in georing
-    assert georing.center not in geowedge
+    assert not ring.contains_coordinate(Coordinate(0.0, 0.0))
+    assert not wedge.contains_coordinate(Coordinate(0.0, 0.0))
 
     # Along edge (1000m east)
-    assert inverse_haversine_degrees(georing.center, 90, 1000) in georing
-    assert inverse_haversine_degrees(georing.center, 90, 1000) in geowedge
+    assert ring.contains_coordinate(Coordinate(0.0089932, 0.0))
+    assert wedge.contains_coordinate(Coordinate(0.0089932, 0.0))
+
+    ring = GeoRing(Coordinate(0.0, 0.0), 500, 1000, holes=[GeoCircle(Coordinate(0.0067449, 0.0), 200)])
+    assert not ring.contains_coordinate(Coordinate(0.0067449, 0.0))
 
 
 def test_georing_eq(geowedge):
