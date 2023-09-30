@@ -594,7 +594,7 @@ class GeoPolygon(GeoShape):
             )
 
         rings = [[Coordinate(x, y) for x, y in ring] for ring in geom.get('coordinates', [])]
-        holes = []
+        holes: List[GeoShape] = []
         if len(rings) > 1:
             holes = [GeoPolygon(ring) for ring in rings[1:]]
 
@@ -639,7 +639,7 @@ class GeoPolygon(GeoShape):
 
         coord_groups = _RE_COORD.findall(wkt_str)
         outline = _parse_wkt_coord_group(coord_groups[0])
-        holes = []
+        holes: List[GeoShape] = []
         if len(coord_groups) > 1:
             holes = [
                 GeoPolygon(_parse_wkt_coord_group(coord_group))
