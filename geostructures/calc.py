@@ -1,9 +1,9 @@
 """ Geometric calculations for Coordinates and Geostructures """
 
-do_vertices_intersect = [
+__all__ = [
     'bearing_degrees', 'haversine_distance_meters', 'inverse_haversine_degrees',
     'inverse_haversine_radians', 'rotate_coordinates', 'find_line_intersection',
-    'test_intersection'
+    'do_vertices_intersect'
 ]
 
 import math

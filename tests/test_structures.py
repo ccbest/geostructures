@@ -131,12 +131,12 @@ def test_geoshape_contains_dunder():
 
 def test_geoshape_bounding_vertices():
     poly = GeoPolygon([Coordinate(1.0, 0.0), Coordinate(1.0, 1.0), Coordinate(0.0, 0.5), Coordinate(1.0, 0.0)])
-    assert poly.bounding_vertices([
+    assert poly.bounding_vertices() == [
         (Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)),
         (Coordinate(1.0, 1.0), Coordinate(0.0, 0.5)),
         (Coordinate(0.0, 0.5), Coordinate(1.0, 0.0)),
         (Coordinate(1.0, 0.0), Coordinate(1.0, 0.0))
-    ])
+    ]
 
 
 def test_geoshape_contains():
@@ -157,8 +157,8 @@ def test_geoshape_contains():
     circle2 = GeoCircle(Coordinate(0.0899322, 0.0), 6_000)
     assert not circle1.contains(circle2)
 
-    # inner circle full contained within hole
-    circle_outer = GeoCircle(Coordinate(0., 0.,), 5_000, GeoCircle(Coordinate(0., 0.,), 4_000))
+    # inner circle fully contained within hole
+    circle_outer = GeoCircle(Coordinate(0., 0.,), 5_000, holes=[GeoCircle(Coordinate(0., 0.,), 4_000)])
     circle_inner = GeoCircle(Coordinate(0., 0.), 2_000)
     assert not circle_outer.contains(circle_inner)
 
@@ -184,7 +184,7 @@ def test_geoshape_contains_time():
         geopoint.contains_time('not a date')
 
 
-def test_shape_intersects():
+def test_geoshape_intersects():
     circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000)
     circle2 = GeoCircle(Coordinate(0.0899322, 0.0), 5_000)  # Exactly 10km to the right
     assert not circle1.intersects(circle2)
@@ -194,6 +194,12 @@ def test_shape_intersects():
     circle2 = GeoCircle(Coordinate(0.0899321, 0.0), 5_000)  # Nudged just barely to the left
     assert circle1.intersects(circle2)
     assert circle2.intersects(circle1)
+
+    # Same as above, but time bounds different
+    circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000, dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2)))
+    circle2 = GeoCircle(Coordinate(0.0899321, 0.0), 5_000, dt=TimeInterval(datetime(2020, 1, 3), datetime(2020, 1, 4)))
+    assert not circle1.intersects(circle2)
+    assert not circle2.intersects(circle1)
 
     circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000)
     circle2 = GeoCircle(Coordinate(0.0, 0.0), 2_000)  # Fully contained
@@ -264,6 +270,34 @@ def test_geoshape_set_property():
         'datetime_end': datetime(2020, 1, 1, 12, tzinfo=timezone.utc),
         'test_property': 1
     }
+
+def test_geoshape_vertices():
+    polygon = GeoPolygon(
+        [
+            Coordinate(1.0, 0.0), Coordinate(1.0, 1.0),
+            Coordinate(0.0, 0.5), Coordinate(1.0, 0.0)
+        ],
+        holes=[
+            GeoPolygon([
+                Coordinate(0.4, 0.6), Coordinate(0.6, 0.6),
+                Coordinate(0.5, 0.4), Coordinate(0.4, 0.6),
+            ])
+        ]
+    )
+    assert polygon.vertices() == [
+        [
+            (Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)),
+            (Coordinate(1.0, 1.0), Coordinate(0.0, 0.5)),
+            (Coordinate(0.0, 0.5), Coordinate(1.0, 0.0)),
+            (Coordinate(1.0, 0.0), Coordinate(1.0, 0.0))
+        ],
+        [
+            (Coordinate(0.4, 0.6), Coordinate(0.6, 0.6)),
+            (Coordinate(0.6, 0.6), Coordinate(0.5, 0.4)),
+            (Coordinate(0.5, 0.4), Coordinate(0.4, 0.6)),
+            (Coordinate(0.4, 0.6), Coordinate(0.4, 0.6))
+        ]
+    ]
 
 
 def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
@@ -1095,15 +1129,19 @@ def test_geolinestring_bounding_coords(geolinestring):
 
 
 def test_geolinestring_contains():
-    ls = GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.), Coordinate(2., 2.)])
-    shape = GeoCircle(Coordinate(0., 0.), 500)
-    assert not ls.contains(shape)
+    ls = GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.), Coordinate(2., 2.)], dt=datetime(2020, 1, 1))
+
+    ls2 = GeoCircle(Coordinate(0., 0.), 500)
+    assert not ls.contains(ls2)
 
     ls2 = GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.)])
     assert ls.contains(ls2)
 
-    ls3 = GeoLineString([Coordinate(0., 1.), Coordinate(0., 0.), Coordinate(1.,1.)])
-    assert not ls.contains(ls3)
+    ls2 = GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.)], dt=datetime(2020, 1, 2))
+    assert not ls.contains(ls2)
+
+    ls2 = GeoLineString([Coordinate(0., 1.), Coordinate(0., 0.), Coordinate(1., 1.)])
+    assert not ls.contains(ls2)
 
     point = GeoPoint(Coordinate(0., 0.))
     assert ls.contains(point)
@@ -1263,6 +1301,18 @@ def test_geopoint_bounding_coords(geopoint):
         _ = geopoint.bounding_coords()
 
 
+def test_geopoint_bounding_vertices():
+    with pytest.raises(NotImplementedError):
+        _ = GeoPoint(Coordinate(0., 0.)).bounding_vertices()
+
+
+def test_geopoint_contains():
+    assert not GeoPoint(Coordinate(0., 0.)).contains(GeoPoint(Coordinate(0., 0.)))
+
+
+def test_geopoint_contains_coordinate():
+    assert not GeoPoint(Coordinate(0., 0.)).contains_coordinate(Coordinate(0., 0.))
+
 def test_geopoint_from_geojson():
     gpoint = {
         'type': 'Feature',
@@ -1356,3 +1406,8 @@ def test_geopoint_to_wkt(geopoint):
 def test_geopoint_to_polygon(geopoint):
     with pytest.raises(NotImplementedError):
         geopoint.to_polygon()
+
+
+def test_geopoint_vertices():
+    with pytest.raises(NotImplementedError):
+        _ = GeoPoint(Coordinate(0., 0.)).vertices()
