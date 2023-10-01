@@ -1353,11 +1353,11 @@ class GeoLineString(GeoShape):
         )
 
     def contains(self, shape: 'GeoShape', **kwargs) -> bool:
-        def is_sub(s, l):
+        def is_sub(sub, ls):
             """Tests if a list is a subset of another, order matters"""
-            ln = len(s)
+            ln = len(sub)
             return any(
-                (all(s[j] == l[i + j] for j in range(ln)) for i in range(len(l) - ln + 1))
+                (all(sub[j] == ls[i + j] for j in range(ln)) for i in range(len(ls) - ln + 1))
             )
 
         # Make sure the times overlap, if present on both

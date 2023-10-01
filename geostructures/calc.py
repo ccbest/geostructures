@@ -7,7 +7,7 @@ __all__ = [
 ]
 
 import math
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
 
 import numpy as np
 
@@ -211,7 +211,7 @@ def do_vertices_intersect(
     events += _create_events(vertices_b, 'b')
 
     events.sort()
-    active_events = set()
+    active_events: Set[_Event] = set()
     for event in events:
         if not event.is_start:
             active_events.remove(event)
