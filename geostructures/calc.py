@@ -2,11 +2,12 @@
 
 __all__ = [
     'bearing_degrees', 'haversine_distance_meters', 'inverse_haversine_degrees',
-    'inverse_haversine_radians', 'rotate_coordinates', 'find_line_intersection'
+    'inverse_haversine_radians', 'rotate_coordinates', 'find_line_intersection',
+    'do_vertices_intersect'
 ]
 
 import math
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
 
 import numpy as np
 
@@ -139,6 +140,99 @@ def inverse_haversine_radians(
     final_lon = round_half_up(final_lon * 180 / math.pi, 7)
 
     return Coordinate(final_lon, final_lat)
+
+
+def do_vertices_intersect(
+    vertices_a: List[Tuple[Coordinate, Coordinate]],
+    vertices_b: List[Tuple[Coordinate, Coordinate]],
+) -> bool:
+    """
+    Tests whether two sets of vertices ever intersect. Uses the sweep line algorithm
+    to minimize the number of intersections calculated.
+
+    Args:
+        vertices_a:
+            The list of vertices from the first group/shape
+
+        vertices_b:
+            The list of vertices from the second group/shape
+
+    Returns:
+        bool
+    """
+    class _Event:
+        """
+        The start or stop of a segment. Each segment gets two events that hash to
+        the same value so they can be added and removed from the set of active
+        events.
+
+        Additionally stores the group id of the segment, so that segments from the same
+        group are not intersected.
+        """
+        def __init__(
+                self,
+                x: float,
+                is_start: bool,
+                segment: Tuple[Coordinate, Coordinate],
+                group: str
+        ):
+            self.x = x
+            self.group = group
+            self.is_start = is_start
+            self.segment = segment
+
+        def __lt__(self, other):
+            """Required for sorting events"""
+            return self.x < other.x
+
+        def __hash__(self):
+            """Required for creating a set of events"""
+            return hash((self.segment, self.group))
+
+        def __eq__(self, other):
+            """Required for creating a set of events"""
+            return self.segment == other.segment and self.group == other.group
+
+    def _create_events(vertices, group):
+        """Creates 2x events per vertex from a list of vertices. Ensures the lesser x
+        value corresponds to the start event."""
+        _events = []
+        for vertex in vertices:
+            if vertex[0].latitude > vertex[1].latitude:
+                vertex = (vertex[1], vertex[0])
+
+            _events += [
+                _Event(vertex[0].latitude, vertex[0].latitude <= vertex[1].latitude, vertex, group),
+                _Event(vertex[1].latitude, vertex[1].latitude <= vertex[0].latitude, vertex, group)
+            ]
+        return _events
+
+    events = _create_events(vertices_a, 'a')
+    events += _create_events(vertices_b, 'b')
+
+    events.sort()
+    active_events: Set[_Event] = set()
+    for event in events:
+        if not event.is_start:
+            active_events.remove(event)
+            continue
+
+        # All vertices belong to same group
+        if len(set(x.group for x in active_events)) <= 1:
+            active_events.add(event)
+            continue
+
+        for active_event in active_events:
+            if event.group == active_event.group:
+                continue
+
+            intersection = find_line_intersection(active_event.segment, event.segment)
+            if intersection and not intersection[1]:
+                return True
+
+        active_events.add(event)
+
+    return False
 
 
 def rotate_coordinates(
