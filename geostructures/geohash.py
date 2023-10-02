@@ -8,8 +8,6 @@ import abc
 from collections import defaultdict
 from typing import Dict, Optional, Set
 
-import h3
-
 from geostructures import Coordinate, GeoPoint, GeoLineString
 from geostructures.structures import GeoShape
 from geostructures.collections import ShapeCollection
@@ -70,6 +68,8 @@ class H3Hasher(Hasher):
         self,
         resolution: Optional[int] = None,
     ):
+        import h3  # noqa: F401
+
         self.resolution = resolution
 
     @staticmethod
@@ -87,6 +87,8 @@ class H3Hasher(Hasher):
         Returns:
             A set of H3 geohashes
         """
+        import h3
+
         return h3.polyfill(
             polygon.to_geojson()['geometry'],
             resolution,
@@ -112,6 +114,8 @@ class H3Hasher(Hasher):
         Returns:
             A set of H3 geohashes
         """
+        import h3
+
         _hexes = set()
         for vertex in zip(linestring.bounding_coords(), linestring.bounding_coords()[1:]):
             # Get h3's straight line hexes
@@ -150,6 +154,8 @@ class H3Hasher(Hasher):
         Returns:
             A set of H3 geohashes
         """
+        import h3
+
         return {
             h3.geo_to_h3(
                 point.centroid.latitude,
