@@ -24,44 +24,46 @@ class Hasher(abc.ABC):
     def hash_collection(
         self,
         collection: ShapeCollection,
-        resolution: Optional[int] = None,
+        **kwargs
     ) -> Dict[str, float]:
         """
-        Hashes the coordinates in a track. Remember that unlike Synchronous and Asynchronous
-        CoTraveler, time is not relevant to this analytic. As such, the 'track' parameter is
-        expecting to just receive a list of coordinates without corresponding timestamps.
+        Returns a dictionary which maps each unique geohash observed over a collection
+        of geoshapes mapped to the number of shapes it's been observed in.
 
         Args:
             collection:
-                A list of geostructures
-
-            resolution (int): The geohash resolution that the coordinates should be hashed to. If
-                              no value is provided, will default to the `resolution` value passed
-                              to `__init__()`. If no value was passed to `__init__()`, the
-                              resolution of the least-precise coordinate will be used.
+                A collection (Track or FeatureCollection) from geostructures.collections
 
         Returns:
-            (Dict[str, float]) A dictionary of geohashes, with corresponding values equal to the
-            determined weight of that geohash.
+            dict
+        """
+
+    @abc.abstractmethod
+    def hash_shape(
+        self,
+        shape: GeoShape,
+        **kwargs
+    ) -> Set[str]:
+        """
+        Returns a set of the geohashes (as strings) that tile a given geoshape.
+
+        Args:
+            shape:
+                A geoshape, from geostructures
+
+        Returns:
+            set
         """
 
 
 class H3Hasher(Hasher):
     """
-    Uses start_value series of coordinates (of various accuracies) to produce start_value "heat map"
-    of corresponding H3 Hex ids along with their corresponding counts.
+    Converts geoshapes or collections of geoshapes into H3 geohashes.
 
-    Coordinates that have start_value lower accuracy than the requested resolution (size of
-    the H3 hexes to produce) will be applied entropically over the hexes within
-    range of the coordinate.
-
-    For example:
-    A coordinate with 2-decimal accuracy (1.11, 2.22) would correspond to start_value resolution
-    of 7 (see above conversion dictionary). If the requested resolution is 9, then the
-    "weight" added to each 9-resolution hex would be 1 / (9 - 7 + 1) = 1/3. The +1 serves
-    further down-weight low-resolution coordinates and avoid 1/1 results in cases where
-    the resolution is off by 1.
-
+    Args:
+        resolution:
+            The H3 resolution to create geoshapes at. See H3's documentation for additional
+            information about resolution sizes.
     """
 
     def __init__(
@@ -167,7 +169,7 @@ class H3Hasher(Hasher):
     def hash_collection(
             self,
             collection: ShapeCollection,
-            resolution: Optional[int] = None,
+            **kwargs
     ) -> Dict[str, float]:
         """
         Hashes a collection of geoshapes and counts the number
@@ -177,6 +179,7 @@ class H3Hasher(Hasher):
             collection:
                 A geoshape collection, from geostructures.collections
 
+        Keyword Args:
             resolution:
                 The H3 resolution to apply
 
@@ -184,20 +187,20 @@ class H3Hasher(Hasher):
             A dictionary of H3 geohashes mapped to their corresponding
             counts
         """
-        resolution = resolution or self.resolution
+        resolution = kwargs.get('resolution', self.resolution)
         if not resolution:
             raise ValueError('You must pass a H3 resolution.')
 
         out_hexes: Dict[str, float] = defaultdict(lambda: 0)
 
         for shape in collection:
-            _hexes = self.hash_shape(shape, resolution)
+            _hexes = self.hash_shape(shape, resolution=resolution)
             for _hex in _hexes:
                 out_hexes[_hex] += 1
 
         return dict(out_hexes)
 
-    def hash_shape(self, shape: GeoShape, resolution: Optional[int] = None):
+    def hash_shape(self, shape: GeoShape, **kwargs):
         """
         Hashes a singular shape and returns the list of underlying h3 geohashes
 
@@ -205,13 +208,14 @@ class H3Hasher(Hasher):
             shape:
                 The shape to be hashed, from geostructures
 
+        Keyword Args:
             resolution:
                 The H3 resolution to apply
 
         Returns:
             The unique list of hashes that comprise the shape
         """
-        resolution = resolution or self.resolution
+        resolution = kwargs.get('resolution', self.resolution)
         if not resolution:
             raise ValueError('You must pass a H3 resolution.')
 
