@@ -15,6 +15,8 @@ import re
 import statistics
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import numpy as np
+
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
     inverse_haversine_radians,
@@ -506,7 +508,7 @@ class GeoPolygon(GeoShape):
         outline: (List[Coordinate])
             A list of coordinates that define the outside edges of the polygon
 
-        args: (List[Coordinate])
+        holes: (List[Coordinate])
             Additional lists of coordinates representing holes in the polygon
 
         dt: (datetime | TimeInterval | None)
@@ -585,12 +587,13 @@ class GeoPolygon(GeoShape):
 
     @property
     def centroid(self):
-        return Coordinate(
-            *[
-                round_half_up(statistics.mean(x), 7)
-                for x in zip(*[y.to_float() for y in self.outline[:-1]])
-            ]
-        )
+        # Decompose polygon into triangles using vertex pairs around the origin
+        poly1 = np.array([x.to_float() for x in self.bounding_coords()])
+        poly2 = np.roll(poly1, -1, axis=0)
+        # Find signed area of each triangle
+        signed_areas = 0.5 * np.cross(poly1, poly2)
+        # Return average of triangle centroids, weighted by area
+        return Coordinate(*np.average((poly1 + poly2) / 3, axis=0, weights=signed_areas))
 
     @staticmethod
     def _point_in_polygon(
