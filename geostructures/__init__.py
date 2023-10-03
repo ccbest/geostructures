@@ -19,7 +19,7 @@ ConditionalPackageInterceptor.permit_packages(
         'scipy': 'scipy>=3.0.7,<4.0',
     }
 )
-sys.meta_path.append(ConditionalPackageInterceptor)
+sys.meta_path.append(ConditionalPackageInterceptor)  # type: ignore
 
 __all__ = [
     'Coordinate',
