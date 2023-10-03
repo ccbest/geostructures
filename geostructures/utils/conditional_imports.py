@@ -1,8 +1,6 @@
 
 """
-Intercepts import errors concerning optional imports to either:
-    - Provide a more detailed error response or
-    - Auto-download the specified package
+Intercepts import errors concerning optional imports to provide a more detailed error response
 """
 
 __all__ = ['ConditionalPackageInterceptor']
@@ -23,10 +21,10 @@ class ConditionalPackageInterceptor(LoggingMixin):  # pragma: no cover
     To use:
         In your code's entrypoint, add the following code:
 
-            PipInstaller.permit_packages(
+            ConditionalPackageInterceptor.permit_packages(
                 <list or dict of packages>
             )
-            sys.meta_path.append(PipInstaller)
+            sys.meta_path.append(ConditionalPackageInterceptor)
 
     Use Case:
         If you're building a library where only some of the functionality relies on third-party
@@ -106,6 +104,7 @@ class ConditionalPackageInterceptor(LoggingMixin):  # pragma: no cover
         Returns:
 
         """
+        print('test')
         if name not in cls.PERMITTED_PACKAGES:
             return
 
@@ -123,11 +122,6 @@ class ConditionalPackageInterceptor(LoggingMixin):  # pragma: no cover
 
         raise ModuleNotFoundError(
             f"You are attempting to use a module which requires an optional installation ({name}). "
-            "Please choose one of the following options to continue: \n\n "
-            "1) Enable package auto-installation using: \n"
-            "    # In your root-most __init__.py file:"
-            "    from skopeutils.package_interceptor import ConditionalPackageInterceptor \n"
-            "    ConditionalPackageInterceptor.permit_auto_download(True) \n\n"
-            "2) Pip install the package yourself using the following command: \n"
+            "Please execute the following command to continue: \n "
             f"    pip install {cls.PERMITTED_PACKAGES[name]}"
         )

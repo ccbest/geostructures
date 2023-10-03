@@ -1,4 +1,6 @@
 
+import sys
+
 from geostructures.coordinates import Coordinate
 from geostructures.structures import (
     GeoBox, GeoCircle, GeoEllipse, GeoLineString, GeoPoint, GeoPolygon,
@@ -17,6 +19,7 @@ ConditionalPackageInterceptor.permit_packages(
         'scipy': 'scipy>=3.0.7,<4.0',
     }
 )
+sys.meta_path.append(ConditionalPackageInterceptor)  # type: ignore
 
 __all__ = [
     'Coordinate',
