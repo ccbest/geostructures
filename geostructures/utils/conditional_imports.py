@@ -104,7 +104,6 @@ class ConditionalPackageInterceptor(LoggingMixin):  # pragma: no cover
         Returns:
 
         """
-        print('test')
         if name not in cls.PERMITTED_PACKAGES:
             return
 
