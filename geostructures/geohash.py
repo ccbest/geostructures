@@ -186,7 +186,8 @@ def get_niemeyer_subhashes(geohash: str, base: int) -> Set[str]:
 
 def niemeyer_to_geobox(geohash: str, base: int) -> GeoBox:
     """
-    Convert a geohash with a specific base into a lat/lon and error in both directions.
+    Convert a Niemeyer geohash to its representative rectangle (a centroid with
+    a corresponding error margin).
 
     Args:
         geohash:
@@ -424,6 +425,10 @@ class H3Hasher(Hasher):
 
 class NiemeyerHasher(Hasher):
 
+    """
+    # TODO
+    """
+
     def __init__(self, length: int, base: int):
         self.length = length
         self.base = base
@@ -441,7 +446,7 @@ class NiemeyerHasher(Hasher):
             (List[str]) surrounding geohashes
         """
         length = len(geohash)
-        lat, lon, lat_err, lon_err = _decode_niemeyer(geohash, base)
+        lon, lat, lon_err, lat_err = _decode_niemeyer(geohash, base)
 
         return [
             # from directly above, then clockwise
@@ -521,14 +526,17 @@ class NiemeyerHasher(Hasher):
 
         while queue:
             gh = queue.pop()
-            for near_gh in gh.surrounding():
+            for near_gh in self._get_surrounding(gh, self.base):
                 if near_gh in checked:
                     continue
 
                 checked.add(near_gh)
-                if near_gh.intersects(polygon):
+                if niemeyer_to_geobox(near_gh, self.base).intersects(polygon):
+                    print(near_gh, "intersects")
                     valid.add(near_gh)
                     queue.add(near_gh)
+                else:
+                    print(near_gh, "does not intersect")
 
         return valid
 

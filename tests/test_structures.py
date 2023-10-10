@@ -187,13 +187,19 @@ def test_geoshape_contains_time():
 def test_geoshape_intersects():
     circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000)
     circle2 = GeoCircle(Coordinate(0.0899322, 0.0), 5_000)  # Exactly 10km to the right
-    assert not circle1.intersects(circle2)
-    assert not circle2.intersects(circle1)
+    # Exactly one point where shapes intersect
+    assert circle1.intersects(circle2)
+    assert circle2.intersects(circle1)
 
     circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000)
     circle2 = GeoCircle(Coordinate(0.0899321, 0.0), 5_000)  # Nudged just barely to the left
     assert circle1.intersects(circle2)
     assert circle2.intersects(circle1)
+
+    circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000)
+    circle2 = GeoCircle(Coordinate(0.0899323, 0.0), 5_000)  # Nudged just barely to the right
+    assert not circle1.intersects(circle2)
+    assert not circle2.intersects(circle1)
 
     # Same as above, but time bounds different
     circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000, dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2)))
