@@ -6,7 +6,7 @@ __all__ = ['H3Hasher', 'Hasher']
 
 import abc
 from collections import defaultdict, Counter
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, TypedDict
 
 from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint
 from geostructures.structures import GeoShape
@@ -14,21 +14,34 @@ from geostructures.collections import ShapeCollection
 from geostructures.calc import find_line_intersection
 
 
-_niemeyer_config = {
+_NIEMEYER_CONFIG_TYPE = TypedDict(
+    '_NIEMEYER_CONFIG_TYPE',
+    {
+        'bits': Tuple,
+        'charset': str,
+        'inverse': Dict[int, int],
+        'min_y': float,
+        'max_y': float,
+        'min_x': float,
+        'max_x': float,
+    }
+)
+
+_NIEMEYER_CONFIG: Dict[int, _NIEMEYER_CONFIG_TYPE] = {
     16: {
-        'bits': [8, 4, 2, 1],
+        'bits': (8, 4, 2, 1),
         'charset': '0123456789abcdef',
         'inverse': {
             **{x + 48: x for x in range(10)},
             **{x + 97: x + 10 for x in range(6)},
         },
-        'min_y': -180,
-        'max_y': 180,
-        'min_x': -180,
-        'max_x': 180
+        'min_y': -180.,
+        'max_y': 180.,
+        'min_x': -180.,
+        'max_x': 180.
     },
     32: {
-        'bits': [16, 8, 4, 2, 1],
+        'bits': (16, 8, 4, 2, 1),
         'charset': '0123456789bcdefghjkmnpqrstuvwxyz',
         'inverse': {
             **{x + 48: x for x in range(10)},
@@ -36,13 +49,13 @@ _niemeyer_config = {
             **{106: 17, 107: 18, 109: 19, 110: 20},
             **{x + 112: x + 21 for x in range(11)}
         },
-        'min_y': -90,
-        'max_y': 90,
-        'min_x': -180,
-        'max_x': 180
+        'min_y': -90.,
+        'max_y': 90.,
+        'min_x': -180.,
+        'max_x': 180.
     },
     64: {
-        'bits': [32, 16, 8, 4, 2, 1],
+        'bits': (32, 16, 8, 4, 2, 1),
         'charset': '0123456789=ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz',
         'inverse': {
             **{x + 48: x for x in range(10)},
@@ -50,10 +63,10 @@ _niemeyer_config = {
             **{x + 97: x + 38 for x in range(26)},
             **{61: 10, 95: 37}
         },
-        'min_y': -180,
-        'max_y': 180,
-        'min_x': -180,
-        'max_x': 180
+        'min_y': -180.,
+        'max_y': 180.,
+        'min_x': -180.,
+        'max_x': 180.
     }
 }
 
@@ -71,10 +84,8 @@ def _decode_niemeyer(geohash: str, base: int) -> Tuple[float, float, float, floa
     Returns:
         longitude, latitude, longitude_error, latitude_error
     """
-    if base not in _niemeyer_config:
-        raise ValueError('Unsupported base, must be one of: 16, 32, 64')
 
-    config = _niemeyer_config[base]
+    config = _NIEMEYER_CONFIG[base]
     lat_interval = [config['min_y'], config['max_y']]
     lon_interval = [config['min_x'], config['max_x']]
     lon_error, lat_error = config['max_x'], config['max_y']
@@ -123,10 +134,10 @@ def coord_to_niemeyer(coordinate: Coordinate, length: int, base: int) -> str:
     Return:
         (str) the geohash in which the point falls
     """
-    if base not in _niemeyer_config:
+    if base not in _NIEMEYER_CONFIG:
         raise ValueError('Unsupported base, must be one of: 16, 32, 64')
 
-    config = _niemeyer_config[base]
+    config = _NIEMEYER_CONFIG[base]
     geohash = ''
     lat_interval = [config['min_y'], config['max_y']]
     lon_interval = [config['min_x'], config['max_x']]
@@ -177,10 +188,10 @@ def get_niemeyer_subhashes(geohash: str, base: int) -> Set[str]:
     Returns:
 
     """
-    if base not in _niemeyer_config:
+    if base not in _NIEMEYER_CONFIG:
         raise ValueError('Unsupported base, must be one of: 16, 32, 64')
 
-    config = _niemeyer_config[base]
+    config = _NIEMEYER_CONFIG[base]
     return {geohash + char for char in config['charset']}
 
 
@@ -426,7 +437,17 @@ class H3Hasher(Hasher):
 class NiemeyerHasher(Hasher):
 
     """
-    # TODO
+    Converts geoshapes or collections of geoshapes into Niemeyer geohashes.
+
+    Args:
+        length:
+            The length of the Niemeyer hashes to return. Longer length geohashes
+            equate to smaller geospatial areas.
+
+        base:
+            The geohash algorithm base, one of 16, 32, or 64. The base determines the
+            number of subdivisions made when traversing from one geohash to its subordinate
+            geohashes.
     """
 
     def __init__(self, length: int, base: int):
@@ -480,12 +501,12 @@ class NiemeyerHasher(Hasher):
 
         while queue:
             gh = queue.pop()
-            for near_gh in gh.surrounding():
+            for near_gh in self._get_surrounding(gh, self.base):
                 if near_gh in checked:
                     continue
 
                 checked.add(near_gh)
-                if near_gh.intersects(linestring):
+                if niemeyer_to_geobox(near_gh, self.base).intersects(linestring):
                     valid.add(near_gh)
                     queue.add(near_gh)
 
@@ -532,11 +553,8 @@ class NiemeyerHasher(Hasher):
 
                 checked.add(near_gh)
                 if niemeyer_to_geobox(near_gh, self.base).intersects(polygon):
-                    print(near_gh, "intersects")
                     valid.add(near_gh)
                     queue.add(near_gh)
-                else:
-                    print(near_gh, "does not intersect")
 
         return valid
 
@@ -552,7 +570,7 @@ class NiemeyerHasher(Hasher):
         Returns:
             dict
         """
-        counter = Counter()
+        counter: Counter = Counter()
         for shape in collection.geoshapes:
             counter.update(self.hash_shape(shape))
 
@@ -576,4 +594,3 @@ class NiemeyerHasher(Hasher):
             return self._hash_linestring(shape)
 
         return self._hash_polygon(shape)
-

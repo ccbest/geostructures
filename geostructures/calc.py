@@ -325,15 +325,6 @@ def find_line_intersection(
 
     line1_bounds, line2_bounds = get_line_bounds(line1_flt), get_line_bounds(line2_flt)
 
-    # line1_y_bounds = (
-    #     round_half_up(min([line1_flt[0][1], line1_flt[1][1]]), 10),
-    #     round_half_up(max([line1_flt[0][1], line1_flt[1][1]]), 10),
-    # )
-    # line2_y_bounds = (
-    #     round_half_up(min([line2_flt[0][1], line2_flt[1][1]]), 10),
-    #     round_half_up(max([line2_flt[0][1], line2_flt[1][1]]), 10)
-    # )
-
     if not (
         test_ranges_overlap(line1_bounds[0], line2_bounds[0]) and
         test_ranges_overlap(line1_bounds[1], line2_bounds[1])
@@ -353,17 +344,17 @@ def find_line_intersection(
     x_intersection = round_half_up(det(d, xdiff) / div, 10)
     y_intersection = round_half_up(det(d, ydiff) / div, 10)
 
-    # Check if intersecting x and y value is equal to any of the line endpoints
-    if (x_intersection, y_intersection) in (*line1_flt, *line2_flt):
-        # Intersection exactly on one of the coordinates - boundary intersection
-        return Coordinate(x_intersection, y_intersection), True
-
     if (
         line1_bounds[0][0] <= x_intersection <= line1_bounds[0][1] and
         line2_bounds[0][0] <= x_intersection <= line2_bounds[0][1] and
         line1_bounds[1][0] <= y_intersection <= line1_bounds[1][1] and
         line2_bounds[1][0] <= y_intersection <= line2_bounds[1][1]
     ):
-        return Coordinate(x_intersection, y_intersection), False
+        return (
+            Coordinate(x_intersection, y_intersection),
+
+            # If intersecting point is a line endpoint, is a boundary intersection
+            (x_intersection, y_intersection) in (*line1_flt, *line2_flt)
+        )
 
     return None
