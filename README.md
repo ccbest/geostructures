@@ -3,7 +3,8 @@
 
 [![Unit Tests](https://github.com/ccbest/geostructures/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/ccbest/geostructures/actions/workflows/unit-tests.yml)
 
-A lightweight implementation of shapes drawn across a geo-temporal plane. Geostructures enables you to quickly draw shapes, convert to/from a variety of other geometric formats, and draw results. 
+A lightweight implementation of shapes drawn across a geo-temporal plane. Geostructures enables you to quickly draw 
+shapes, convert to/from a variety of other geometric formats, and draw results. 
 
 <img src="./static/display_img.PNG" alt="plotting" width="800" height="300"/>
 
@@ -24,7 +25,8 @@ Geostructures does not require any of the below dependencies to function, howeve
 
 ### Overview
 
-Geostructures provides a python interface for functionally defining various shapes drawn on a map. Unlike other libraries such as Shapely, these shapes retain their mathematical definitions rather than being simplified into N-sided polygons.
+Geostructures provides a python interface for functionally defining various shapes drawn on a map. Unlike other 
+libraries such as Shapely, these shapes retain their mathematical definitions rather than being simplified into N-sided polygons.
 
 The shapes currently supported are:
 * Boxes
@@ -130,11 +132,18 @@ polygon.from_shapely( a shapely polygon )
 
 # Collections of shapes have additional supported formats
 collection = FeatureCollection([polygon])
+
+# Creates a geopandas DataFrame
 collection.to_geopandas()
 collection.from_geopandas( a geopandas DataFrame )
+
+# Creates a GeoJSON FeatureCollection
+collection.to_geojson()
+collection.from_geojson( { a geojson object } )
 ```
 
 #### Plotting Shapes
+
 ```python
 from geostructures import *
 from geostructures.collections import FeatureCollection
@@ -145,7 +154,8 @@ circle = GeoCircle(Coordinate(-0.131092, 51.509865), radius=500)
 collection = FeatureCollection([box, circle])
 
 # Display the results
-draw_collection(collection)
+fig = draw_collection(collection)
+fig
 ```
 
 #### Bounding Shapes by Time
@@ -180,10 +190,11 @@ track.time_start_diffs      # timedeltas
 ```
 
 #### Geohashing
+Geostructures supports geohashing using both Uber's H3 and the original Niemeyer geohashing algorithm.
 ```python
 from geostructures import *
 from geostructures.collections import FeatureCollection
-from geostructures.geohash import H3Hasher
+from geostructures.geohash import H3Hasher, NiemeyerHasher
 from geostructures.visualization.plotly import h3_choropleth
 
 box = GeoBox(Coordinate(-0.154092, 51.539865), Coordinate(-0.140592, 51.505665))
@@ -196,6 +207,10 @@ hashmap = hasher.hash_collection(collection)
 
 # Display the results
 h3_choropleth(hashmap)
+
+# Alternatively, hash using the Niemeyer algorithm
+hasher = NiemeyerHasher(length=8, base=16)
+hashmap = hasher.hash_collection(collection)
 ```
 
 ### Projections
