@@ -10,7 +10,7 @@ from geostructures.utils.functions import round_half_up
 
 
 class Coordinate:
-    """Representation of a coordinate on the globe (i.e., a lon/lat pair) using PreciseNumbers"""
+    """Representation of a coordinate on the globe (i.e., a lon/lat pair)"""
 
     def __init__(
         self,
