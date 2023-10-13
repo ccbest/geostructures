@@ -10,7 +10,7 @@ from geostructures.utils.functions import round_half_up
 
 
 class Coordinate:
-    """Representation of a coordinate on the globe (i.e., a lon/lat pair) using PreciseNumbers"""
+    """Representation of a coordinate on the globe (i.e., a lon/lat pair)"""
 
     def __init__(
         self,
@@ -66,45 +66,46 @@ class Coordinate:
         lat, lon = _MGRS.toLatLon(mgrs_str)
         return Coordinate(lon, lat)
 
-    def to_dms(self) -> Tuple[Tuple[float, float, float], Tuple[float, float, float]]:
+    def to_dms(self) -> Tuple[Tuple[int, int, float, str], Tuple[int, int, float, str]]:
         """
         Convert a value (latitude or longitude) in decimal degrees to a tuple of
-        degrees, minutes, seconds
+        degrees, minutes, seconds, hemisphere
 
         Returns:
-            converted value as (degrees, minutes, seconds)
+            converted value as (degrees, minutes, seconds, hemisphere)
         """
-        def convert(dd: float):
+        def convert(dd: float) -> Tuple[int, int, float]:
             """Converts a Decimal Degree to Degrees Minutes Seconds"""
-            is_positive = dd >= 0
-            dd = abs(dd)
-
-            minutes, seconds = divmod(dd * 3600, 60)
+            minutes, seconds = divmod(abs(dd) * 3600, 60)
             degrees, minutes = divmod(minutes, 60)
-            degrees = degrees if is_positive else -degrees
-
             return int(degrees), int(minutes), round_half_up(seconds, 5)
 
-        return convert(self.longitude), convert(self.latitude)
+        return (
+            (*convert(self.longitude), 'E' if self.longitude >= 0 else 'W'),
+            (*convert(self.latitude), 'N' if self.latitude >= 0 else 'S'),
+        )
 
     @classmethod
-    def from_dms(cls, lon: Tuple[float, float, float], lat: Tuple[float, float, float]):
+    def from_dms(cls, lon: Tuple[int, int, float, str], lat: Tuple[int, int, float, str]):
         """
-        Creates a Coordinate from a Degree Minutes Seconds (lon, lat) pair
+        Creates a Coordinate from a Degree Minutes Seconds (lon, lat) pair.
+
+        The quadrant value should consist of either 'E'/'W' (longitude) or 'N'/'S' (latitude)
 
         Args:
             lon:
-                Longitude, as a 3-tuple of
-                ( <degrees> (float),  <minutes> (float), <seconds> (float) )
+                Longitude, as a 4-tuple of
+                ( <degrees> (float),  <minutes> (float), <seconds> (float), <quadrant> (str))
             lat:
-                Latitude, as a 3-tuple of
-                ( <degrees> (float),  <minutes> (float), <seconds> (float) )
+                Latitude, as a 4-tuple of
+                ( <degrees> (float),  <minutes> (float), <seconds> (float), <quadrant> (str) )
 
         Returns:
             Coordinate
         """
-        def convert(dms: Tuple[float, float, float]):
-            return dms[0] + (dms[1] / 60) + (dms[2] / 3600)
+        def convert(dms: Tuple[int, int, float, str]):
+            mult = -1 if dms[3] in ('S', 'W') else 1
+            return mult * (dms[0] + (dms[1] / 60) + (dms[2] / 3600))
 
         return Coordinate(convert(lon), convert(lat))
 
@@ -121,7 +122,6 @@ class Coordinate:
             return '0'*(length-len(_))+_
 
         lon, lat = self.to_dms()
-        lon_q, lat_q = 'S' if lon[0] < 0 else 'N', 'W' if lat[0] < 0 else 'E'
         _lon = [
             zero_pad(abs(lon[0]), 3),
             zero_pad(lon[1], 2),
@@ -133,7 +133,7 @@ class Coordinate:
             zero_pad(round_half_up(lat[2], 2), 4)
         ]
 
-        return f'{lon_q}{"".join(_lon)}', f'{lat_q}{"".join(_lat)}'
+        return f'{lon[3]}{"".join(_lon)}', f'{lat[3]}{"".join(_lat)}'
 
     @classmethod
     def from_qdms(cls, lon: str, lat: str):
@@ -154,4 +154,7 @@ class Coordinate:
         lon_dms = lon[1:4], lon[4:6], lon[6:]
         lat_dms = lat[1:3], lat[3:5], lat[5:]
 
-        return Coordinate(convert(lon[0], *lon_dms), convert(lat[0], *lat_dms))
+        return Coordinate(
+            round_half_up(convert(lon[0], *lon_dms), 6),
+            round_half_up(convert(lat[0], *lat_dms), 6)
+        )

@@ -62,17 +62,18 @@ def test_coordinate_from_mgrs():
 
 
 def test_coordinate_to_dms():
-    assert Coordinate(0., 0.).to_dms() == ((0, 0, 0.0), (0, 0, 0.0))
+    assert Coordinate(-0.118092, 51.509865).to_dms() == ((0, 7, 5.1312, 'W'), (51, 30, 35.514, 'N'))
 
 
 def test_coordinate_from_dms():
-    assert Coordinate.from_dms((0, 0, 0.0), (0, 0, 0.0)) == Coordinate(0., 0.)
+    assert Coordinate.from_dms((0, 0, 0.0, 'E'), (0, 0, 0.0, 'N')) == Coordinate(0., 0.)
+    assert Coordinate.from_dms((0, 7, 5.1312, 'W'), (51, 30, 35.514, 'N')) == Coordinate(-0.118092, 51.509865)
 
 
 def test_coordinate_to_qdms():
-    assert Coordinate(0., 0.).to_qdms() == ('N000000000', 'E00000000')
+    assert Coordinate(-0.118092, 51.509865).to_qdms() == ('W000070513', 'N51303551')
 
 
 def test_coordinate_from_qdms():
-    assert Coordinate.from_qdms('N000000000', 'E00000000') == Coordinate(0., 0.)
+    assert Coordinate.from_qdms('W000070513', 'N51303551') == Coordinate(-0.118092, 51.509864)
 
