@@ -216,6 +216,65 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
 
         return FeatureCollection(shapes)
 
+    @classmethod
+    def from_shapefile(
+        cls,
+        fpath: Union[str, Path],
+        time_start_field: str = 'datetime_s',
+        time_end_field: str = 'datetime_e',
+    ):
+
+        import shapefile
+
+        def _get_dt(rec):
+            """Grabs datetime data and returns appropriate struct"""
+            dt_start = rec.get(time_start_field)
+            dt_end = rec.get(time_end_field)
+            if dt_start is None and dt_end is None:
+                return None
+
+            if dt_start:
+                dt_start = datetime.fromisoformat(dt_start)
+
+            if dt_end:
+                dt_end = datetime.fromisoformat(dt_end)
+
+            if not (dt_start and dt_end) or dt_start == dt_end:
+                return dt_start or dt_end
+
+            return TimeInterval(dt_start, dt_end)
+
+        def _create_point(shape, dt, props):
+            return GeoPoint(Coordinate(*shape.points[0]), dt=dt, properties=props)
+
+        def _create_polygon(shape, dt, props):
+            return GeoPolygon([Coordinate(*x) for x in shape.points], dt=dt, properties=props)
+
+        def _create_linestring(shape, dt, props):
+            return GeoLineString([Coordinate(*x) for x in shape.points], dt=dt, properties=props)
+
+        reader = shapefile.Reader(fpath)
+
+        type_map = {
+            'POLYLINE': _create_linestring,
+            'POINT': _create_point,
+            'POLYGON': _create_polygon,
+        }
+        shape_fn = type_map.get(reader.shapeTypeName)
+        if not shape_fn:
+            raise ValueError(
+                f'Shapefile contains unsupported shape type: {reader.shapeTypeName}'
+            )
+
+        shapes = []
+        for shape, record in zip(reader.shapes(), reader.records()):
+            props = record.as_dict()
+            dt = _get_dt(props)
+            props = {k: v for k, v in props.items() if k not in (time_start_field, time_end_field)}
+            shapes.append(shape_fn(shape, dt=dt, props=props))
+
+        return cls(shapes)
+
     def to_geojson(self, properties: Optional[Dict] = None, **kwargs):
         return {
             'type': 'FeatureCollection',
