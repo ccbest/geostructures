@@ -265,6 +265,45 @@ def test_collection_to_from_shapefile(caplog):
         new_pointcol = FeatureCollection.from_shapefile(f)
         assert new_pointcol == pointcol
 
+    # Test limiting the properties written
+    with tempfile.TemporaryDirectory() as f:
+        pointcol = FeatureCollection([
+            GeoPoint(
+                Coordinate(1.0, 0.0),
+                dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2)),  # start and end date
+                properties={
+                    'ID': 0,  # numeric
+                    'ex_prop': 'test2',  # string
+                }
+            ),
+            GeoPoint(
+                Coordinate(2.0, 0.0),
+                dt=datetime(2020, 1, 1), # one date only
+                properties={
+                    'ID': 1,   # numeric
+                    'ex_prop': 'test',  # string
+                }
+            ),
+        ])
+        pointcol.to_shapefile(f, include_properties=['ex_prop'])
+        new_pointcol = FeatureCollection.from_shapefile(f)
+        assert new_pointcol == FeatureCollection([
+            GeoPoint(
+                Coordinate(1.0, 0.0),
+                properties={
+                    'ID': 0,  # numeric
+                    'ex_prop': 'test2',  # string
+                }
+            ),
+            GeoPoint(
+                Coordinate(2.0, 0.0),
+                properties={
+                    'ID': 1,   # numeric
+                    'ex_prop': 'test',  # string
+                }
+            ),
+        ])
+
     # Test that writing mixed shape types raises an error
     with tempfile.TemporaryDirectory() as f:
         with pytest.raises(ValueError):
