@@ -1,5 +1,6 @@
 
 from datetime import datetime, time, timezone
+import tempfile
 
 import numpy as np
 import pytest
@@ -202,6 +203,131 @@ def test_collection_convex_hull():
     ])
     with pytest.raises(ValueError):
         _ = new_track.convex_hull
+
+
+def test_collection_to_from_shapefile(caplog):
+    # Tests both to and from because of temporary file usage
+    # Shapes will be assigned an ID when written to shapefile, so have to hard code in tests
+
+    # Test polygons get written/read correctly
+    shapecol = FeatureCollection([
+        GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0), properties={'ID': 0}).to_polygon(),
+        GeoBox(Coordinate(0.0, 2.0), Coordinate(2.0, 0.0), properties={'ID': 1}).to_polygon(),
+    ])
+    with tempfile.TemporaryDirectory() as f:
+        shapecol.to_shapefile(f)
+        new_shapecol = FeatureCollection.from_shapefile(f)
+        assert new_shapecol == shapecol
+
+    # Test lines get written/read correctly
+    linecol = FeatureCollection([
+        GeoLineString([Coordinate(0.0, 1.0), Coordinate(1.0, 0.0)], properties={'ID': 0}),
+        GeoLineString([Coordinate(0.0, 2.0), Coordinate(2.0, 0.0)], properties={'ID': 1}),
+    ])
+    with tempfile.TemporaryDirectory() as f:
+        linecol.to_shapefile(f)
+        new_linecol = FeatureCollection.from_shapefile(f)
+        assert new_linecol == linecol
+
+    # Test points get written/read correctly
+    pointcol = FeatureCollection([
+        GeoPoint(Coordinate(1.0, 0.0), properties={'ID': 0}),
+        GeoPoint(Coordinate(2.0, 0.0), properties={'ID': 1}),
+    ])
+    with tempfile.TemporaryDirectory() as f:
+        pointcol.to_shapefile(f)
+        new_pointcol = FeatureCollection.from_shapefile(f)
+        assert new_pointcol == pointcol
+
+    # Test writing/reading properties
+    with tempfile.TemporaryDirectory() as f:
+        pointcol = FeatureCollection([
+            GeoPoint(
+                Coordinate(1.0, 0.0),
+                dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2)),  # start and end date
+                properties={
+                    'ID': 0,  # numeric
+                    'ex_prop': 'test2',  # string
+                    'ex2': True,  # boolean
+                }
+            ),
+            GeoPoint(
+                Coordinate(2.0, 0.0),
+                dt=datetime(2020, 1, 1), # one date only
+                properties={
+                    'ID': 1,   # numeric
+                    'ex_prop': 'test',  # string
+                    'ex2': False,  # boolean
+                }
+            ),
+        ])
+        pointcol.to_shapefile(f)
+        new_pointcol = FeatureCollection.from_shapefile(f)
+        assert new_pointcol == pointcol
+
+    # Test limiting the properties written
+    with tempfile.TemporaryDirectory() as f:
+        pointcol = FeatureCollection([
+            GeoPoint(
+                Coordinate(1.0, 0.0),
+                dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2)),  # start and end date
+                properties={
+                    'ID': 0,  # numeric
+                    'ex_prop': 'test2',  # string
+                }
+            ),
+            GeoPoint(
+                Coordinate(2.0, 0.0),
+                dt=datetime(2020, 1, 1), # one date only
+                properties={
+                    'ID': 1,   # numeric
+                    'ex_prop': 'test',  # string
+                }
+            ),
+        ])
+        pointcol.to_shapefile(f, include_properties=['ex_prop'])
+        new_pointcol = FeatureCollection.from_shapefile(f)
+        assert new_pointcol == FeatureCollection([
+            GeoPoint(
+                Coordinate(1.0, 0.0),
+                properties={
+                    'ID': 0,  # numeric
+                    'ex_prop': 'test2',  # string
+                }
+            ),
+            GeoPoint(
+                Coordinate(2.0, 0.0),
+                properties={
+                    'ID': 1,   # numeric
+                    'ex_prop': 'test',  # string
+                }
+            ),
+        ])
+
+    # Test that writing mixed shape types raises an error
+    with tempfile.TemporaryDirectory() as f:
+        with pytest.raises(ValueError):
+            mixedcol = FeatureCollection([
+                GeoPoint(Coordinate(1.0, 0.0)),
+                GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)])
+            ])
+            mixedcol.to_shapefile(f)
+
+    # Test that writing to directory that doesn't exist raises error
+    with pytest.raises(ValueError):
+        mixedcol = FeatureCollection([
+            GeoPoint(Coordinate(1.0, 0.0)),
+        ])
+        mixedcol.to_shapefile('/some/bad/directory/')
+
+    # Test that writing mixed property data types logs a warning
+    with tempfile.TemporaryDirectory() as f:
+        pointcol = FeatureCollection([
+            GeoPoint(Coordinate(1.0, 0.0), properties={'ID': 0, 'prop': 1}),
+            GeoPoint(Coordinate(2.0, 0.0), properties={'ID': 1, 'prop': '2'}),
+        ])
+        pointcol.to_shapefile(f)
+        assert 'Conflicting data types found in properties; your shapefile may not get written correctly' in caplog.text
 
 
 def test_featurecollection_add():

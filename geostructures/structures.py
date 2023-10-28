@@ -1482,7 +1482,7 @@ class GeoLineString(GeoShape):
         }
 
     def to_polygon(self, **kwargs):
-        return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
+        return GeoPolygon([*self.coords, self.coords[0]], dt=self.dt)
 
     def to_shapely(self):
         import shapely
