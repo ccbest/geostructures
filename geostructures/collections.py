@@ -228,8 +228,9 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
 
         def _get_dt(rec):
             """Grabs datetime data and returns appropriate struct"""
-            dt_start = rec.get(time_start_field)
-            dt_end = rec.get(time_end_field)
+            # Convert empty strings to None
+            dt_start = rec.get(time_start_field) or None
+            dt_end = rec.get(time_end_field) or None
             if dt_start is None and dt_end is None:
                 return None
 
@@ -261,7 +262,7 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
             'POLYGON': _create_polygon,
         }
         shape_fn = type_map.get(reader.shapeTypeName)
-        if not shape_fn:
+        if not shape_fn:  # pragma: no cover
             raise ValueError(
                 f'Shapefile contains unsupported shape type: {reader.shapeTypeName}'
             )
@@ -350,8 +351,6 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
         if not path.parent.exists():
             raise ValueError(f'Directory {path.parent} not found.')
 
-        path.mkdir()
-
         # 2-Tuples of properties and their datatypes
         _types = set(
             (_key, type(_val)) for x in self.geoshapes
@@ -364,17 +363,22 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
             c = Counter(x[0] for x in _types)
             if c.most_common(1)[0][1] > 1:
                 # Just log a warning - still want to try to write the file
-                self.logger.warning('Conflicting data types found in properties')
+                self.logger.warning(
+                    'Conflicting data types found in properties; '
+                    'your shapefile may not get written correctly'
+                )
 
-        typemap = {k: v for k, v in _types}
-        writer = shapefile.Writer(str(path / path.name))
+        typemap = dict(_types)
+        writer = shapefile.Writer(str(path))
 
         # Declare fields
         for field, _type in typemap.items():
-            if issubclass(_type, (float, int)):
-                writer.field(field, 'N')
-            elif issubclass(_type, bool):
+            if issubclass(_type, bool):
+                # bools are subclasses of int (WAT) - have to check first
                 writer.field(field, 'L')
+            elif issubclass(_type, (float, int)) and not issubclass(_type, datetime):
+                # datetimes are subclasses of ints too
+                writer.field(field, 'N')
             else:
                 writer.field(field, 'C')
 
@@ -382,7 +386,8 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
 
         for idx, shape in enumerate(self.geoshapes):
             # Write out properties
-            writer.record(*[_convert(v) for k, v in shape.properties.items() if k in typemap], idx)
+            props = shape.properties
+            writer.record(*[_convert(props.get(k)) for k in typemap], idx)
 
             if isinstance(shape, GeoPoint):
                 writer.point(*shape.centroid.to_float())
