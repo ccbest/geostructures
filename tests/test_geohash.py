@@ -42,6 +42,18 @@ def test_niemeyer_to_geobox():
         _ = niemeyer_to_geobox('95555659z', 16)
 
 
+def test_h3hasher_hash_coordinates():
+    coords = [
+        Coordinate(0.0, 0.0), Coordinate(1.0, 1.0),
+        Coordinate(0.0, 0.0)
+    ]
+    hasher = H3Hasher(resolution=8)
+
+    assert hasher.hash_coordinates(coords) == {
+        '88754e6499fffff': 2, '887541ad5bfffff': 1
+    }
+
+
 def test_h3hasher_hash_shape():
     shape = GeoCircle(Coordinate(0.0, 0.0), 500)
     hasher_9 = H3Hasher(resolution=9)
@@ -147,6 +159,18 @@ def test_niemeyer_hash_collection():
         'c0000027': 1,
         'c000001b': 1
      }
+
+
+def test_niemeyer_hash_coordinates():
+    coords = [
+        Coordinate(0.0, 0.0), Coordinate(1.0, 1.0),
+        Coordinate(0.0, 0.0)
+    ]
+    hasher = NiemeyerHasher(8, 16)
+
+    assert hasher.hash_coordinates(coords) == {
+        '3fffffff': 2, 'c000cf3c': 1
+    }
 
 
 def test_niemeyer_hash_shape():
