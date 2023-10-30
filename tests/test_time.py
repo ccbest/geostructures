@@ -55,6 +55,13 @@ def test_timeinterval_hash():
     assert TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 3)) in intervals
 
 
+def test_timeinterval_copy():
+    interval = TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 3))
+    interval_copy = interval.copy()
+    assert interval == interval_copy
+    assert interval is not interval_copy
+
+
 def test_timeinterval_isdisjoint():
     interval = TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 3))
     assert interval.isdisjoint(TimeInterval(datetime(2020, 1, 3), datetime(2020, 1, 4)))

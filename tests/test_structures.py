@@ -277,6 +277,7 @@ def test_geoshape_set_property():
         'test_property': 1
     }
 
+
 def test_geoshape_vertices():
     polygon = GeoPolygon(
         [
@@ -491,6 +492,18 @@ def test_geopolygon_bounding_coords(geopolygon):
 
     # assert self-closing
     assert geopolygon.bounding_coords() == geopolygon.bounding_coords()
+
+def test_geopolygon_copy():
+    poly = GeoPolygon(
+        [Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)],
+        holes=[GeoPolygon([Coordinate(0.25, 0.25), Coordinate(0.5, 0.5), Coordinate(1.0, 0.25), Coordinate(0.25, 0.25)])],
+        properties={'example': 'prop'}
+    )
+    poly_copy = poly.copy()
+
+    # Assert equality but different pointer
+    assert poly == poly_copy
+    assert poly is not poly_copy
 
 
 def test_geopolygon_from_geojson():
@@ -708,6 +721,15 @@ def test_geobox_bounding_coords(geobox):
     assert geobox.bounding_coords()[0] == geobox.bounding_coords()[-1]
 
 
+def test_geobox_copy():
+    box = GeoBox(Coordinate(0., 1.), Coordinate(1., 0.))
+    box_copy = box.copy()
+
+    # Assert equality but different pointer
+    assert box == box_copy
+    assert box is not box_copy
+
+
 def test_geobox_contains_coordinate(geobox):
     box = GeoBox(Coordinate(0., 1.), Coordinate(1., 0.))
     assert box.contains_coordinate(Coordinate(0.5, 0.5))
@@ -833,6 +855,15 @@ def test_geocircle_centroid(geocircle):
     assert geocircle.centroid == geocircle.center
 
 
+def test_geocircle_copy():
+    circle = GeoCircle(Coordinate(0., 1.), 500)
+    circle_copy = circle.copy()
+
+    # Assert equality but different pointer
+    assert circle == circle_copy
+    assert circle is not circle_copy
+
+
 def test_geocircle_linear_rings(geocircle):
     rings = geocircle.linear_rings()
     assert rings == [geocircle.bounding_coords()]
@@ -866,6 +897,7 @@ def test_geoellipse_contains():
     # Hole
     ellipse = GeoEllipse(Coordinate(0.0, 0.0), 1000, 500, 90, holes=[GeoCircle(Coordinate(0., 0.), 200)])
     assert not ellipse.contains_coordinate(Coordinate(0., 0))
+
 
 def test_geoellipse_eq(geoellipse):
     e2 = GeoEllipse(Coordinate(0.0, 0.0), 1000, 500, 90, dt=default_test_datetime)
@@ -909,6 +941,15 @@ def test_geoellipse_bounding_coords(geoellipse):
 
     # assert self-closing
     assert geoellipse.bounding_coords()[0] == geoellipse.bounding_coords()[-1]
+
+
+def test_geoellipse_copy():
+    ellipse = GeoEllipse(Coordinate(0., 1.), 500, 200, 90)
+    ellipse_copy = ellipse.copy()
+
+    # Assert equality but different pointer
+    assert ellipse == ellipse_copy
+    assert ellipse is not ellipse_copy
 
 
 def test_geoellipse_linear_rings(geoellipse):
@@ -1027,6 +1068,15 @@ def test_georing_bounding_coords(geowedge, georing):
 
     # assert self-closing
     assert georing.bounding_coords()[0] == georing.bounding_coords()[-1]
+
+
+def test_georing_copy():
+    ring = GeoRing(Coordinate(0., 1.), 500, 200)
+    ring_copy = ring.copy()
+
+    # Assert equality but different pointer
+    assert ring == ring_copy
+    assert ring is not ring_copy
 
 
 def test_georing_to_geojson(georing):
@@ -1156,6 +1206,15 @@ def test_geolinestring_contains():
     assert not ls.contains(point2)
 
 
+def test_geolinestring_copy():
+    linestring = GeoLineString([Coordinate(0., 1.), Coordinate(0., 1.)])
+    linestring_copy = linestring.copy()
+
+    # Assert equality but different pointer
+    assert linestring == linestring_copy
+    assert linestring is not linestring_copy
+
+
 def test_geolinestring_from_geojson():
     gls = {
         'type': 'Feature',
@@ -1272,7 +1331,7 @@ def test_geolinestring_to_polygon(geolinestring):
     assert geolinestring.to_polygon() == GeoPolygon(geolinestring.bounding_coords(), dt=default_test_datetime)
 
 
-def test_geopoint_contains(geopoint):
+def test_geopoint_contains_dunder(geopoint):
     assert geopoint not in geopoint
 
 
@@ -1310,6 +1369,15 @@ def test_geopoint_bounding_coords(geopoint):
 def test_geopoint_bounding_vertices():
     with pytest.raises(NotImplementedError):
         _ = GeoPoint(Coordinate(0., 0.)).bounding_vertices()
+
+
+def test_geopoint_copy():
+    point = GeoPoint(Coordinate(0., 1.))
+    point_copy = point.copy()
+
+    # Assert equality but different pointer
+    assert point == point_copy
+    assert point is not point_copy
 
 
 def test_geopoint_contains():
