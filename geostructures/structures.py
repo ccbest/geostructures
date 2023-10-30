@@ -9,6 +9,7 @@ __all__ = [
 ]
 
 from abc import abstractmethod
+import copy
 from datetime import datetime
 import math
 import re
@@ -254,6 +255,10 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             return False  # TimeIntervals cant be a subset of datetimes
 
         raise ValueError('Geoshapes may only contain datetimes and TimeIntervals.')
+
+    @abstractmethod
+    def copy(self):
+        """Produces a copy of the geoshape."""
 
     def intersects(self, shape: 'GeoShape', **kwargs) -> bool:
         """
@@ -684,6 +689,14 @@ class GeoPolygon(GeoShape):
 
         return True
 
+    def copy(self):
+        return GeoPolygon(
+            self.outline.copy(),
+            holes=self.holes.copy(),
+            dt=self.dt.copy() if self.dt else None,
+            properties=copy.deepcopy(self.properties)
+        )
+
     @classmethod
     def from_geojson(
         cls,
@@ -867,6 +880,15 @@ class GeoBox(GeoShape):
 
         return True
 
+    def copy(self):
+        return GeoBox(
+            self.nw_bound,
+            self.se_bound,
+            holes=self.holes.copy(),
+             dt=self.dt.copy() if self.dt else None,
+            properties=copy.deepcopy(self.properties)
+        )
+
     def circumscribing_rectangle(self):
         return self
 
@@ -938,6 +960,15 @@ class GeoCircle(GeoShape):
             coords.append(coord)
 
         return [*coords, coords[0]]
+
+    def copy(self):
+        return GeoCircle(
+            self.center,
+            self.radius,
+            holes=self.holes.copy(),
+             dt=self.dt.copy() if self.dt else None,
+            properties=copy.deepcopy(self.properties)
+        )
 
     def circumscribing_rectangle(self):
         return GeoBox(
@@ -1093,6 +1124,17 @@ class GeoEllipse(GeoShape):
                 return False
 
         return True
+
+    def copy(self):
+        return GeoEllipse(
+            self.center,
+            self.major_axis,
+            self.minor_axis,
+            self.rotation,
+            holes=self.holes.copy(),
+             dt=self.dt.copy() if self.dt else None,
+            properties=copy.deepcopy(self.properties)
+        )
 
     def to_polygon(self, **kwargs):
         return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
@@ -1264,6 +1306,18 @@ class GeoRing(GeoShape):
 
         return True
 
+    def copy(self):
+        return GeoRing(
+            self.center,
+            self.inner_radius,
+            self.outer_radius,
+            self.angle_min,
+            self.angle_max,
+            holes=self.holes.copy(),
+             dt=self.dt.copy() if self.dt else None,
+            properties=copy.deepcopy(self.properties)
+        )
+
     def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
         outer_bounds, inner_bounds = self._draw_bounds(**kwargs)
 
@@ -1380,6 +1434,13 @@ class GeoLineString(GeoShape):
         # For now, just check for exact match. Will need update if buffering
         # becomes a feature
         return coord in self.coords
+
+    def copy(self):
+        return GeoLineString(
+            self.coords,
+             dt=self.dt.copy() if self.dt else None,
+            properties=copy.deepcopy(self.properties)
+        )
 
     @classmethod
     def from_geojson(
@@ -1551,6 +1612,13 @@ class GeoPoint(GeoShape):
     def contains_coordinate(self, coord: Coordinate) -> bool:
         # Points don't contain anything, even themselves
         return False
+
+    def copy(self):
+        return GeoPoint(
+            self.center,
+             dt=self.dt.copy() if self.dt else None,
+            properties=copy.deepcopy(self.properties)
+        )
 
     @classmethod
     def from_geojson(
