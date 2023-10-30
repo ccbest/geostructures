@@ -6,7 +6,7 @@ __all__ = ['H3Hasher', 'Hasher']
 
 import abc
 from collections import defaultdict, Counter
-from typing import Dict, List, Optional, Set, Tuple, TypedDict
+from typing import Dict, List, Optional, Sequence, Set, Tuple, TypedDict
 
 from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint
 from geostructures.structures import GeoShape
@@ -348,13 +348,13 @@ class H3Hasher(Hasher):
         return _hexes
 
     @staticmethod
-    def _hash_point(point: GeoPoint, resolution: int) -> Set[str]:
+    def _hash_point(point: Coordinate, resolution: int) -> Set[str]:
         """
         Returns the geohash corresponding to a point.
 
         Args:
             point:
-                A GeoPoint
+                A geostructures Coordinate
 
             resolution:
                 The H3 resolution
@@ -366,8 +366,8 @@ class H3Hasher(Hasher):
 
         return {
             h3.geo_to_h3(
-                point.centroid.latitude,
-                point.centroid.longitude,
+                point.latitude,
+                point.longitude,
                 resolution
             )
         }
@@ -406,6 +406,26 @@ class H3Hasher(Hasher):
 
         return dict(out_hexes)
 
+    def hash_coordinates(self, coordinates: Sequence[Coordinate], **kwargs):
+        """
+        Hashes a collection of coordinates and counts the number
+        of times each hash appears.
+
+        Args:
+            coordinates:
+                A collection of Coordinates, from geostructures
+
+        Keyword Args:
+            resolution:
+                The H3 resolution to apply
+
+        Returns:
+            A dictionary of H3 geohashes mapped to their corresponding
+            counts
+        """
+        resolution = kwargs.get('resolution', self.resolution)
+        return dict(Counter(list(self._hash_point(x, resolution))[0] for x in coordinates))
+
     def hash_shape(self, shape: GeoShape, **kwargs):
         """
         Hashes a singular shape and returns the list of underlying h3 geohashes
@@ -426,7 +446,7 @@ class H3Hasher(Hasher):
             raise ValueError('You must pass a H3 resolution.')
 
         if isinstance(shape, GeoPoint):
-            return self._hash_point(shape, resolution)
+            return self._hash_point(shape.centroid, resolution)
 
         if isinstance(shape, GeoLineString):
             return self._hash_linestring(shape, resolution)
@@ -514,19 +534,19 @@ class NiemeyerHasher(Hasher):
 
     def _hash_point(
         self,
-        point: GeoPoint
+        point: Coordinate
     ) -> Set[str]:
         """
         Find the geohash that corresponds to a point.
 
         Args:
             point:
-                A geostructures.GeoPoint
+                A geostructures Coordinate
 
         Returns:
             A set of geohashes
         """
-        return {coord_to_niemeyer(point.centroid, self.length, self.base)}
+        return {coord_to_niemeyer(point, self.length, self.base)}
 
     def _hash_polygon(
         self,
@@ -576,6 +596,21 @@ class NiemeyerHasher(Hasher):
 
         return dict(counter)
 
+    def hash_coordinates(self, coordinates: Sequence[Coordinate]):
+        """
+        Hashes a collection of coordinates and counts the number
+        of times each hash appears.
+
+        Args:
+            coordinates:
+                A collection of Coordinates, from geostructures
+
+        Returns:
+            A dictionary of H3 geohashes mapped to their corresponding
+            counts
+        """
+        return dict(Counter(list(self._hash_point(x))[0] for x in coordinates))
+
     def hash_shape(self, shape: GeoShape, **_):
         """
         Converts a geoshape into a set of geohashes that make up the shape.
@@ -588,7 +623,7 @@ class NiemeyerHasher(Hasher):
             set
         """
         if isinstance(shape, GeoPoint):
-            return self._hash_point(shape)
+            return self._hash_point(shape.centroid)
 
         if isinstance(shape, GeoLineString):
             return self._hash_linestring(shape)
