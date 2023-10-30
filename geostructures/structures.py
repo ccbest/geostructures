@@ -885,7 +885,7 @@ class GeoBox(GeoShape):
             self.nw_bound,
             self.se_bound,
             holes=self.holes.copy(),
-             dt=self.dt.copy() if self.dt else None,
+            dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self.properties)
         )
 
@@ -966,7 +966,7 @@ class GeoCircle(GeoShape):
             self.center,
             self.radius,
             holes=self.holes.copy(),
-             dt=self.dt.copy() if self.dt else None,
+            dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self.properties)
         )
 
@@ -1132,7 +1132,7 @@ class GeoEllipse(GeoShape):
             self.minor_axis,
             self.rotation,
             holes=self.holes.copy(),
-             dt=self.dt.copy() if self.dt else None,
+            dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self.properties)
         )
 
@@ -1314,7 +1314,7 @@ class GeoRing(GeoShape):
             self.angle_min,
             self.angle_max,
             holes=self.holes.copy(),
-             dt=self.dt.copy() if self.dt else None,
+            dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self.properties)
         )
 
@@ -1438,7 +1438,7 @@ class GeoLineString(GeoShape):
     def copy(self):
         return GeoLineString(
             self.coords,
-             dt=self.dt.copy() if self.dt else None,
+            dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self.properties)
         )
 
@@ -1616,7 +1616,7 @@ class GeoPoint(GeoShape):
     def copy(self):
         return GeoPoint(
             self.center,
-             dt=self.dt.copy() if self.dt else None,
+            dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self.properties)
         )
 
