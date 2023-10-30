@@ -63,7 +63,8 @@ class Coordinate:
         import mgrs  # pylint: disable=import-outside-toplevel
         _MGRS = mgrs.MGRS()
 
-        lat, lon = _MGRS.toLatLon(mgrs_str)
+        # Spaces in the mgrs string can produce inaccurate coordinates
+        lat, lon = _MGRS.toLatLon(mgrs_str.replace(' ', ''))
         return Coordinate(lon, lat)
 
     def to_dms(self) -> Tuple[Tuple[int, int, float, str], Tuple[int, int, float, str]]:
