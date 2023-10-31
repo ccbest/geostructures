@@ -89,7 +89,7 @@ def test_geoshape_init():
         _ = GeoCircle(
             Coordinate(0.0, 0.0), 1000, 
             # Hole shape itself has a hole
-            GeoCircle(Coordinate(0.0, 0.0), 500, GeoCircle(Coordinate(0.0, 0.0), 250))
+            holes=[GeoCircle(Coordinate(0.0, 0.0), 500, holes=[GeoCircle(Coordinate(0.0, 0.0), 250)])]
         )
 
 
@@ -121,12 +121,46 @@ def test_geoshape_end():
         _ = GeoCircle(Coordinate('0.0', '0.0'), 50).end
 
 
-def test_geoshape_contains():
+def test_geoshape_contains_dunder():
     geopoint = GeoCircle(Coordinate('0.0', '0.0'), 500, dt=datetime(2020, 1, 1, 1))
     assert Coordinate('0.0', '0.0') in geopoint
     assert GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 1)) in geopoint
     assert GeoPoint(Coordinate('0.0', '0.0'), dt=None) in geopoint
     assert GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 1)) in GeoCircle(Coordinate('0.0', '0.0'), 500, dt=None)
+
+
+def test_geoshape_bounding_vertices():
+    poly = GeoPolygon([Coordinate(1.0, 0.0), Coordinate(1.0, 1.0), Coordinate(0.0, 0.5), Coordinate(1.0, 0.0)])
+    assert poly.bounding_vertices() == [
+        (Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)),
+        (Coordinate(1.0, 1.0), Coordinate(0.0, 0.5)),
+        (Coordinate(0.0, 0.5), Coordinate(1.0, 0.0)),
+        (Coordinate(1.0, 0.0), Coordinate(1.0, 0.0))
+    ]
+
+
+def test_geoshape_contains():
+    # Base case
+    circle_outer = GeoCircle(Coordinate(0., 0.), 5_000)
+    circle_inner = GeoCircle(Coordinate(0., 0.), 2_000)
+    assert circle_outer.contains(circle_inner)
+    assert not circle_inner.contains(circle_outer)
+
+    # Time bounding
+    circle_outer = GeoCircle(Coordinate(0., 0.), 5_000, dt=datetime(2020, 1, 2))
+    circle_inner = GeoCircle(Coordinate(0., 0.), 2_000, dt=datetime(2020, 1, 1))
+    assert not circle_outer.contains(circle_inner)
+
+    # Intersecting
+    Coordinate(0.0899322, 0.0)
+    circle1 = GeoCircle(Coordinate(0., 0.), 5_000)
+    circle2 = GeoCircle(Coordinate(0.0899322, 0.0), 6_000)
+    assert not circle1.contains(circle2)
+
+    # inner circle fully contained within hole
+    circle_outer = GeoCircle(Coordinate(0., 0.,), 5_000, holes=[GeoCircle(Coordinate(0., 0.,), 4_000)])
+    circle_inner = GeoCircle(Coordinate(0., 0.), 2_000)
+    assert not circle_outer.contains(circle_inner)
 
 
 def test_geoshape_contains_time():
@@ -148,6 +182,35 @@ def test_geoshape_contains_time():
     with pytest.raises(ValueError):
         geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 12), datetime(2020, 1, 3, 12)))
         geopoint.contains_time('not a date')
+
+
+def test_geoshape_intersects():
+    circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000)
+    circle2 = GeoCircle(Coordinate(0.0899322, 0.0), 5_000)  # Exactly 10km to the right
+    # Exactly one point where shapes intersect
+    assert circle1.intersects(circle2)
+    assert circle2.intersects(circle1)
+
+    circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000)
+    circle2 = GeoCircle(Coordinate(0.0899321, 0.0), 5_000)  # Nudged just barely to the left
+    assert circle1.intersects(circle2)
+    assert circle2.intersects(circle1)
+
+    circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000)
+    circle2 = GeoCircle(Coordinate(0.0899323, 0.0), 5_000)  # Nudged just barely to the right
+    assert not circle1.intersects(circle2)
+    assert not circle2.intersects(circle1)
+
+    # Same as above, but time bounds different
+    circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000, dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2)))
+    circle2 = GeoCircle(Coordinate(0.0899321, 0.0), 5_000, dt=TimeInterval(datetime(2020, 1, 3), datetime(2020, 1, 4)))
+    assert not circle1.intersects(circle2)
+    assert not circle2.intersects(circle1)
+
+    circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000)
+    circle2 = GeoCircle(Coordinate(0.0, 0.0), 2_000)  # Fully contained
+    assert circle1.intersects(circle2)
+    assert circle2.intersects(circle1)
 
 
 def test_shape_to_geojson(geocircle):
@@ -192,7 +255,7 @@ def test_geoshape_to_shapely(geobox):
     hole = GeoPolygon([
         Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5), Coordinate(0.5, 0.5),
     ])
-    polygon = GeoPolygon(outline, hole)
+    polygon = GeoPolygon(outline, holes=[hole])
     expected = shapely.geometry.Polygon(
         [x.to_float() for x in outline],
         holes=[list(reversed([x.to_float() for x in hole.bounding_coords()]))]
@@ -213,6 +276,35 @@ def test_geoshape_set_property():
         'datetime_end': datetime(2020, 1, 1, 12, tzinfo=timezone.utc),
         'test_property': 1
     }
+
+
+def test_geoshape_vertices():
+    polygon = GeoPolygon(
+        [
+            Coordinate(1.0, 0.0), Coordinate(1.0, 1.0),
+            Coordinate(0.0, 0.5), Coordinate(1.0, 0.0)
+        ],
+        holes=[
+            GeoPolygon([
+                Coordinate(0.4, 0.6), Coordinate(0.6, 0.6),
+                Coordinate(0.5, 0.4), Coordinate(0.4, 0.6),
+            ])
+        ]
+    )
+    assert polygon.vertices() == [
+        [
+            (Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)),
+            (Coordinate(1.0, 1.0), Coordinate(0.0, 0.5)),
+            (Coordinate(0.0, 0.5), Coordinate(1.0, 0.0)),
+            (Coordinate(1.0, 0.0), Coordinate(1.0, 0.0))
+        ],
+        [
+            (Coordinate(0.4, 0.6), Coordinate(0.6, 0.6)),
+            (Coordinate(0.6, 0.6), Coordinate(0.5, 0.4)),
+            (Coordinate(0.5, 0.4), Coordinate(0.4, 0.6)),
+            (Coordinate(0.4, 0.6), Coordinate(0.4, 0.6))
+        ]
+    ]
 
 
 def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
@@ -275,9 +367,9 @@ def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
-        GeoPolygon([
+        holes=[GeoPolygon([
             Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ])
+        ])]
     )
     # Differing number of holes
     assert p1 != p2
@@ -287,24 +379,28 @@ def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
-        GeoPolygon([
-            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ]),
-        GeoPolygon([
-            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ])
+        holes=[
+            GeoPolygon([
+                Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+            ]),
+            GeoPolygon([
+                Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+            ])
+        ]
     )
     p2 = GeoPolygon(
         [
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
-        GeoPolygon([
-            Coordinate(0.6, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ]),
-        GeoPolygon([
-            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ])
+        holes=[
+            GeoPolygon([
+                Coordinate(0.6, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+            ]),
+            GeoPolygon([
+                Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
+            ])
+        ]
     )
     # Holes are not equal
     assert p1 != p2
@@ -381,10 +477,10 @@ def test_geopolygon_contains():
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
-        GeoPolygon([
+        holes=[GeoPolygon([
             Coordinate(0.25, 0.25), Coordinate(0.25, 0.75), Coordinate(0.75, 0.75),
             Coordinate(0.75, 0.25), Coordinate(0.25, 0.25)
-        ])
+        ])]
     )
     assert Coordinate(0.9, 0.9) in polygon  # outside hole
     assert Coordinate(0.5, 0.5) not in polygon  # inside hole
@@ -396,6 +492,18 @@ def test_geopolygon_bounding_coords(geopolygon):
 
     # assert self-closing
     assert geopolygon.bounding_coords() == geopolygon.bounding_coords()
+
+def test_geopolygon_copy():
+    poly = GeoPolygon(
+        [Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)],
+        holes=[GeoPolygon([Coordinate(0.25, 0.25), Coordinate(0.5, 0.5), Coordinate(1.0, 0.25), Coordinate(0.25, 0.25)])],
+        properties={'example': 'prop'}
+    )
+    poly_copy = poly.copy()
+
+    # Assert equality but different pointer
+    assert poly == poly_copy
+    assert poly is not poly_copy
 
 
 def test_geopolygon_from_geojson():
@@ -412,7 +520,7 @@ def test_geopolygon_from_geojson():
     }
     expected = GeoPolygon(
         [Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)],
-        GeoPolygon([Coordinate(0.25, 0.25), Coordinate(0.5, 0.5), Coordinate(1.0, 0.25), Coordinate(0.25, 0.25)]),
+        holes=[GeoPolygon([Coordinate(0.25, 0.25), Coordinate(0.5, 0.5), Coordinate(1.0, 0.25), Coordinate(0.25, 0.25)])],
         properties={'example': 'prop'}
     )
     assert GeoPolygon.from_geojson(gjson) == expected
@@ -468,6 +576,24 @@ def test_geopolygon_circumscribing_rectangle(geopolygon):
     )
 
 
+def test_geopolygon_contains_coordinate():
+    polygon = GeoPolygon([Coordinate(0., 1.), Coordinate(1., 1.), Coordinate(0.5, 0.), Coordinate(0., 1.)])
+    assert polygon.contains_coordinate(Coordinate(0.5, 0.5))
+
+    # Outside bounds
+    assert not polygon.contains_coordinate(Coordinate(2.0, 2.0))
+
+    # In bounds, not in polygon
+    assert not polygon.contains_coordinate(Coordinate(0.75, 0.25))
+
+    # In hole
+    polygon = GeoPolygon(
+        [Coordinate(0., 1.), Coordinate(1., 1.), Coordinate(0.5, 0.), Coordinate(0., 1.)],
+        holes=[GeoCircle(Coordinate(0.5, 0.5), 5_000)]
+    )
+    assert not polygon.contains_coordinate(Coordinate(0.5, 0.5))
+
+
 def test_geopolygon_from_shapely():
     expected = GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)])
     polygon = shapely.geometry.Polygon([(0.0, 0.0), (1.0, 1.0), (2.0, 0.0), (0.0, 0.0)])
@@ -483,9 +609,9 @@ def test_geopolygon_linear_rings():
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
         # Hole
-        GeoPolygon([
+        holes=[GeoPolygon([
             Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ])
+        ])]
     )
     rings = polygon.linear_rings()
     assert rings == [
@@ -521,9 +647,9 @@ def test_geopolygon_from_wkt():
             Coordinate(30.123, 10), Coordinate(40, 40), Coordinate(20, 40),
             Coordinate(10.123, 20), Coordinate(30.123, 10)
         ],
-        GeoPolygon([
+        holes=[GeoPolygon([
             Coordinate(15, 20), Coordinate(20, 20), Coordinate(15, 15), Coordinate(15, 20)
-        ])
+        ])]
     )
 
     with pytest.raises(ValueError):
@@ -536,10 +662,10 @@ def test_geopolygon_to_wkt():
             Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
-        GeoPolygon([
+        holes=[GeoPolygon([
             Coordinate(0.25, 0.25), Coordinate(0.25, 0.75), Coordinate(0.75, 0.75),
             Coordinate(0.75, 0.25), Coordinate(0.25, 0.25)
-        ])
+        ])]
     )
     assert polygon.to_wkt() == 'POLYGON((0.0 0.0,0.0 1.0,1.0 1.0,1.0 0.0,0.0 0.0),(0.25 0.25,0.75 0.25,0.75 0.75,0.25 0.75,0.25 0.25))'
 
@@ -595,6 +721,28 @@ def test_geobox_bounding_coords(geobox):
     assert geobox.bounding_coords()[0] == geobox.bounding_coords()[-1]
 
 
+def test_geobox_copy():
+    box = GeoBox(Coordinate(0., 1.), Coordinate(1., 0.))
+    box_copy = box.copy()
+
+    # Assert equality but different pointer
+    assert box == box_copy
+    assert box is not box_copy
+
+
+def test_geobox_contains_coordinate(geobox):
+    box = GeoBox(Coordinate(0., 1.), Coordinate(1., 0.))
+    assert box.contains_coordinate(Coordinate(0.5, 0.5))
+
+    assert not box.contains_coordinate(Coordinate(2.0, 2.0))
+
+    box = GeoBox(
+        Coordinate(0., 1.), Coordinate(1., 0.),
+        holes=[GeoCircle(Coordinate(0.5, 0.5), 5_000)]
+    )
+    assert not box.contains_coordinate(Coordinate(0.5, 0.5))
+
+
 def test_geobox_linear_rings():
     box = GeoBox(
         Coordinate(0.0, 1.0),
@@ -634,10 +782,15 @@ def test_geobox_centroid(geobox):
     assert geobox.centroid == Coordinate(0.5, 0.5)
 
 
-def test_geocircle_contains(geocircle):
-    assert Coordinate(0.0, 0.0) in geocircle
-    assert Coordinate(0.001, 0.001) in geocircle
-    assert Coordinate(1.0, 1.0) not in geocircle
+def test_geocircle_contains_coordinate():
+    circle = GeoCircle(Coordinate(0.0, 0.0), 1000)
+
+    assert circle.contains_coordinate(Coordinate(0.0, 0.0))
+    assert circle.contains_coordinate(Coordinate(0.001, 0.001))
+    assert not circle.contains_coordinate(Coordinate(1.0, 1.0))
+
+    circle = GeoCircle(Coordinate(0.0, 0.0), 1000, holes=[GeoCircle(Coordinate(0.0, 0.0), 1000)])
+    assert not circle.contains_coordinate(Coordinate(0., 0.))
 
 
 def test_geocircle_geojson(geocircle):
@@ -702,6 +855,15 @@ def test_geocircle_centroid(geocircle):
     assert geocircle.centroid == geocircle.center
 
 
+def test_geocircle_copy():
+    circle = GeoCircle(Coordinate(0., 1.), 500)
+    circle_copy = circle.copy()
+
+    # Assert equality but different pointer
+    assert circle == circle_copy
+    assert circle is not circle_copy
+
+
 def test_geocircle_linear_rings(geocircle):
     rings = geocircle.linear_rings()
     assert rings == [geocircle.bounding_coords()]
@@ -710,24 +872,31 @@ def test_geocircle_linear_rings(geocircle):
     assert rings[0][0] == rings[0][-1]
 
 
-def test_geoellipse_contains(geoellipse):
+def test_geoellipse_contains():
+    ellipse = GeoEllipse(Coordinate(0.0, 0.0), 1000, 500, 90)
+
     # Center
-    assert Coordinate(0.0, 0.0) in geoellipse
+    assert ellipse.contains_coordinate(Coordinate(0.0, 0.0))
 
     # 900 meters east
-    assert Coordinate(0.0080939, 0.) in geoellipse
+    assert ellipse.contains_coordinate(Coordinate(0.0080939, 0.))
 
     # 900 meters north (outside)
-    assert Coordinate(0.0, 0.0080939) not in geoellipse
+    assert not ellipse.contains_coordinate(Coordinate(0.0, 0.0080939))
 
     # 1000 meters east - on edge
-    assert Coordinate(0.0089932, 0.) in geoellipse
+    assert ellipse.contains_coordinate(Coordinate(0.0089932, 0.))
 
     # 45-degree line
-    assert Coordinate(0.005, 0.005) in GeoEllipse(Coordinate(0.0, 0.0), 1000, 1, 45)
-    assert Coordinate(-0.005, -0.005) in GeoEllipse(Coordinate(0.0, 0.0), 1000, 1, 45)
-    assert Coordinate(0, 0.005) not in GeoEllipse(Coordinate(0.0, 0.0), 1000, 1, 45)
-    assert Coordinate(-0.005, 0.005) not in GeoEllipse(Coordinate(0.0, 0.0), 1000, 1, 45)
+    ellipse = GeoEllipse(Coordinate(0.0, 0.0), 1000, 1, 45)
+    assert ellipse.contains_coordinate(Coordinate(0.005, 0.005))
+    assert ellipse.contains_coordinate(Coordinate(-0.005, -0.005))
+    assert not ellipse.contains_coordinate(Coordinate(0, 0.005))
+    assert not ellipse.contains_coordinate(Coordinate(-0.005, 0.005))
+
+    # Hole
+    ellipse = GeoEllipse(Coordinate(0.0, 0.0), 1000, 500, 90, holes=[GeoCircle(Coordinate(0., 0.), 200)])
+    assert not ellipse.contains_coordinate(Coordinate(0., 0))
 
 
 def test_geoellipse_eq(geoellipse):
@@ -774,6 +943,15 @@ def test_geoellipse_bounding_coords(geoellipse):
     assert geoellipse.bounding_coords()[0] == geoellipse.bounding_coords()[-1]
 
 
+def test_geoellipse_copy():
+    ellipse = GeoEllipse(Coordinate(0., 1.), 500, 200, 90)
+    ellipse_copy = ellipse.copy()
+
+    # Assert equality but different pointer
+    assert ellipse == ellipse_copy
+    assert ellipse is not ellipse_copy
+
+
 def test_geoellipse_linear_rings(geoellipse):
     rings = geoellipse.linear_rings()
     assert rings == [geoellipse.bounding_coords()]
@@ -811,21 +989,26 @@ def test_geoellipse_centroid(geoellipse):
 
 
 def test_georing_contains(georing, geowedge):
+    ring = GeoRing(Coordinate(0.0, 0.0), 500, 1000)
+    wedge = GeoRing(Coordinate(0.0, 0.0), 500, 1000, 90, 180)
     # 750 meters east
-    assert inverse_haversine_degrees(georing.center, 90, 750) in georing
-    assert inverse_haversine_degrees(georing.center, 90, 750) in geowedge
+    assert ring.contains_coordinate(Coordinate(0.0067449, 0.0))
+    assert wedge.contains_coordinate(Coordinate(0.0067449, 0.0))
 
     # 750 meters west (outside geowedge angle)
-    assert inverse_haversine_degrees(georing.center, -90, 750) in georing
-    assert inverse_haversine_degrees(georing.center, -90, 750) not in geowedge
+    assert ring.contains_coordinate(Coordinate(-0.0067449, 0.0))
+    assert not wedge.contains_coordinate(Coordinate(-0.0067449, 0.0))
 
     # Centerpoint (not in shape)
-    assert georing.center not in georing
-    assert georing.center not in geowedge
+    assert not ring.contains_coordinate(Coordinate(0.0, 0.0))
+    assert not wedge.contains_coordinate(Coordinate(0.0, 0.0))
 
     # Along edge (1000m east)
-    assert inverse_haversine_degrees(georing.center, 90, 1000) in georing
-    assert inverse_haversine_degrees(georing.center, 90, 1000) in geowedge
+    assert ring.contains_coordinate(Coordinate(0.0089932, 0.0))
+    assert wedge.contains_coordinate(Coordinate(0.0089932, 0.0))
+
+    ring = GeoRing(Coordinate(0.0, 0.0), 500, 1000, holes=[GeoCircle(Coordinate(0.0067449, 0.0), 200)])
+    assert not ring.contains_coordinate(Coordinate(0.0067449, 0.0))
 
 
 def test_georing_eq(geowedge):
@@ -885,6 +1068,15 @@ def test_georing_bounding_coords(geowedge, georing):
 
     # assert self-closing
     assert georing.bounding_coords()[0] == georing.bounding_coords()[-1]
+
+
+def test_georing_copy():
+    ring = GeoRing(Coordinate(0., 1.), 500, 200)
+    ring_copy = ring.copy()
+
+    # Assert equality but different pointer
+    assert ring == ring_copy
+    assert ring is not ring_copy
 
 
 def test_georing_to_geojson(georing):
@@ -959,7 +1151,7 @@ def test_georing_to_polygon(georing):
     assert georing.to_polygon() == GeoPolygon(georing.bounding_coords(), dt=default_test_datetime)
 
 
-def test_geolinestring_contains(geolinestring):
+def test_geolinestring_contains_dunder(geolinestring):
     assert Coordinate(0., 0.) in geolinestring
     assert Coordinate(5., 5.) not in geolinestring
 
@@ -992,6 +1184,37 @@ def test_geolinestring_bounding_coords(geolinestring):
     ]
 
 
+def test_geolinestring_contains():
+    ls = GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.), Coordinate(2., 2.)], dt=datetime(2020, 1, 1))
+
+    ls2 = GeoCircle(Coordinate(0., 0.), 500)
+    assert not ls.contains(ls2)
+
+    ls2 = GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.)])
+    assert ls.contains(ls2)
+
+    ls2 = GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.)], dt=datetime(2020, 1, 2))
+    assert not ls.contains(ls2)
+
+    ls2 = GeoLineString([Coordinate(0., 1.), Coordinate(0., 0.), Coordinate(1., 1.)])
+    assert not ls.contains(ls2)
+
+    point = GeoPoint(Coordinate(0., 0.))
+    assert ls.contains(point)
+
+    point2 = GeoPoint(Coordinate(1., 0.))
+    assert not ls.contains(point2)
+
+
+def test_geolinestring_copy():
+    linestring = GeoLineString([Coordinate(0., 1.), Coordinate(0., 1.)])
+    linestring_copy = linestring.copy()
+
+    # Assert equality but different pointer
+    assert linestring == linestring_copy
+    assert linestring is not linestring_copy
+
+
 def test_geolinestring_from_geojson():
     gls = {
         'type': 'Feature',
@@ -1019,6 +1242,16 @@ def test_geolinestring_from_geojson():
             'properties': {'example': 'prop'}
         }
         GeoLineString.from_geojson(bad_gjson)
+
+
+def test_geolinestring_intersects():
+    ls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)])
+    circle = GeoCircle(Coordinate(0.0, 0.0), 5_000)
+    assert ls.intersects(circle)
+
+    ls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)])
+    circle = GeoCircle(Coordinate(0.0, 0.0), 5_000)
+    assert ls.intersects(circle)
 
 
 def test_geolinestring_linear_rings(geolinestring):
@@ -1098,7 +1331,7 @@ def test_geolinestring_to_polygon(geolinestring):
     assert geolinestring.to_polygon() == GeoPolygon(geolinestring.bounding_coords(), dt=default_test_datetime)
 
 
-def test_geopoint_contains(geopoint):
+def test_geopoint_contains_dunder(geopoint):
     assert geopoint not in geopoint
 
 
@@ -1132,6 +1365,27 @@ def test_geopoint_bounding_coords(geopoint):
     with pytest.raises(NotImplementedError):
         _ = geopoint.bounding_coords()
 
+
+def test_geopoint_bounding_vertices():
+    with pytest.raises(NotImplementedError):
+        _ = GeoPoint(Coordinate(0., 0.)).bounding_vertices()
+
+
+def test_geopoint_copy():
+    point = GeoPoint(Coordinate(0., 1.))
+    point_copy = point.copy()
+
+    # Assert equality but different pointer
+    assert point == point_copy
+    assert point is not point_copy
+
+
+def test_geopoint_contains():
+    assert not GeoPoint(Coordinate(0., 0.)).contains(GeoPoint(Coordinate(0., 0.)))
+
+
+def test_geopoint_contains_coordinate():
+    assert not GeoPoint(Coordinate(0., 0.)).contains_coordinate(Coordinate(0., 0.))
 
 def test_geopoint_from_geojson():
     gpoint = {
@@ -1226,3 +1480,8 @@ def test_geopoint_to_wkt(geopoint):
 def test_geopoint_to_polygon(geopoint):
     with pytest.raises(NotImplementedError):
         geopoint.to_polygon()
+
+
+def test_geopoint_vertices():
+    with pytest.raises(NotImplementedError):
+        _ = GeoPoint(Coordinate(0., 0.)).vertices()

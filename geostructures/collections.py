@@ -4,9 +4,10 @@ Module for sequences of GeoShapes
 
 __all__ = ['FeatureCollection', 'ShapeCollection', 'Track']
 
-from collections import defaultdict
-from datetime import datetime, time, timedelta
+from collections import defaultdict, Counter
+from datetime import date, datetime, time, timedelta
 from functools import cached_property
+from pathlib import Path
 from typing import cast, Any, List, Dict, Optional, Union
 
 import numpy as np
@@ -215,6 +216,66 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
 
         return FeatureCollection(shapes)
 
+    @classmethod
+    def from_shapefile(
+        cls,
+        fpath: Union[str, Path],
+        time_start_field: str = 'datetime_s',
+        time_end_field: str = 'datetime_e',
+    ):
+
+        import shapefile
+
+        def _get_dt(rec):
+            """Grabs datetime data and returns appropriate struct"""
+            # Convert empty strings to None
+            dt_start = rec.get(time_start_field) or None
+            dt_end = rec.get(time_end_field) or None
+            if dt_start is None and dt_end is None:
+                return None
+
+            if dt_start:
+                dt_start = datetime.fromisoformat(dt_start)
+
+            if dt_end:
+                dt_end = datetime.fromisoformat(dt_end)
+
+            if not (dt_start and dt_end) or dt_start == dt_end:
+                return dt_start or dt_end
+
+            return TimeInterval(dt_start, dt_end)
+
+        def _create_point(shape, dt, props):
+            return GeoPoint(Coordinate(*shape.points[0]), dt=dt, properties=props)
+
+        def _create_polygon(shape, dt, props):
+            return GeoPolygon([Coordinate(*x) for x in shape.points], dt=dt, properties=props)
+
+        def _create_linestring(shape, dt, props):
+            return GeoLineString([Coordinate(*x) for x in shape.points], dt=dt, properties=props)
+
+        reader = shapefile.Reader(fpath)
+
+        type_map = {
+            'POLYLINE': _create_linestring,
+            'POINT': _create_point,
+            'POLYGON': _create_polygon,
+        }
+        shape_fn = type_map.get(reader.shapeTypeName)
+        if not shape_fn:  # pragma: no cover
+            raise ValueError(
+                f'Shapefile contains unsupported shape type: {reader.shapeTypeName}'
+            )
+
+        shapes = []
+        for shape, record in zip(reader.shapes(), reader.records()):
+            props = record.as_dict()
+            dt = _get_dt(props)
+            props = {k: v for k, v in props.items() if k not in (time_start_field, time_end_field)}
+            shapes.append(shape_fn(shape, dt=dt, props=props))
+
+        return cls(shapes)
+
     def to_geojson(self, properties: Optional[Dict] = None, **kwargs):
         return {
             'type': 'FeatureCollection',
@@ -245,6 +306,111 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
                 } for x in self.geoshapes
             ]
         )
+
+    def to_shapefile(
+        self,
+        filepath: Union[str, Path],
+        include_properties: Optional[List[str]] = None,
+    ) -> None:
+        """
+        Writes the collection to a ESRI shapefile. Note that shape"file"s actually
+        consist of several files, so you should provide a directory rather than
+        a file name.
+
+        Requires the pyshp library (canonically imported as 'shapefile').
+
+        Args:
+            filepath:
+                The **directory** to save files to.
+
+            include_properties: (Default None)
+                A list of properties to include. If None, all properties will be included.
+
+        Returns:
+            None
+        """
+        import shapefile
+
+        def _convert(val: Any):
+            """Convert date/datetime values to string"""
+            if isinstance(val, (datetime, date)):
+                return val.isoformat()
+            return val
+
+        if not (
+            all(isinstance(shape, GeoPoint) for shape in self.geoshapes) or
+            all(isinstance(shape, GeoLineString) for shape in self.geoshapes) or
+            all(not isinstance(shape, (GeoPoint, GeoLineString)) for shape in self.geoshapes)
+        ):
+            raise ValueError(
+                'ESRI shapefiles may only contain one geometry type '
+                '(points, polygons, or linestrings).'
+            )
+
+        path: Path = Path(filepath)
+        if not path.parent.exists():
+            raise ValueError(f'Directory {path.parent} not found.')
+
+        # 2-Tuples of properties and their datatypes
+        _types = set(
+            (_key, type(_val)) for x in self.geoshapes
+            for _key, _val in x.properties.items()
+            if (not include_properties) or _key in include_properties
+        )
+
+        if _types:
+            # Check to make sure data types are consistent
+            c = Counter(x[0] for x in _types)
+            if c.most_common(1)[0][1] > 1:
+                # Just log a warning - still want to try to write the file
+                self.logger.warning(
+                    'Conflicting data types found in properties; '
+                    'your shapefile may not get written correctly'
+                )
+
+        typemap = dict(_types)
+        writer = shapefile.Writer(str(path))
+
+        # Declare fields
+        for field, _type in typemap.items():
+            if issubclass(_type, bool):
+                # bools are subclasses of int (WAT) - have to check first
+                writer.field(field, 'L')
+            elif issubclass(_type, (float, int)) and not issubclass(_type, datetime):
+                # datetimes are subclasses of ints too
+                writer.field(field, 'N')
+            else:
+                writer.field(field, 'C')
+
+        writer.field('ID', 'N')
+
+        for idx, shape in enumerate(self.geoshapes):
+            # Write out properties
+            props = shape.properties
+            writer.record(*[_convert(props.get(k)) for k in typemap], idx)
+
+            if isinstance(shape, GeoPoint):
+                writer.point(*shape.centroid.to_float())
+
+            elif isinstance(shape, GeoLineString):
+                writer.line([[list(x.to_float()) for x in shape.bounding_coords()]])
+
+            else:
+                writer.poly(
+                    [
+                        [list(coord.to_float()) for coord in ring]
+                        for ring in shape.linear_rings()
+                    ]
+                )
+
+        with open(str(path / f'{path.name}.prj'), 'w+') as f:
+            f.write(
+                'GEOGCS["GCS_WGS_1984",'
+                'DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],'
+                'PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]'
+            )
+
+        return
 
 
 class FeatureCollection(ShapeCollection):

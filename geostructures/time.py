@@ -51,6 +51,9 @@ class TimeInterval(LoggingMixin, DefaultZuluMixin):
     def __hash__(self) -> int:
         return hash((self.start, self.end))
 
+    def copy(self):
+        return TimeInterval(self.start, self.end)
+
     def isdisjoint(self, other: TimeInterval) -> bool:
         """Returns True if time intervals do not overlap."""
         return self.end <= other.start or self.start >= other.end

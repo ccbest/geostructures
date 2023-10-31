@@ -2,11 +2,12 @@
 
 __all__ = [
     'bearing_degrees', 'haversine_distance_meters', 'inverse_haversine_degrees',
-    'inverse_haversine_radians', 'rotate_coordinates', 'find_line_intersection'
+    'inverse_haversine_radians', 'rotate_coordinates', 'find_line_intersection',
+    'do_vertices_intersect'
 ]
 
 import math
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
 
 import numpy as np
 
@@ -141,6 +142,99 @@ def inverse_haversine_radians(
     return Coordinate(final_lon, final_lat)
 
 
+def do_vertices_intersect(
+    vertices_a: List[Tuple[Coordinate, Coordinate]],
+    vertices_b: List[Tuple[Coordinate, Coordinate]],
+) -> bool:
+    """
+    Tests whether two sets of vertices ever intersect. Uses the sweep line algorithm
+    to minimize the number of intersections calculated.
+
+    Args:
+        vertices_a:
+            The list of vertices from the first group/shape
+
+        vertices_b:
+            The list of vertices from the second group/shape
+
+    Returns:
+        bool
+    """
+    class _Event:
+        """
+        The start or stop of a segment. Each segment gets two events that hash to
+        the same value so they can be added and removed from the set of active
+        events.
+
+        Additionally stores the group id of the segment, so that segments from the same
+        group are not intersected.
+        """
+        def __init__(
+                self,
+                x: float,
+                is_start: bool,
+                segment: Tuple[Coordinate, Coordinate],
+                group: str
+        ):
+            self.x = x
+            self.group = group
+            self.is_start = is_start
+            self.segment = segment
+
+        def __lt__(self, other):
+            """Required for sorting events"""
+            return self.x < other.x
+
+        def __hash__(self):
+            """Required for creating a set of events"""
+            return hash((self.segment, self.group))
+
+        def __eq__(self, other):
+            """Required for creating a set of events"""
+            return self.segment == other.segment and self.group == other.group
+
+    def _create_events(vertices, group):
+        """Creates 2x events per vertex from a list of vertices. Ensures the lesser x
+        value corresponds to the start event."""
+        _events = []
+        for vertex in vertices:
+            if vertex[0].latitude > vertex[1].latitude:
+                vertex = (vertex[1], vertex[0])
+
+            _events += [
+                _Event(vertex[0].latitude, vertex[0].latitude <= vertex[1].latitude, vertex, group),
+                _Event(vertex[1].latitude, vertex[1].latitude <= vertex[0].latitude, vertex, group)
+            ]
+        return _events
+
+    events = _create_events(vertices_a, 'a')
+    events += _create_events(vertices_b, 'b')
+
+    events.sort()
+    active_events: Set[_Event] = set()
+    for event in events:
+        if not event.is_start:
+            active_events.remove(event)
+            continue
+
+        # All vertices belong to same group
+        if len(set(x.group for x in active_events)) <= 1:
+            active_events.add(event)
+            continue
+
+        for active_event in active_events:
+            if event.group == active_event.group:
+                continue
+
+            intersection = find_line_intersection(active_event.segment, event.segment)
+            if intersection:
+                return True
+
+        active_events.add(event)
+
+    return False
+
+
 def rotate_coordinates(
         coords: List[Coordinate],
         origin: Coordinate,
@@ -207,6 +301,20 @@ def find_line_intersection(
     def det(a, b):
         return a[0] * b[1] - a[1] * b[0]
 
+    def get_line_bounds(
+            line: Tuple[Tuple[float, float], Tuple[float, float]]
+    ) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        """Organizes line bounding points into min/max x and y values"""
+        x_sort, y_sort = sorted([line[0][0], line[1][0]]), sorted([line[0][1], line[1][1]])
+        return (
+            (round_half_up(x_sort[0], 10), round_half_up(x_sort[1], 10)),
+            (round_half_up(y_sort[0], 10), round_half_up(y_sort[1], 10)),
+        )
+
+    def test_ranges_overlap(range1: Tuple[float, float], range2: Tuple[float, float]):
+        """Test whether two ranges overlap"""
+        return max([range1[0], range2[0]]) <= min([range1[1], range2[1]])
+
     line1_flt = (line1[0].to_float(), line1[1].to_float())
     if line1_flt[1][0] < line1_flt[0][0]:  # Flip order such that lower x value is first
         line1_flt = (line1_flt[1], line1_flt[0])
@@ -215,22 +323,11 @@ def find_line_intersection(
     if line2_flt[1][0] < line2_flt[0][0]:
         line2_flt = (line2_flt[1], line2_flt[0])
 
-    line1_y_bounds = (
-        min([line1_flt[0][1], line1_flt[1][1]]),
-        max([line1_flt[0][1], line1_flt[1][1]])
-    )
-    line2_y_bounds = (
-        min([line2_flt[0][1], line2_flt[1][1]]),
-        max([line2_flt[0][1], line2_flt[1][1]])
-    )
+    line1_bounds, line2_bounds = get_line_bounds(line1_flt), get_line_bounds(line2_flt)
 
     if not (
-            max([line1_flt[0][0], line2_flt[0][0]]) <= min([line1_flt[1][0], line2_flt[1][0]]) and
-            max(
-                [line1_y_bounds[0], line2_y_bounds[0]]
-            ) <= min(
-                [line1_y_bounds[1], line2_y_bounds[1]]
-            )
+        test_ranges_overlap(line1_bounds[0], line2_bounds[0]) and
+        test_ranges_overlap(line1_bounds[1], line2_bounds[1])
     ):
         # line bounds do not overlap
         return None
@@ -247,23 +344,17 @@ def find_line_intersection(
     x_intersection = round_half_up(det(d, xdiff) / div, 10)
     y_intersection = round_half_up(det(d, ydiff) / div, 10)
 
-    # Check if any of the x values are exactly the same - could be boundary intersection
-    if (x_intersection, y_intersection) in (*line1_flt, *line2_flt):
-        # Intersection exactly on one of the coordinates - boundary intersection
-        return Coordinate(x_intersection, y_intersection), True
-
     if (
-            max(
-                [line1_flt[0][0], line2_flt[0][0]]
-            ) <= x_intersection <= min(
-                [line1_flt[1][0], line2_flt[1][0]]
-            )
-            and max(
-                [line1_y_bounds[0], line2_y_bounds[0]]
-            ) <= y_intersection <= min(
-                [line1_y_bounds[1], line2_y_bounds[1]]
-            )
+        line1_bounds[0][0] <= x_intersection <= line1_bounds[0][1] and
+        line2_bounds[0][0] <= x_intersection <= line2_bounds[0][1] and
+        line1_bounds[1][0] <= y_intersection <= line1_bounds[1][1] and
+        line2_bounds[1][0] <= y_intersection <= line2_bounds[1][1]
     ):
-        return Coordinate(x_intersection, y_intersection), False
+        return (
+            Coordinate(x_intersection, y_intersection),
+
+            # If intersecting point is a line endpoint, is a boundary intersection
+            (x_intersection, y_intersection) in (*line1_flt, *line2_flt)
+        )
 
     return None
