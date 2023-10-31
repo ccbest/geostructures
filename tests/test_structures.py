@@ -299,9 +299,9 @@ def test_geoshape_vertices():
             (Coordinate(1.0, 0.0), Coordinate(1.0, 0.0))
         ],
         [
-            (Coordinate(0.4, 0.6), Coordinate(0.6, 0.6)),
-            (Coordinate(0.6, 0.6), Coordinate(0.5, 0.4)),
-            (Coordinate(0.5, 0.4), Coordinate(0.4, 0.6)),
+            (Coordinate(0.4, 0.6), Coordinate(0.5, 0.4)),
+            (Coordinate(0.5, 0.4), Coordinate(0.6, 0.6)),
+            (Coordinate(0.6, 0.6), Coordinate(0.4, 0.6)),
             (Coordinate(0.4, 0.6), Coordinate(0.4, 0.6))
         ]
     ]
