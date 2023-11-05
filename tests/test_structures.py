@@ -258,7 +258,7 @@ def test_geoshape_to_shapely(geobox):
     polygon = GeoPolygon(outline, holes=[hole])
     expected = shapely.geometry.Polygon(
         [x.to_float() for x in outline],
-        holes=[[x.to_float() for x in hole.bounding_coords()]]
+        holes=[list(reversed([x.to_float() for x in hole.bounding_coords()]))]
     )
     assert polygon.to_shapely() == expected
 
@@ -299,9 +299,9 @@ def test_geoshape_vertices():
             (Coordinate(1.0, 0.0), Coordinate(1.0, 0.0))
         ],
         [
-            (Coordinate(0.4, 0.6), Coordinate(0.6, 0.6)),
-            (Coordinate(0.6, 0.6), Coordinate(0.5, 0.4)),
-            (Coordinate(0.5, 0.4), Coordinate(0.4, 0.6)),
+            (Coordinate(0.4, 0.6), Coordinate(0.5, 0.4)),
+            (Coordinate(0.5, 0.4), Coordinate(0.6, 0.6)),
+            (Coordinate(0.6, 0.6), Coordinate(0.4, 0.6)),
             (Coordinate(0.4, 0.6), Coordinate(0.4, 0.6))
         ]
     ]
@@ -620,7 +620,7 @@ def test_geopolygon_linear_rings():
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
         [
-            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5),
+            Coordinate(0.5, 0.5), Coordinate(0.75, 0.5), Coordinate(0.5, 0.75),
             Coordinate(0.5, 0.5)
         ]
     ]
@@ -667,7 +667,7 @@ def test_geopolygon_to_wkt():
             Coordinate(0.75, 0.25), Coordinate(0.25, 0.25)
         ])]
     )
-    assert polygon.to_wkt() == 'POLYGON((0.0 0.0,0.0 1.0,1.0 1.0,1.0 0.0,0.0 0.0),(0.25 0.25,0.25 0.75,0.75 0.75,0.75 0.25,0.25 0.25))'
+    assert polygon.to_wkt() == 'POLYGON((0.0 0.0,0.0 1.0,1.0 1.0,1.0 0.0,0.0 0.0),(0.25 0.25,0.75 0.25,0.75 0.75,0.25 0.75,0.25 0.25))'
 
 
 def test_geoshape_to_wkt():
