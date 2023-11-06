@@ -6,6 +6,7 @@ from shapely import wkt
 from geostructures.structures import *
 from geostructures.calc import inverse_haversine_degrees
 from geostructures.coordinates import Coordinate
+from geostructures.utils.functions import round_half_up
 from geostructures.time import TimeInterval
 
 
@@ -245,15 +246,15 @@ def test_shape_to_geojson(geocircle):
 
 def test_geoshape_to_shapely(geobox):
     assert geobox.to_shapely() == shapely.geometry.Polygon(
-        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]
+        [[0.0, 1.0], [0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]
     )
 
     outline = [
-        Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
-        Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+        Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0),
+        Coordinate(0.0, 1.0), Coordinate(0.0, 0.0)
     ]
     hole = GeoPolygon([
-        Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5), Coordinate(0.5, 0.5),
+        Coordinate(0.5, 0.5), Coordinate(0.75, 0.5), Coordinate(0.5, 0.75), Coordinate(0.5, 0.5),
     ])
     polygon = GeoPolygon(outline, holes=[hole])
     expected = shapely.geometry.Polygon(
@@ -286,8 +287,8 @@ def test_geoshape_vertices():
         ],
         holes=[
             GeoPolygon([
-                Coordinate(0.4, 0.6), Coordinate(0.6, 0.6),
-                Coordinate(0.5, 0.4), Coordinate(0.4, 0.6),
+                Coordinate(0.4, 0.6), Coordinate(0.5, 0.4),
+                Coordinate(0.6, 0.6), Coordinate(0.4, 0.6),
             ])
         ]
     )
@@ -296,13 +297,11 @@ def test_geoshape_vertices():
             (Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)),
             (Coordinate(1.0, 1.0), Coordinate(0.0, 0.5)),
             (Coordinate(0.0, 0.5), Coordinate(1.0, 0.0)),
-            (Coordinate(1.0, 0.0), Coordinate(1.0, 0.0))
         ],
         [
-            (Coordinate(0.4, 0.6), Coordinate(0.5, 0.4)),
-            (Coordinate(0.5, 0.4), Coordinate(0.6, 0.6)),
-            (Coordinate(0.6, 0.6), Coordinate(0.4, 0.6)),
-            (Coordinate(0.4, 0.6), Coordinate(0.4, 0.6))
+            (Coordinate(0.4, 0.6), Coordinate(0.6, 0.6)),
+            (Coordinate(0.6, 0.6), Coordinate(0.5, 0.4)),
+            (Coordinate(0.5, 0.4), Coordinate(0.4, 0.6)),
         ]
     ]
 
@@ -605,22 +604,22 @@ def test_geopolygon_linear_rings():
     polygon = GeoPolygon(
         # Outline
         [
-            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
-            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+            Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0),
+            Coordinate(0.0, 1.0), Coordinate(0.0, 0.0)
         ],
         # Hole
-        holes=[GeoPolygon([
-            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5)
-        ])]
+        holes=[
+            GeoPolygon([Coordinate(0.5, 0.5), Coordinate(0.75, 0.5), Coordinate(0.5, 0.75), Coordinate(0.5, 0.5)])
+        ]
     )
     rings = polygon.linear_rings()
     assert rings == [
         [
-            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
-            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+            Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0),
+            Coordinate(0.0, 1.0), Coordinate(0.0, 0.0)
         ],
         [
-            Coordinate(0.5, 0.5), Coordinate(0.75, 0.5), Coordinate(0.5, 0.75),
+            Coordinate(0.5, 0.5), Coordinate(0.5, 0.75), Coordinate(0.75, 0.5),
             Coordinate(0.5, 0.5)
         ]
     ]
@@ -659,20 +658,20 @@ def test_geopolygon_from_wkt():
 def test_geopolygon_to_wkt():
     polygon = GeoPolygon(
         [
-            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
-            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+            Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0),
+            Coordinate(0.0, 1.0), Coordinate(0.0, 0.0)
         ],
         holes=[GeoPolygon([
-            Coordinate(0.25, 0.25), Coordinate(0.25, 0.75), Coordinate(0.75, 0.75),
-            Coordinate(0.75, 0.25), Coordinate(0.25, 0.25)
+            Coordinate(0.25, 0.25), Coordinate(0.75, 0.25), Coordinate(0.75, 0.75),
+            Coordinate(0.25, 0.75), Coordinate(0.25, 0.25)
         ])]
     )
-    assert polygon.to_wkt() == 'POLYGON((0.0 0.0,0.0 1.0,1.0 1.0,1.0 0.0,0.0 0.0),(0.25 0.25,0.75 0.25,0.75 0.75,0.25 0.75,0.25 0.25))'
+    assert polygon.to_wkt() == 'POLYGON((0.0 0.0,1.0 0.0,1.0 1.0,0.0 1.0,0.0 0.0),(0.25 0.25,0.25 0.75,0.75 0.75,0.75 0.25,0.25 0.25))'
 
 
 def test_geoshape_to_wkt():
     box = GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0))
-    assert box.to_wkt() == 'POLYGON((0.0 1.0,1.0 1.0,1.0 0.0,0.0 0.0,0.0 1.0))'
+    assert box.to_wkt() == 'POLYGON((0.0 1.0,0.0 0.0,1.0 0.0,1.0 1.0,0.0 1.0))'
 
 
 def test_geobox_contains(geobox):
@@ -713,8 +712,8 @@ def test_geobox_repr(geobox):
 
 def test_geobox_bounding_coords(geobox):
     assert geobox.bounding_coords() == [
-        Coordinate(0.0, 1.0), Coordinate(1.0, 1.0), Coordinate(1.0, 0.0),
-        Coordinate(0.0, 0.0), Coordinate(0.0, 1.0)
+        Coordinate(0.0, 1.0), Coordinate(0.0, 0.0), Coordinate(1.0, 0.0),
+        Coordinate(1.0, 1.0), Coordinate(0.0, 1.0)
     ]
 
     # assert self-closing
@@ -752,9 +751,9 @@ def test_geobox_linear_rings():
 
     assert rings == [[
         Coordinate(0.0, 1.0),
-        Coordinate(1.0, 1.0),
-        Coordinate(1.0, 0.0),
         Coordinate(0.0, 0.0),
+        Coordinate(1.0, 0.0),
+        Coordinate(1.0, 1.0),
         Coordinate(0.0, 1.0),
     ]]
 
@@ -827,12 +826,13 @@ def test_geocircle_to_polygon(geocircle):
 
 
 def test_geocircle_bounding_coords(geocircle):
-    assert geocircle.bounding_coords()[:5] == [
-        Coordinate('0.0000000', '0.0089932'),
-        Coordinate('0.0015617', '0.0088566'),
-        Coordinate('0.0030759', '0.0084509'),
-        Coordinate('0.0044966', '0.0077884'),
-        Coordinate('0.0057807', '0.0068892')
+    circle = GeoCircle(Coordinate(0.0, 0.0), 1000)
+    assert circle.bounding_coords()[:5] == [
+        Coordinate(-0.0, 0.0089932),
+        Coordinate(-0.0015617, 0.0088566),
+        Coordinate(-0.0030759, 0.0084509),
+        Coordinate(-0.0044966, 0.0077884),
+        Coordinate(-0.0057807, 0.0068892)
     ]
 
     # assert self-closing
@@ -931,12 +931,13 @@ def test_geoellipse_repr(geoellipse):
 
 
 def test_geoellipse_bounding_coords(geoellipse):
+    geoellipse = GeoEllipse(Coordinate(0.0, 0.0), 1000, 500, 90)
     assert geoellipse.bounding_coords()[:5] == [
-        Coordinate('0.0089932', '0.0000000'),
-        Coordinate('0.0088586', '-0.0007750'),
-        Coordinate('0.0084813', '-0.0014955'),
-        Coordinate('0.0079267', '-0.0021240'),
-        Coordinate('0.0072708', '-0.0026464')
+        Coordinate(0.0089932, 0.0),
+        Coordinate(0.0088586, 0.000775),
+        Coordinate(0.0084813, 0.0014955),
+        Coordinate(0.0079267, 0.002124),
+        Coordinate(0.0072708, 0.0026464)
     ]
 
     # assert self-closing
@@ -1047,27 +1048,30 @@ def test_georing_repr(geowedge, georing):
 
 
 def test_georing_bounding_coords(geowedge, georing):
-    assert geowedge.bounding_coords()[:5] == [
-        Coordinate('0.0089932', '0.0000000'),
-        Coordinate('0.0088825', '-0.0014068'),
-        Coordinate('0.0085531', '-0.0027791'),
-        Coordinate('0.0080130', '-0.0040828'),
-        Coordinate('0.0072757', '-0.0052861'),
+    ring = GeoRing(Coordinate(0.0, 0.0), 500, 1000)
+    wedge = GeoRing(Coordinate(0.0, 0.0), 500, 1000, 90, 180)
+
+    assert wedge.bounding_coords()[:5] == [
+        Coordinate(0.0, -0.0089932),
+        Coordinate(0.0014068, -0.0088825),
+        Coordinate(0.0027791, -0.0085531),
+        Coordinate(0.0040828, -0.008013),
+        Coordinate(0.0052861, -0.0072757),
     ]
 
     # Assert self-closing
-    assert geowedge.bounding_coords()[0] == geowedge.bounding_coords()[-1]
+    assert wedge.bounding_coords()[0] == wedge.bounding_coords()[-1]
 
-    assert georing.bounding_coords()[:5] == [
-        Coordinate('0.0000000', '0.0089932'),
-        Coordinate('0.0015617', '0.0088566'),
-        Coordinate('0.0030759', '0.0084509'),
-        Coordinate('0.0044966', '0.0077884'),
-        Coordinate('0.0057807', '0.0068892'),
+    assert ring.bounding_coords()[:5] == [
+        Coordinate(-0.0, 0.0089932),
+        Coordinate(-0.0015617, 0.0088566),
+        Coordinate(-0.0030759, 0.0084509),
+        Coordinate(-0.0044966, 0.0077884),
+        Coordinate(-0.0057807, 0.0068892),
     ]
 
     # assert self-closing
-    assert georing.bounding_coords()[0] == georing.bounding_coords()[-1]
+    assert ring.bounding_coords()[0] == ring.bounding_coords()[-1]
 
 
 def test_georing_copy():
@@ -1103,35 +1107,45 @@ def test_georing_circumscribing_rectangle(georing, geowedge):
     )
 
 
-def test_georing_circumscribing_circle(georing, geowedge):
-    assert georing.circumscribing_circle() == GeoCircle(
-        georing.centroid,
-        georing.outer_radius,
-        dt=default_test_datetime
+def test_georing_circumscribing_circle():
+    ring = GeoRing(Coordinate(0.0, 0.0), 500, 1000)
+    assert ring.circumscribing_circle() == GeoCircle(
+        ring.centroid,
+        ring.outer_radius
     )
 
-    assert geowedge.circumscribing_circle() == GeoCircle(
-        Coordinate(0.0044104, -0.0040194),
-        739.1771243016008,
-        dt=default_test_datetime
+    wedge = GeoRing(Coordinate(0.0, 0.0), 500, 1000, 90, 180)
+    circ = wedge.circumscribing_circle()
+    received_centroid = Coordinate(
+        round_half_up(circ.centroid.longitude, 8),
+        round_half_up(circ.centroid.latitude, 8),
     )
+    assert received_centroid == Coordinate(0.00444382, -0.00444382)
+    assert round_half_up(circ.radius, 8) == 707.15422564
 
 
-def test_georing_centroid(georing, geowedge):
-    assert georing.centroid == georing.center
+def test_georing_centroid():
+    ring = GeoRing(Coordinate(0.0, 0.0), 500, 1000)
+    assert ring.centroid == Coordinate(0.0, 0.0)
 
-    assert geowedge.centroid == Coordinate(0.0044104, -0.0040194)
+    wedge = GeoRing(Coordinate(0.0, 0.0), 500, 1000, 90, 180)
+    received = Coordinate(
+        round_half_up(wedge.centroid.longitude, 8),
+        round_half_up(wedge.centroid.latitude, 8),
+    )
+    assert received == Coordinate(0.00444382, -0.00444382)
 
 
 def test_georing_linear_rings(georing, geowedge):
+    georing = GeoRing(Coordinate(0.0, 0.0), 500, 1000)
     rings = georing.linear_rings()
     assert len(rings) == 2  # should have outer and inner shell
     assert rings[0][:5] == [
-        Coordinate(0.0, 0.0089932),
-        Coordinate(0.0015617, 0.0088566),
-        Coordinate(0.0030759, 0.0084509),
-        Coordinate(0.0044966, 0.0077884),
-        Coordinate(0.0057807, 0.0068892)
+        Coordinate(-0.0, 0.0089932),
+        Coordinate(-0.0015617, 0.0088566),
+        Coordinate(-0.0030759, 0.0084509),
+        Coordinate(-0.0044966, 0.0077884),
+        Coordinate(-0.0057807, 0.0068892)
     ]
     # Assert self-closing
     assert rings[0][0] == rings[0][-1]
@@ -1142,9 +1156,12 @@ def test_georing_linear_rings(georing, geowedge):
     assert rings[0][0] == rings[0][-1]
 
 
-def test_georing_to_wkt(georing, geowedge):
-    assert georing.to_wkt() == 'POLYGON((0.0 0.0089932,0.0015617 0.0088566,0.0030759 0.0084509,0.0044966 0.0077884,0.0057807 0.0068892,0.0068892 0.0057807,0.0077884 0.0044966,0.0084509 0.0030759,0.0088566 0.0015617,0.0089932 0.0,0.0088566 -0.0015617,0.0084509 -0.0030759,0.0077884 -0.0044966,0.0068892 -0.0057807,0.0057807 -0.0068892,0.0044966 -0.0077884,0.0030759 -0.0084509,0.0015617 -0.0088566,0.0 -0.0089932,-0.0015617 -0.0088566,-0.0030759 -0.0084509,-0.0044966 -0.0077884,-0.0057807 -0.0068892,-0.0068892 -0.0057807,-0.0077884 -0.0044966,-0.0084509 -0.0030759,-0.0088566 -0.0015617,-0.0089932 -0.0,-0.0088566 0.0015617,-0.0084509 0.0030759,-0.0077884 0.0044966,-0.0068892 0.0057807,-0.0057807 0.0068892,-0.0044966 0.0077884,-0.0030759 0.0084509,-0.0015617 0.0088566,0.0 0.0089932), (0.0 0.0044966,0.0007808 0.0044283,0.0015379 0.0042254,0.0022483 0.0038942,0.0028904 0.0034446,0.0034446 0.0028904,0.0038942 0.0022483,0.0042254 0.0015379,0.0044283 0.0007808,0.0044966 0.0,0.0044283 -0.0007808,0.0042254 -0.0015379,0.0038942 -0.0022483,0.0034446 -0.0028904,0.0028904 -0.0034446,0.0022483 -0.0038942,0.0015379 -0.0042254,0.0007808 -0.0044283,0.0 -0.0044966,-0.0007808 -0.0044283,-0.0015379 -0.0042254,-0.0022483 -0.0038942,-0.0028904 -0.0034446,-0.0034446 -0.0028904,-0.0038942 -0.0022483,-0.0042254 -0.0015379,-0.0044283 -0.0007808,-0.0044966 -0.0,-0.0044283 0.0007808,-0.0042254 0.0015379,-0.0038942 0.0022483,-0.0034446 0.0028904,-0.0028904 0.0034446,-0.0022483 0.0038942,-0.0015379 0.0042254,-0.0007808 0.0044283,0.0 0.0044966))'
-    assert geowedge.to_wkt() == 'POLYGON((0.0089932 0.0,0.0088825 -0.0014068,0.0085531 -0.0027791,0.008013 -0.0040828,0.0072757 -0.0052861,0.0063592 -0.0063592,0.0052861 -0.0072757,0.0040828 -0.008013,0.0027791 -0.0085531,0.0014068 -0.0088825,0.0 -0.0089932,0.0 -0.0044966,0.0007034 -0.0044412,0.0013895 -0.0042765,0.0020414 -0.0040065,0.002643 -0.0036378,0.0031796 -0.0031796,0.0036378 -0.002643,0.0040065 -0.0020414,0.0042765 -0.0013895,0.0044412 -0.0007034,0.0044966 0.0,0.0089932 0.0))'
+def test_georing_to_wkt():
+    ring = GeoRing(Coordinate(0.0, 0.0), 500, 1000)
+    assert ring.to_wkt() == 'POLYGON((-0.0 0.0089932,-0.0015617 0.0088566,-0.0030759 0.0084509,-0.0044966 0.0077884,-0.0057807 0.0068892,-0.0068892 0.0057807,-0.0077884 0.0044966,-0.0084509 0.0030759,-0.0088566 0.0015617,-0.0089932 -0.0,-0.0088566 -0.0015617,-0.0084509 -0.0030759,-0.0077884 -0.0044966,-0.0068892 -0.0057807,-0.0057807 -0.0068892,-0.0044966 -0.0077884,-0.0030759 -0.0084509,-0.0015617 -0.0088566,0.0 -0.0089932,0.0015617 -0.0088566,0.0030759 -0.0084509,0.0044966 -0.0077884,0.0057807 -0.0068892,0.0068892 -0.0057807,0.0077884 -0.0044966,0.0084509 -0.0030759,0.0088566 -0.0015617,0.0089932 0.0,0.0088566 0.0015617,0.0084509 0.0030759,0.0077884 0.0044966,0.0068892 0.0057807,0.0057807 0.0068892,0.0044966 0.0077884,0.0030759 0.0084509,0.0015617 0.0088566,0.0 0.0089932,-0.0 0.0089932), (-0.0 0.0044966,-0.0007808 0.0044283,-0.0015379 0.0042254,-0.0022483 0.0038942,-0.0028904 0.0034446,-0.0034446 0.0028904,-0.0038942 0.0022483,-0.0042254 0.0015379,-0.0044283 0.0007808,-0.0044966 -0.0,-0.0044283 -0.0007808,-0.0042254 -0.0015379,-0.0038942 -0.0022483,-0.0034446 -0.0028904,-0.0028904 -0.0034446,-0.0022483 -0.0038942,-0.0015379 -0.0042254,-0.0007808 -0.0044283,0.0 -0.0044966,0.0007808 -0.0044283,0.0015379 -0.0042254,0.0022483 -0.0038942,0.0028904 -0.0034446,0.0034446 -0.0028904,0.0038942 -0.0022483,0.0042254 -0.0015379,0.0044283 -0.0007808,0.0044966 0.0,0.0044283 0.0007808,0.0042254 0.0015379,0.0038942 0.0022483,0.0034446 0.0028904,0.0028904 0.0034446,0.0022483 0.0038942,0.0015379 0.0042254,0.0007808 0.0044283,0.0 0.0044966,-0.0 0.0044966))'
+
+    wedge = GeoRing(Coordinate(0.0, 0.0), 500, 1000, 90, 180)
+    assert wedge.to_wkt() == 'POLYGON((0.0 -0.0089932,0.0014068 -0.0088825,0.0027791 -0.0085531,0.0040828 -0.008013,0.0052861 -0.0072757,0.0063592 -0.0063592,0.0072757 -0.0052861,0.008013 -0.0040828,0.0085531 -0.0027791,0.0088825 -0.0014068,0.0089932 0.0,0.0044966 0.0,0.0044412 -0.0007034,0.0042765 -0.0013895,0.0040065 -0.0020414,0.0036378 -0.002643,0.0031796 -0.0031796,0.002643 -0.0036378,0.0020414 -0.0040065,0.0013895 -0.0042765,0.0007034 -0.0044412,0.0 -0.0044966,0.0 -0.0089932))'
 
 
 def test_georing_to_polygon(georing):

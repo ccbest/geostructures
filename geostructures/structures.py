@@ -498,7 +498,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         """
         rings = self.linear_rings(**kwargs)
         return [
-            list(zip(ring, [*ring[1:], ring[0]]))
+            list(zip(ring, ring[1:]))
             for ring in rings
         ]
 
@@ -530,6 +530,7 @@ class GeoPolygon(GeoShape):
         holes: Optional[List[GeoShape]] = None,
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
+        _is_hole: bool = False,
     ):
         super().__init__(holes=holes, dt=dt, properties=properties)
 
@@ -539,6 +540,13 @@ class GeoPolygon(GeoShape):
                 'connected to your starting point.'
             )
             outline = [*outline, outline[0]]
+
+        if not self._test_counter_clockwise(outline) ^ _is_hole:
+            self.warn_once(
+                'Your polygon appears to be defined (mostly) clockwise, violating the '
+                'right hand rule. Flipping coordinate order; this warning will not repeat.'
+            )
+            outline = outline[::-1]
 
         self.outline = outline
 
@@ -647,6 +655,25 @@ class GeoPolygon(GeoShape):
                 _intersections += 1
 
         return _intersections > 0 and _intersections % 2 != 0
+
+    @staticmethod
+    def _test_counter_clockwise(bounds: List[Coordinate]) -> bool:
+        """
+        Tests a polygon to determine whether it's defined in a counterclockwise
+        (or mostly, for complex shapes) order.
+
+        Args:
+            bounds:
+                A list of Coordinates, in order
+
+        Returns:
+            bool
+        """
+        ans = sum(
+            (y.longitude - x.longitude) * (y.latitude + x.latitude)
+            for x, y in zip(bounds, [*bounds[1:], bounds[0]])
+        )
+        return ans <= 0
 
     def bounding_coords(self, **kwargs) -> List[Coordinate]:
         return self.outline
@@ -861,9 +888,9 @@ class GeoBox(GeoShape):
         # Is self-closing
         return [
             self.nw_bound,
-            Coordinate(_se[0], _nw[1]),
-            self.se_bound,
             Coordinate(_nw[0], _se[1]),
+            self.se_bound,
+            Coordinate(_se[0], _nw[1]),
             self.nw_bound,
         ]
 
@@ -954,7 +981,7 @@ class GeoCircle(GeoShape):
         k = kwargs.get('k') or 36
         coords = []
 
-        for i in range(k):
+        for i in range(k, -1, -1):
             angle = math.pi * 2 / k * i
             coord = inverse_haversine_radians(self.center, angle, self.radius)
             coords.append(coord)
@@ -1092,7 +1119,7 @@ class GeoEllipse(GeoShape):
         coords = []
         rotation = math.radians(self.rotation)
 
-        for i in range(k):
+        for i in range(k, -1, -1):
             angle = (math.pi * 2 / k) * i
             radius = self._radius_at_angle(angle)
             coord = inverse_haversine_radians(
@@ -1223,13 +1250,7 @@ class GeoRing(GeoShape):
     @property
     def centroid(self):
         if self.angle_min and self.angle_max:
-            # If shape is a wedge, centroid has to shift
-            return Coordinate(
-                *[
-                    round_half_up(statistics.mean(x), 7)
-                    for x in zip(*[y.to_float() for y in self.bounding_coords()])
-                ]
-            )
+            return self.to_polygon().centroid
 
         return self.center
 
@@ -1238,7 +1259,7 @@ class GeoRing(GeoShape):
         outer_coords = []
         inner_coords = []
 
-        for i in range(k + 1):
+        for i in range(k, -1, -1):
             angle = (
                 math.pi
                 * (self.angle_min + (self.angle_max - self.angle_min) / k * i)
