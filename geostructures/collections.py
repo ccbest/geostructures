@@ -188,35 +188,6 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
         return cls(shapes)
 
     @classmethod
-    def from_shapely(cls, geometry_collection):
-        """
-        Creates a geostructures FeatureCollection from a shapely GeometryCollection
-
-        Args:
-            geometry_collection:
-                A shapely GeometryCollection
-
-        Returns:
-            FeatureCollection
-        """
-        from shapely.geometry import LineString, Point, Polygon
-
-        shapes = []
-        for shape in geometry_collection.geoms:
-            if isinstance(shape, Point):
-                shapes.append(GeoPoint.from_shapely(shape))
-                continue
-
-            if isinstance(shape, Polygon):
-                shapes.append(GeoPolygon.from_shapely(shape))
-                continue
-
-            if isinstance(shape, LineString):
-                shapes.append(GeoLineString.from_shapely(shape))
-
-        return FeatureCollection(shapes)
-
-    @classmethod
     def from_shapefile(
         cls,
         fpath: Union[str, Path],
@@ -275,6 +246,35 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
             shapes.append(shape_fn(shape, dt=dt, props=props))
 
         return cls(shapes)
+
+    @classmethod
+    def from_shapely(cls, geometry_collection):
+        """
+        Creates a geostructures FeatureCollection from a shapely GeometryCollection
+
+        Args:
+            geometry_collection:
+                A shapely GeometryCollection
+
+        Returns:
+            FeatureCollection
+        """
+        from shapely.geometry import LineString, Point, Polygon
+
+        shapes = []
+        for shape in geometry_collection.geoms:
+            if isinstance(shape, Point):
+                shapes.append(GeoPoint.from_shapely(shape))
+                continue
+
+            if isinstance(shape, Polygon):
+                shapes.append(GeoPolygon.from_shapely(shape))
+                continue
+
+            if isinstance(shape, LineString):
+                shapes.append(GeoLineString.from_shapely(shape))
+
+        return FeatureCollection(shapes)
 
     def to_geojson(self, properties: Optional[Dict] = None, **kwargs):
         return {
@@ -532,52 +532,6 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
                f'from {self.geoshapes[0].start.isoformat()} - ' \
                f'{self.geoshapes[-1].end.isoformat()}>'
 
-    def copy(self):
-        """Returns a shallow copy of self"""
-        return Track(self.geoshapes.copy())
-
-    @property
-    def first(self):
-        """The first ping"""
-        if not self.geoshapes:
-            raise ValueError('Track has no pings.')
-
-        return self.geoshapes[0]
-
-    @property
-    def last(self):
-        """The last ping"""
-        if not self.geoshapes:
-            raise ValueError('Track has no pings.')
-
-        return self.geoshapes[-1]
-
-    @property
-    def start(self):
-        """The timestamp of the first ping"""
-        if not self.geoshapes:
-            raise ValueError('Cannot compute start time of an empty track.')
-
-        return self.geoshapes[0].dt
-
-    @property
-    def finish(self):
-        """The timestamp of the final ping"""
-        if not self.geoshapes:
-            raise ValueError('Cannot compute finish time of an empty track.')
-
-        return self.geoshapes[-1].dt
-
-    @property
-    def speed_diffs(self):
-        """
-        Provides speed differences (meters per second) between pings in a track
-
-        Returns:
-            np.Array
-        """
-        return self.centroid_distances / [x.total_seconds() for x in self.time_start_diffs]
-
     @cached_property
     def centroid_distances(self):
         """Provides an array of the distances (in meters) between chronologically-ordered
@@ -589,6 +543,62 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
             haversine_distance_meters(x.centroid, y.centroid)
             for x, y in zip(self.geoshapes, self.geoshapes[1:])
         ])
+
+    def copy(self):
+        """Returns a shallow copy of self"""
+        return Track(self.geoshapes.copy())
+
+    @property
+    def finish(self):
+        """The timestamp of the final ping"""
+        if not self.geoshapes:
+            raise ValueError('Cannot compute finish time of an empty track.')
+
+        return self.geoshapes[-1].dt
+
+    @property
+    def first(self):
+        """The first ping"""
+        if not self.geoshapes:
+            raise ValueError('Track has no pings.')
+
+        return self.geoshapes[0]
+
+    @cached_property
+    def has_duplicate_timestamps(self):
+        """Determine if there are different pings with the same timestamp in the data"""
+        _ts = set()
+        for point in self.geoshapes:
+            if point.dt in _ts:
+                return True
+            _ts.add(point.dt)
+        return False
+
+    @property
+    def last(self):
+        """The last ping"""
+        if not self.geoshapes:
+            raise ValueError('Track has no pings.')
+
+        return self.geoshapes[-1]
+
+    @property
+    def speed_diffs(self):
+        """
+        Provides speed differences (meters per second) between pings in a track
+
+        Returns:
+            np.Array
+        """
+        return self.centroid_distances / [x.total_seconds() for x in self.time_start_diffs]
+
+    @property
+    def start(self):
+        """The timestamp of the first ping"""
+        if not self.geoshapes:
+            raise ValueError('Cannot compute start time of an empty track.')
+
+        return self.geoshapes[0].dt
 
     @property
     def time_start_diffs(self):
@@ -602,15 +612,27 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
             for x, y in zip(self.geoshapes, self.geoshapes[1:])
         ])
 
-    @cached_property
-    def has_duplicate_timestamps(self):
-        """Determine if there are different pings with the same timestamp in the data"""
-        _ts = set()
-        for point in self.geoshapes:
-            if point.dt in _ts:
-                return True
-            _ts.add(point.dt)
-        return False
+    def _subset_by_dt(self, dt: Union[datetime, TimeInterval]):
+        """
+        Subsets the tracks pings according to the date object provided.
+
+        Args:
+            dt:
+                A date object from geostructures.time
+
+        Returns:
+            Track
+        """
+        # Has to be checked before date - datetimes are dates, but dates are not datetimes
+        if isinstance(dt, datetime):
+            return self[dt]  # type: ignore
+
+        if isinstance(dt, TimeInterval):
+            _start = dt.start
+            _end = dt.end
+            return self[_start:_end]  # type: ignore
+
+        raise ValueError(f"Unexpected dt object: {dt}")
 
     def convolve_duplicate_timestamps(self):
         """Convolves pings with duplicate timestamps and returns a new track"""
@@ -639,28 +661,6 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
 
         return Track(new_pings)
 
-    def _subset_by_dt(self, dt: Union[datetime, TimeInterval]):
-        """
-        Subsets the tracks pings according to the date object provided.
-
-        Args:
-            dt:
-                A date object from geostructures.time
-
-        Returns:
-            Track
-        """
-        # Has to be checked before date - datetimes are dates, but dates are not datetimes
-        if isinstance(dt, datetime):
-            return self[dt]  # type: ignore
-
-        if isinstance(dt, TimeInterval):
-            _start = dt.start
-            _end = dt.end
-            return self[_start:_end]  # type: ignore
-
-        raise ValueError(f"Unexpected dt object: {dt}")
-
     def filter_by_time(self, start_time: time, end_time: time) -> 'Track':
         return Track(
             [
@@ -670,6 +670,23 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
                 or shape.start.time() <= start_time <= end_time <= shape.end.time()
             ]
         )
+
+    def intersection(self, shape: GeoShape):
+        """
+        Returns the subset of the track which exists inside the provided geostructure.
+
+        Args:
+            shape:
+                A geostructure from geostructure.geostructures
+
+        Returns:
+            Track
+        """
+        points = self.geoshapes
+        if shape.dt:
+            points = self._subset_by_dt(shape.dt).geoshapes
+
+        return Track([point for point in points if point.centroid in shape])
 
     def intersects(self, shape: GeoShape):
         """
@@ -692,20 +709,3 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
                 return True
 
         return False
-
-    def intersection(self, shape: GeoShape):
-        """
-        Returns the subset of the track which exists inside the provided geostructure.
-
-        Args:
-            shape:
-                A geostructure from geostructure.geostructures
-
-        Returns:
-            Track
-        """
-        points = self.geoshapes
-        if shape.dt:
-            points = self._subset_by_dt(shape.dt).geoshapes
-
-        return Track([point for point in points if point.centroid in shape])
