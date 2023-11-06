@@ -498,7 +498,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         """
         rings = self.linear_rings(**kwargs)
         return [
-            list(zip(ring, [*ring[1:], ring[0]]))
+            list(zip(ring, ring[1:]))
             for ring in rings
         ]
 
@@ -888,9 +888,9 @@ class GeoBox(GeoShape):
         # Is self-closing
         return [
             self.nw_bound,
-            Coordinate(_se[0], _nw[1]),
-            self.se_bound,
             Coordinate(_nw[0], _se[1]),
+            self.se_bound,
+            Coordinate(_se[0], _nw[1]),
             self.nw_bound,
         ]
 
@@ -981,7 +981,7 @@ class GeoCircle(GeoShape):
         k = kwargs.get('k') or 36
         coords = []
 
-        for i in range(k):
+        for i in range(k, -1, -1):
             angle = math.pi * 2 / k * i
             coord = inverse_haversine_radians(self.center, angle, self.radius)
             coords.append(coord)
@@ -1119,7 +1119,7 @@ class GeoEllipse(GeoShape):
         coords = []
         rotation = math.radians(self.rotation)
 
-        for i in range(k):
+        for i in range(k, -1, -1):
             angle = (math.pi * 2 / k) * i
             radius = self._radius_at_angle(angle)
             coord = inverse_haversine_radians(
@@ -1250,13 +1250,7 @@ class GeoRing(GeoShape):
     @property
     def centroid(self):
         if self.angle_min and self.angle_max:
-            # If shape is a wedge, centroid has to shift
-            return Coordinate(
-                *[
-                    round_half_up(statistics.mean(x), 7)
-                    for x in zip(*[y.to_float() for y in self.bounding_coords()])
-                ]
-            )
+            return self.to_polygon().centroid
 
         return self.center
 
@@ -1265,7 +1259,7 @@ class GeoRing(GeoShape):
         outer_coords = []
         inner_coords = []
 
-        for i in range(k + 1):
+        for i in range(k, -1, -1):
             angle = (
                 math.pi
                 * (self.angle_min + (self.angle_max - self.angle_min) / k * i)
