@@ -23,6 +23,9 @@ def test_coordinate_init():
     assert Coordinate(1, -91) == Coordinate(-179, -89)
     assert Coordinate(1, -271) == Coordinate(1, 89)
 
+    # Test unbounded coordinates don't auto-adjust
+    assert Coordinate(360, 180, _bounded=False).to_float() == (360, 180)
+
 
 def test_coordinate_hash():
     coords = [
