@@ -530,6 +530,7 @@ class GeoPolygon(GeoShape):
         holes: Optional[List[GeoShape]] = None,
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
+        _is_hole: bool = False,
     ):
         super().__init__(holes=holes, dt=dt, properties=properties)
 
@@ -539,6 +540,13 @@ class GeoPolygon(GeoShape):
                 'connected to your starting point.'
             )
             outline = [*outline, outline[0]]
+
+        if not self._test_counter_clockwise(outline) ^ _is_hole:
+            self.warn_once(
+                'Your polygon appears to be defined (mostly) clockwise, violating the '
+                'right hand rule. Flipping coordinate order; this warning will not repeat.'
+            )
+            outline = outline[::-1]
 
         self.outline = outline
 
@@ -647,6 +655,25 @@ class GeoPolygon(GeoShape):
                 _intersections += 1
 
         return _intersections > 0 and _intersections % 2 != 0
+
+    @staticmethod
+    def _test_counter_clockwise(bounds: List[Coordinate]) -> bool:
+        """
+        Tests a polygon to determine whether it's defined in a counterclockwise
+        (or mostly, for complex shapes) order.
+
+        Args:
+            bounds:
+                A list of Coordinates, in order
+
+        Returns:
+            bool
+        """
+        ans = sum(
+            (y.longitude - x.longitude) * (y.latitude + x.latitude)
+            for x, y in zip(bounds, [*bounds[1:], bounds[0]])
+        )
+        return ans <= 0
 
     def bounding_coords(self, **kwargs) -> List[Coordinate]:
         return self.outline
