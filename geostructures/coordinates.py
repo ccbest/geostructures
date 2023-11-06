@@ -42,50 +42,6 @@ class Coordinate:
     def __repr__(self):
         return f'<Coordinate({self.longitude}, {self.latitude})>'
 
-    def to_float(self) -> Tuple[float, float]:
-        """Converts the coordinate to a 2-tuple of floats (longitude, latitude)"""
-        return self.longitude, self.latitude
-
-    def to_str(self) -> Tuple[str, str]:
-        """Converts the coordinate to a 2-tuple of strings (longitude, latitude)"""
-        return str(self.longitude), str(self.latitude)
-
-    def to_mgrs(self) -> str:
-        """Convert this coordinate to a MGRS string"""
-        import mgrs  # pylint: disable=import-outside-toplevel
-        _MGRS = mgrs.MGRS()
-
-        return _MGRS.toMGRS(self.latitude, self.longitude)
-
-    @classmethod
-    def from_mgrs(cls, mgrs_str: str):
-        """Create a Coordinate object from a MGRS string"""
-        import mgrs  # pylint: disable=import-outside-toplevel
-        _MGRS = mgrs.MGRS()
-
-        # Spaces in the mgrs string can produce inaccurate coordinates
-        lat, lon = _MGRS.toLatLon(mgrs_str.replace(' ', ''))
-        return Coordinate(lon, lat)
-
-    def to_dms(self) -> Tuple[Tuple[int, int, float, str], Tuple[int, int, float, str]]:
-        """
-        Convert a value (latitude or longitude) in decimal degrees to a tuple of
-        degrees, minutes, seconds, hemisphere
-
-        Returns:
-            converted value as (degrees, minutes, seconds, hemisphere)
-        """
-        def convert(dd: float) -> Tuple[int, int, float]:
-            """Converts a Decimal Degree to Degrees Minutes Seconds"""
-            minutes, seconds = divmod(abs(dd) * 3600, 60)
-            degrees, minutes = divmod(minutes, 60)
-            return int(degrees), int(minutes), round_half_up(seconds, 5)
-
-        return (
-            (*convert(self.longitude), 'E' if self.longitude >= 0 else 'W'),
-            (*convert(self.latitude), 'N' if self.latitude >= 0 else 'S'),
-        )
-
     @classmethod
     def from_dms(cls, lon: Tuple[int, int, float, str], lat: Tuple[int, int, float, str]):
         """
@@ -109,6 +65,70 @@ class Coordinate:
             return mult * (dms[0] + (dms[1] / 60) + (dms[2] / 3600))
 
         return Coordinate(convert(lon), convert(lat))
+
+    @classmethod
+    def from_mgrs(cls, mgrs_str: str):
+        """Create a Coordinate object from a MGRS string"""
+        import mgrs  # pylint: disable=import-outside-toplevel
+        _MGRS = mgrs.MGRS()
+
+        # Spaces in the mgrs string can produce inaccurate coordinates
+        lat, lon = _MGRS.toLatLon(mgrs_str.replace(' ', ''))
+        return Coordinate(lon, lat)
+
+    @classmethod
+    def from_qdms(cls, lon: str, lat: str):
+        """
+        Creates a Coordinate from a QDDMMSSHH (lon, lat) pair
+
+        Args:
+            lon:
+                The longitude, ex. 'N001140442'
+
+            lat:
+                The latitude, ex. 'E01140442'
+        """
+        def convert(q: str, d: str, m: str, s: str):
+            return (float(d) + float(m) / 60 + float(s[:2] + '.' + s[2:]) / 3600) * (
+                -1 if q in ('W', 'S') else 1
+            )
+        lon_dms = lon[1:4], lon[4:6], lon[6:]
+        lat_dms = lat[1:3], lat[3:5], lat[5:]
+
+        return Coordinate(
+            round_half_up(convert(lon[0], *lon_dms), 6),
+            round_half_up(convert(lat[0], *lat_dms), 6)
+        )
+
+    def to_dms(self) -> Tuple[Tuple[int, int, float, str], Tuple[int, int, float, str]]:
+        """
+        Convert a value (latitude or longitude) in decimal degrees to a tuple of
+        degrees, minutes, seconds, hemisphere
+
+        Returns:
+            converted value as (degrees, minutes, seconds, hemisphere)
+        """
+        def convert(dd: float) -> Tuple[int, int, float]:
+            """Converts a Decimal Degree to Degrees Minutes Seconds"""
+            minutes, seconds = divmod(abs(dd) * 3600, 60)
+            degrees, minutes = divmod(minutes, 60)
+            return int(degrees), int(minutes), round_half_up(seconds, 5)
+
+        return (
+            (*convert(self.longitude), 'E' if self.longitude >= 0 else 'W'),
+            (*convert(self.latitude), 'N' if self.latitude >= 0 else 'S'),
+        )
+
+    def to_float(self) -> Tuple[float, float]:
+        """Converts the coordinate to a 2-tuple of floats (longitude, latitude)"""
+        return self.longitude, self.latitude
+
+    def to_mgrs(self) -> str:
+        """Convert this coordinate to a MGRS string"""
+        import mgrs  # pylint: disable=import-outside-toplevel
+        _MGRS = mgrs.MGRS()
+
+        return _MGRS.toMGRS(self.latitude, self.longitude)
 
     def to_qdms(self) -> Tuple[str, str]:
         """
@@ -136,26 +156,6 @@ class Coordinate:
 
         return f'{lon[3]}{"".join(_lon)}', f'{lat[3]}{"".join(_lat)}'
 
-    @classmethod
-    def from_qdms(cls, lon: str, lat: str):
-        """
-        Creates a Coordinate from a QDDMMSSHH (lon, lat) pair
-
-        Args:
-            lon:
-                The longitude, ex. 'N001140442'
-
-            lat:
-                The latitude, ex. 'E01140442'
-        """
-        def convert(q: str, d: str, m: str, s: str):
-            return (float(d) + float(m) / 60 + float(s[:2] + '.' + s[2:]) / 3600) * (
-                -1 if q in ('W', 'S') else 1
-            )
-        lon_dms = lon[1:4], lon[4:6], lon[6:]
-        lat_dms = lat[1:3], lat[3:5], lat[5:]
-
-        return Coordinate(
-            round_half_up(convert(lon[0], *lon_dms), 6),
-            round_half_up(convert(lat[0], *lat_dms), 6)
-        )
+    def to_str(self) -> Tuple[str, str]:
+        """Converts the coordinate to a 2-tuple of strings (longitude, latitude)"""
+        return str(self.longitude), str(self.latitude)

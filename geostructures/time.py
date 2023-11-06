@@ -54,6 +54,17 @@ class TimeInterval(LoggingMixin, DefaultZuluMixin):
     def copy(self):
         return TimeInterval(self.start, self.end)
 
+    def elapsed(self):
+        """Returns elapsed time (as a timedelta) for the interval"""
+        return self.end - self.start
+
+    def intersection(self, other: TimeInterval) -> Optional[TimeInterval]:
+        """Returns a TimeInterval common to both time intervals. Will return None if impossible"""
+        try:
+            return TimeInterval(max(self.start, other.start), min(self.end, other.end))
+        except ValueError:
+            return None
+
     def isdisjoint(self, other: TimeInterval) -> bool:
         """Returns True if time intervals do not overlap."""
         return self.end <= other.start or self.start >= other.end
@@ -66,17 +77,6 @@ class TimeInterval(LoggingMixin, DefaultZuluMixin):
         """Returns True if other interval is contained entirely within time interval"""
         return other.issubset(self)
 
-    def elapsed(self):
-        """Returns elapsed time (as a timedelta) for the interval"""
-        return self.end - self.start
-
     def union(self, other: TimeInterval) -> TimeInterval:
         """Returns a TimeInterval that spans both time intervals"""
         return TimeInterval(min(self.start, other.start), max(self.end, other.end))
-
-    def intersection(self, other: TimeInterval) -> Optional[TimeInterval]:
-        """Returns a TimeInterval common to both time intervals. Will return None if impossible"""
-        try:
-            return TimeInterval(max(self.start, other.start), min(self.end, other.end))
-        except ValueError:
-            return None

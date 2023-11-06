@@ -117,6 +117,16 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         """REPL representation of this object"""
 
     @property
+    @abstractmethod
+    def centroid(self):
+        """
+        The center of the shape.
+
+        Returns:
+            Coordinate
+        """
+
+    @property
     def end(self) -> datetime:
         """The end date/datetime, if present"""
         if not self.dt:
@@ -172,6 +182,26 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         """
         return f'({",".join(" ".join(coord.to_str()) for coord in ring)})'
 
+    @abstractmethod
+    def bounding_coords(self, **kwargs) -> List[Coordinate]:
+        """
+        Produces a list of coordinates that define the polygon's boundary.
+
+        Using discrete coordinates to represent a continuous curve implies some level of data
+        loss. You can minimize this loss by specifying k, which represents the number of
+        points drawn.
+
+        Does not include information about holes - see the linear rings method.
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+
+        Returns:
+            A list of coordinates, representing the boundary.
+        """
+
     def bounding_vertices(self, **kwargs) -> List[Tuple[Coordinate, Coordinate]]:
         """
         Returns a list of vertices, defined as a 2-tuple (start and end) of coordinates, that
@@ -193,6 +223,24 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         """
         bounding_coords = self.bounding_coords(**kwargs)
         return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
+
+    @abstractmethod
+    def circumscribing_circle(self):
+        """
+        Produces a circle that entirely encompasses the shape
+
+        Returns:
+            (GeoCircle)
+        """
+
+    @abstractmethod
+    def circumscribing_rectangle(self):
+        """
+        Produces a rectangle that entirely encompasses the shape
+
+        Returns:
+            (GeoBox)
+        """
 
     def contains(self, shape: 'GeoShape', **kwargs) -> bool:
         """
@@ -227,6 +275,19 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         # No vertices intersect, so make sure one point along the boundary is
         # contained
         return o_vertices[0][0][0] in self
+
+    @abstractmethod
+    def contains_coordinate(self, coord: Coordinate) -> bool:
+        """
+        Test if a geoshape contains a coordinate.
+
+        Args:
+            coord:
+                A Coordinate
+
+        Returns:
+            bool
+        """
 
     def contains_time(self, time: Union[datetime, TimeInterval]) -> bool:
         """
@@ -372,6 +433,15 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             **kwargs
         }
 
+    @abstractmethod
+    def to_polygon(self, **kwargs):
+        """
+        Converts the shape to a GeoPolygon
+
+        Returns:
+            (GeoPolygon)
+        """
+
     def to_shapely(self):
         """
         Converts the geoshape into a Shapely shape.
@@ -431,76 +501,6 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             list(zip(ring, [*ring[1:], ring[0]]))
             for ring in rings
         ]
-
-    @property
-    @abstractmethod
-    def centroid(self):
-        """
-        The center of the shape.
-
-        Returns:
-            Coordinate
-        """
-
-    @abstractmethod
-    def bounding_coords(self, **kwargs) -> List[Coordinate]:
-        """
-        Produces a list of coordinates that define the polygon's boundary.
-
-        Using discrete coordinates to represent a continuous curve implies some level of data
-        loss. You can minimize this loss by specifying k, which represents the number of
-        points drawn.
-
-        Does not include information about holes - see the linear rings method.
-
-        Keyword Args:
-            k: (int)
-                For shapes with smooth curves, increasing k increases the number of
-                points generated along the curve
-
-        Returns:
-            A list of coordinates, representing the boundary.
-        """
-
-    @abstractmethod
-    def circumscribing_circle(self):
-        """
-        Produces a circle that entirely encompasses the shape
-
-        Returns:
-            (GeoCircle)
-        """
-
-    @abstractmethod
-    def circumscribing_rectangle(self):
-        """
-        Produces a rectangle that entirely encompasses the shape
-
-        Returns:
-            (GeoBox)
-        """
-
-    @abstractmethod
-    def contains_coordinate(self, coord: Coordinate) -> bool:
-        """
-        Test if a geoshape contains a coordinate.
-
-        Args:
-            coord:
-                A Coordinate
-
-        Returns:
-            bool
-        """
-
-    @abstractmethod
-    def to_polygon(self, **kwargs):
-        """
-        Converts the shape to a GeoPolygon
-
-        Returns:
-            (GeoPolygon)
-        """
 
 
 class GeoPolygon(GeoShape):
@@ -867,6 +867,16 @@ class GeoBox(GeoShape):
             self.nw_bound,
         ]
 
+    def circumscribing_rectangle(self):
+        return self
+
+    def circumscribing_circle(self):
+        return GeoCircle(
+            self.centroid,
+            haversine_distance_meters(self.nw_bound, self.centroid),
+            dt=self.dt,
+        )
+
     def contains_coordinate(self, coord: Coordinate):
         if not (
             self.nw_bound.longitude <= coord.longitude <= self.se_bound.longitude and
@@ -887,16 +897,6 @@ class GeoBox(GeoShape):
             holes=self.holes.copy(),
             dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self.properties)
-        )
-
-    def circumscribing_rectangle(self):
-        return self
-
-    def circumscribing_circle(self):
-        return GeoCircle(
-            self.centroid,
-            haversine_distance_meters(self.nw_bound, self.centroid),
-            dt=self.dt,
         )
 
     def to_polygon(self, **kwargs):
@@ -961,15 +961,6 @@ class GeoCircle(GeoShape):
 
         return [*coords, coords[0]]
 
-    def copy(self):
-        return GeoCircle(
-            self.center,
-            self.radius,
-            holes=self.holes.copy(),
-            dt=self.dt.copy() if self.dt else None,
-            properties=copy.deepcopy(self.properties)
-        )
-
     def circumscribing_rectangle(self):
         return GeoBox(
             inverse_haversine_radians(
@@ -993,6 +984,15 @@ class GeoCircle(GeoShape):
                 return False
 
         return True
+
+    def copy(self):
+        return GeoCircle(
+            self.center,
+            self.radius,
+            holes=self.holes.copy(),
+            dt=self.dt.copy() if self.dt else None,
+            properties=copy.deepcopy(self.properties)
+        )
 
     def to_polygon(self, **kwargs):
         return GeoPolygon(self.bounding_coords(**kwargs), dt=self.dt)
