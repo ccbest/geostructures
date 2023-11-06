@@ -390,6 +390,9 @@ def rotate_coordinates(
     o = np.atleast_2d(origin.to_float())
     p = np.atleast_2d([x.to_float() for x in coords])
     return [
-        Coordinate(*[round_half_up(x, precision) for x in coord])
+        Coordinate(
+            round_half_up(coord.longitude, precision),
+            round_half_up(coord.latitude, precision)
+        )
         for coord in (R @ (p.T - o.T) + o.T).T
     ]
