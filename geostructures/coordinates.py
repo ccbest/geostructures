@@ -16,16 +16,22 @@ class Coordinate:
         self,
         longitude: Union[float, int, str],
         latitude: Union[float, int, str],
+        _bounded: bool = True
     ):
         lon, lat = float(longitude), float(latitude)
-        while not -90 <= lat <= 90:
-            # Crosses one of the poles
-            lat = 90 - (lat - 90) if lat > 90 else -90 - (lat + 90)
-            lon = lon + 180 if lon < 0 else lon - 180
+        if _bounded:
+            while not -90 <= lat <= 90:
+                # Crosses one of the poles
+                lat = 90 - (lat - 90) if lat > 90 else -90 - (lat + 90)
+                lon = lon + 180 if lon < 0 else lon - 180
 
-        while not -180 <= lon <= 180:
-            # Crosses the antimeridian
-            lon = lon - 360 if lon > 180 else lon + 360
+            while not -180 <= lon <= 180:
+                # Crosses the antimeridian
+                lon = lon - 360 if lon > 180 else lon + 360
+
+        # Longitudes are bounded to [-180, 180)
+        if lon == 180:
+            lon = -180
 
         self.longitude = lon
         self.latitude = lat

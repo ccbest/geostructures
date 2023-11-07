@@ -20,6 +20,7 @@ import numpy as np
 
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
+    ensure_vertex_bounds,
     inverse_haversine_radians,
     haversine_distance_meters,
     bearing_degrees,
@@ -671,7 +672,10 @@ class GeoPolygon(GeoShape):
         """
         ans = sum(
             (y.longitude - x.longitude) * (y.latitude + x.latitude)
-            for x, y in zip(bounds, [*bounds[1:], bounds[0]])
+            for x, y in map(
+                lambda x: ensure_vertex_bounds(x[0], x[1]),
+                zip(bounds, [*bounds[1:], bounds[0]])
+            )
         )
         return ans <= 0
 

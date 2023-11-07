@@ -1,9 +1,9 @@
 """ Geometric calculations for Coordinates and Geostructures """
 
 __all__ = [
-    'bearing_degrees', 'haversine_distance_meters', 'inverse_haversine_degrees',
-    'inverse_haversine_radians', 'rotate_coordinates', 'find_line_intersection',
-    'do_vertices_intersect'
+    'bearing_degrees', 'ensure_vertex_bounds', 'haversine_distance_meters',
+    'inverse_haversine_degrees', 'inverse_haversine_radians', 'rotate_coordinates',
+    'find_line_intersection', 'do_vertices_intersect'
 ]
 
 import math
@@ -116,6 +116,9 @@ def do_vertices_intersect(
             ]
         return _events
 
+    vertices_a = [ensure_vertex_bounds(x, y) for x, y in vertices_a]
+    vertices_b = [ensure_vertex_bounds(x, y) for x, y in vertices_b]
+
     events = _create_events(vertices_a, 'a')
     events += _create_events(vertices_b, 'b')
 
@@ -127,7 +130,7 @@ def do_vertices_intersect(
             continue
 
         # All vertices belong to same group
-        if len(set(x.group for x in active_events)) <= 1:
+        if len(set(x.group for x in [*active_events, event])) <= 1:
             active_events.add(event)
             continue
 
@@ -142,6 +145,33 @@ def do_vertices_intersect(
         active_events.add(event)
 
     return False
+
+
+def ensure_vertex_bounds(coord1: Coordinate, coord2: Coordinate) -> Tuple[Coordinate, Coordinate]:
+    """
+    Ensures vertices (lines extending from point A to point B) are properly bounded,
+    such that a line which crosses the antimeridian does not mathematically circumnavigate
+    the globe.
+
+    If the shortest path between the start and end points of a vertex crosses the antimeridian,
+    this function will "unbound" the end point coordinate such that its latitude value
+    is not limited to [-180, 180), thereby allowing the meridian crossing to be calculated
+    correctly.
+
+    Args:
+        coord1:
+            A geostructures coordinate representing the vertex start
+
+        coord2:
+            A geostructures coordinate representing the vertex finish
+
+    Returns:
+        A tuple of unbounded coordinates
+    """
+    if abs(coord1.longitude - coord2.longitude) > 180:
+        adjusted_lon = coord2.longitude - 360 if coord1.longitude < 0 else coord2.longitude + 360
+        return coord1, Coordinate(adjusted_lon, coord2.latitude, _bounded=False)
+    return coord1, coord2
 
 
 def find_line_intersection(
@@ -183,6 +213,10 @@ def find_line_intersection(
     def test_ranges_overlap(range1: Tuple[float, float], range2: Tuple[float, float]):
         """Test whether two ranges overlap"""
         return max([range1[0], range2[0]]) <= min([range1[1], range2[1]])
+
+    # Adjust lines if they cross the antimeridian
+    line1 = ensure_vertex_bounds(line1[0], line1[1])
+    line2 = ensure_vertex_bounds(line2[0], line2[1])
 
     line1_flt = (line1[0].to_float(), line1[1].to_float())
     if line1_flt[1][0] < line1_flt[0][0]:  # Flip order such that lower x value is first
@@ -243,6 +277,7 @@ def haversine_distance_meters(coord1: Coordinate, coord2: Coordinate) -> float:
     Returns:
         (float) the bearing in degrees
     """
+    coord1, coord2 = ensure_vertex_bounds(coord1, coord2)
 
     lon1, lat1 = math.radians(coord1.longitude), math.radians(coord1.latitude)
     lon2, lat2 = math.radians(coord2.longitude), math.radians(coord2.latitude)
@@ -346,6 +381,7 @@ def rotate_coordinates(
     Returns:
         List[Coordinate]
     """
+    coords = [ensure_vertex_bounds(origin, x)[1] for x in coords]
     angle = np.deg2rad(degrees)
     R = np.array([
         [np.cos(angle), -np.sin(angle)],
@@ -353,8 +389,10 @@ def rotate_coordinates(
     ])
     o = np.atleast_2d(origin.to_float())
     p = np.atleast_2d([x.to_float() for x in coords])
-
     return [
-        Coordinate(*[round_half_up(x, precision) for x in coord])
+        Coordinate(
+            round_half_up(coord[0], precision),
+            round_half_up(coord[1], precision)
+        )
         for coord in (R @ (p.T - o.T) + o.T).T
     ]
