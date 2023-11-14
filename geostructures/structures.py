@@ -118,6 +118,19 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         """REPL representation of this object"""
 
     @property
+    def area(self):
+        """
+        The area of the shape, in meters squared.
+
+        Returns:
+            float
+        """
+        from pyproj import Geod
+        geod = Geod(ellps="WGS84")
+        area, _ = geod.geometry_area_perimeter(self.to_shapely())
+        return area
+
+    @property
     @abstractmethod
     def centroid(self):
         """
@@ -157,6 +170,23 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             return self.dt
 
         return self.dt.start
+
+    @property
+    def volume(self) -> float:
+        """
+        The volume of the shape, in meters squared seconds.
+
+        Shapes with no time dimension (dt is None), or whose
+        time dimension is an instance in time (dt is a datetime)
+        will always have a volume of zero.
+
+        Returns:
+            float
+        """
+        if isinstance(self.dt, (type(None), datetime)):
+            return 0.
+
+        return self.area * self.dt.elapsed().total_seconds()
 
     def _dt_to_json(self) -> Dict[str, str]:
         """Safely convert time bounds to json"""

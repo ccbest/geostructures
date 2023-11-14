@@ -16,6 +16,7 @@ ConditionalPackageInterceptor.permit_packages(
         'mgrs': 'mgrs>=1.4.5,<2',
         'pandas': 'pandas>=2,<3',
         'plotly': 'plotly>=5,<6',
+        'pyproj': 'pyproj>=3.6,<4',
         'scipy': 'scipy>=3.0.7,<4.0',
     }
 )

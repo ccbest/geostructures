@@ -5,6 +5,7 @@ h3>=3.7,<4
 mgrs>=1.4.5,<2
 mypy
 pylint>=2.15,<3
+pyproj>=3.6,<4
 pyshp>=2.3,<3
 pytest>=7,<8
 scipy>=1.11,<2.0
