@@ -86,7 +86,7 @@ def test_timeinterval_issuperset():
 
 
 def test_timeinterval_elapsed():
-    assert TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 3)).elapsed() == timedelta(days=1)
+    assert TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 3)).elapsed == timedelta(days=1)
 
 
 def test_timeinterval_union():

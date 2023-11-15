@@ -8,7 +8,7 @@ import shapely
 from scipy.spatial import ConvexHull
 
 from geostructures.coordinates import Coordinate
-from geostructures import GeoBox, GeoLineString, GeoPoint, GeoPolygon
+from geostructures import GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
 from geostructures.collections import Track, FeatureCollection
 
@@ -75,6 +75,128 @@ def test_collection_len():
     assert len(track1) == 3
     track1.geoshapes.pop(0)
     assert len(track1) == 2
+
+
+def test_collection_filter_by_dt():
+    col = FeatureCollection([
+        # Intersects in point in time
+        GeoCircle(
+            Coordinate(0.0, 1.0),
+            500,
+            dt=datetime(2020, 1, 1)
+        ),
+        # Intersects in timespan
+        GeoCircle(
+            Coordinate(0.0, 1.0),
+            500,
+            dt=TimeInterval(datetime(2019, 12, 1), datetime(2020, 1, 2))
+        ),
+        # Does not intersect in space
+        GeoPoint(
+            Coordinate(5.0, 5.0),
+            dt=None
+        ),
+        # Does not intersect in time
+        GeoPoint(
+            Coordinate(0.0, 0.0),
+            dt=datetime(2020, 1, 5)
+        ),
+        # Intersects in space, time eternal
+        GeoPoint(
+            Coordinate(0.0, 0.0),
+            dt=None
+        ),
+    ])
+    test_interval = TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))
+    assert col.filter_by_dt(test_interval) == FeatureCollection([
+        # Intersects in point in time
+        GeoCircle(
+            Coordinate(0.0, 1.0),
+            500,
+            dt=datetime(2020, 1, 1)
+        ),
+        # Intersects in timespan
+        GeoCircle(
+            Coordinate(0.0, 1.0),
+            500,
+            dt=TimeInterval(datetime(2019, 12, 1), datetime(2020, 1, 2))
+        ),
+    ])
+
+
+def test_collection_filter_by_intersection():
+    col = FeatureCollection([
+        # Intersects in point in time
+        GeoCircle(
+            Coordinate(0.0, 1.0),
+            500,
+            dt=datetime(2020, 1, 1)
+        ),
+        # Intersects in timespan
+        GeoCircle(
+            Coordinate(0.0, 1.0),
+            500,
+            dt=TimeInterval(datetime(2019, 12, 1), datetime(2020, 1, 2))
+        ),
+        # Does not intersect in space
+        GeoPoint(
+            Coordinate(5.0, 5.0),
+            dt=None
+        ),
+        # Does not intersect in time
+        GeoPoint(
+            Coordinate(0.0, 0.0),
+            dt=datetime(2020, 1, 5)
+        ),
+        # Intersects in space, time eternal
+        GeoPoint(
+            Coordinate(0.0, 1.0),
+            dt=None
+        ),
+    ])
+
+    intersecting_shape = GeoCircle(Coordinate(0.0, 1.0), 100)
+    assert col.filter_by_intersection(intersecting_shape) == FeatureCollection([
+        # Intersects in point in time
+        GeoCircle(
+            Coordinate(0.0, 1.0),
+            500,
+            dt=datetime(2020, 1, 1)
+        ),
+        # Intersects in timespan
+        GeoCircle(
+            Coordinate(0.0, 1.0),
+            500,
+            dt=TimeInterval(datetime(2019, 12, 1), datetime(2020, 1, 2))
+        ),
+        # Intersects in space, time eternal
+        GeoPoint(
+            Coordinate(0.0, 1.0),
+            dt=None
+        ),
+    ])
+
+    test_interval = TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))
+    intersecting_shape = GeoCircle(Coordinate(0.0, 1.0), 100, dt=test_interval)
+    assert col.filter_by_intersection(intersecting_shape) == FeatureCollection([
+        # Intersects in point in time
+        GeoCircle(
+            Coordinate(0.0, 1.0),
+            500,
+            dt=datetime(2020, 1, 1)
+        ),
+        # Intersects in timespan
+        GeoCircle(
+            Coordinate(0.0, 1.0),
+            500,
+            dt=TimeInterval(datetime(2019, 12, 1), datetime(2020, 1, 2))
+        ),
+        # Intersects in space, time eternal
+        GeoPoint(
+            Coordinate(0.0, 1.0),
+            dt=None
+        ),
+    ])
 
 
 def test_collection_from_geopandas():
@@ -786,10 +908,10 @@ def test_track_intersection():
     )
 
     gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.))
-    assert track1.intersection(gbox) == track1
+    assert track1.filter_by_intersection(gbox) == track1
 
     gbox = GeoBox(Coordinate(0., 1.005), Coordinate(1., 0.))
-    assert len(track1.intersection(gbox)) == 6
+    assert len(track1.filter_by_intersection(gbox)) == 6
 
     gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=datetime(2020, 1, 1, 3))
-    assert len(track1.intersection(gbox)) == 1
+    assert len(track1.filter_by_intersection(gbox)) == 1

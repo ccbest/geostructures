@@ -234,6 +234,31 @@ def test_geoshape_intersects():
     assert circle1.intersects(circle2)
     assert circle2.intersects(circle1)
 
+    # points
+    point = GeoPoint(Coordinate(0., 0.))
+    assert circle1.intersects(point)
+    assert point.intersects(circle1)
+
+
+def test_geoshape_intersects_time():
+    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 1))
+    assert geopoint.intersects_time(datetime(2020, 1, 1, 1))
+    assert not geopoint.intersects_time(datetime(2020, 1, 1, 1, 1))
+    assert geopoint.intersects_time(TimeInterval(datetime(2020, 1, 1, 1), datetime(2020, 1, 1, 1, 1)))
+
+    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 12), datetime(2020, 1, 3, 12)))
+    assert geopoint.intersects_time(datetime(2020, 1, 2))
+    assert not geopoint.intersects_time(datetime(2020, 1, 4, 12))
+    assert geopoint.intersects_time(TimeInterval(datetime(2020, 1, 1, 14),datetime(2020, 1, 1, 16)))
+
+    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=None)
+    assert not geopoint.intersects_time(datetime(2020, 1, 4, 12))
+    assert not geopoint.intersects_time(TimeInterval(datetime(2020, 1, 1, 14), datetime(2020, 1, 1, 16)))
+
+    with pytest.raises(ValueError):
+        geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 12), datetime(2020, 1, 3, 12)))
+        geopoint.intersects_time('not a date')
+
 
 def test_shape_to_geojson(geocircle):
     # Assert kwargs and properties end up in the right place
@@ -1477,6 +1502,7 @@ def test_geopoint_contains():
 def test_geopoint_contains_coordinate():
     assert not GeoPoint(Coordinate(0., 0.)).contains_coordinate(Coordinate(0., 0.))
 
+
 def test_geopoint_from_geojson():
     gpoint = {
         'type': 'Feature',
@@ -1509,6 +1535,15 @@ def test_geopoint_from_shapely():
     point = shapely.geometry.Point(0.0, 0.0)
     gpoint = GeoPoint.from_shapely(point)
     assert gpoint == expected
+
+
+def test_geopoint_intersects():
+    point = GeoPoint(Coordinate(0., 0.))
+    assert point.intersects(GeoCircle(Coordinate(0., 0.), 500))
+    assert point.intersects(point)
+
+    assert not point.intersects(GeoCircle(Coordinate(1., 0.), 500))
+    assert not point.intersects(GeoPoint(Coordinate(0.001, 0.001)))
 
 
 def test_geopoint_to_geojson(geopoint):

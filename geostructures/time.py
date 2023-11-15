@@ -51,12 +51,19 @@ class TimeInterval(LoggingMixin, DefaultZuluMixin):
     def __hash__(self) -> int:
         return hash((self.start, self.end))
 
-    def copy(self):
-        return TimeInterval(self.start, self.end)
-
+    @property
     def elapsed(self):
         """Returns elapsed time (as a timedelta) for the interval"""
         return self.end - self.start
+
+    def copy(self):
+        return TimeInterval(self.start, self.end)
+
+    def intersects(self, other: Union[datetime, TimeInterval]) -> bool:
+        """Test whether this time interval intersects with another interval or point in time"""
+        if isinstance(other, datetime):
+            return other in self
+        return not other.isdisjoint(self)
 
     def intersection(self, other: TimeInterval) -> Optional[TimeInterval]:
         """Returns a TimeInterval common to both time intervals. Will return None if impossible"""

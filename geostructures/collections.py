@@ -79,6 +79,43 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
         hull = spatial.ConvexHull(points)
         return GeoPolygon([Coordinate(*points[x]) for x in hull.vertices])
 
+    def filter_by_dt(self, dt: Union[datetime, TimeInterval]):
+        """
+        Subsets the tracks pings according to the date object provided.
+
+        Args:
+            dt:
+                A date object from geostructures.time
+
+        Returns:
+            Track
+        """
+        # Has to be checked before date - datetimes are dates, but dates are not datetimes
+        if isinstance(dt, datetime):
+            dt = self._default_to_zulu(dt)
+            return type(self)([x for x in self.geoshapes if x.dt is not None and x.dt == dt])
+
+        if isinstance(dt, TimeInterval):
+            return type(self)(
+                [x for x in self.geoshapes if x.dt is not None and dt.intersects(x.dt)]
+            )
+
+        raise ValueError(f"Unexpected dt object: {dt}")
+
+    def filter_by_intersection(self, shape: GeoShape) -> 'ShapeCollection':
+        """
+        Filter the shape collection using an intersecting geoshape, which is optionally
+        time-bounded.
+
+        Args:
+            shape:
+                A geoshape
+
+        Returns:
+            A shape collection of the same type as the original
+        """
+        return type(self)([x for x in self.geoshapes if x.intersects(shape)])
+
     @classmethod
     def from_geojson(
         cls,
@@ -289,6 +326,28 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
                 shapes.append(GeoLineString.from_shapely(shape))
 
         return FeatureCollection(shapes)
+
+    def intersects(self, shape: GeoShape):
+        """
+        Boolean determination of whether any pings from the track exist inside the provided
+        geostructure.
+
+        Args:
+            shape:
+                A geostructure from geostructure.geostructures
+
+        Returns:
+            bool
+        """
+        shapes = self.geoshapes
+        if shape.dt:
+            shapes = self.filter_by_dt(shape.dt).geoshapes
+
+        for col_shape in shapes:
+            if col_shape.intersects(shape):
+                return True
+
+        return False
 
     def to_geojson(self, properties: Optional[Dict] = None, **kwargs):
         return {
@@ -626,28 +685,6 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
             for x, y in zip(self.geoshapes, self.geoshapes[1:])
         ])
 
-    def _subset_by_dt(self, dt: Union[datetime, TimeInterval]):
-        """
-        Subsets the tracks pings according to the date object provided.
-
-        Args:
-            dt:
-                A date object from geostructures.time
-
-        Returns:
-            Track
-        """
-        # Has to be checked before date - datetimes are dates, but dates are not datetimes
-        if isinstance(dt, datetime):
-            return self[dt]  # type: ignore
-
-        if isinstance(dt, TimeInterval):
-            _start = dt.start
-            _end = dt.end
-            return self[_start:_end]  # type: ignore
-
-        raise ValueError(f"Unexpected dt object: {dt}")
-
     def convolve_duplicate_timestamps(self):
         """Convolves pings with duplicate timestamps and returns a new track"""
         if not self.has_duplicate_timestamps:
@@ -684,42 +721,3 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
                 or shape.start.time() <= start_time <= end_time <= shape.end.time()
             ]
         )
-
-    def intersection(self, shape: GeoShape):
-        """
-        Returns the subset of the track which exists inside the provided geostructure.
-
-        Args:
-            shape:
-                A geostructure from geostructure.geostructures
-
-        Returns:
-            Track
-        """
-        points = self.geoshapes
-        if shape.dt:
-            points = self._subset_by_dt(shape.dt).geoshapes
-
-        return Track([point for point in points if point.centroid in shape])
-
-    def intersects(self, shape: GeoShape):
-        """
-        Boolean determination of whether any pings from the track exist inside the provided
-        geostructure.
-
-        Args:
-            shape:
-                A geostructure from geostructure.geostructures
-
-        Returns:
-            bool
-        """
-        points = self.geoshapes
-        if shape.dt:
-            points = self._subset_by_dt(shape.dt).geoshapes
-
-        for point in points:
-            if point.centroid in shape:
-                return True
-
-        return False
