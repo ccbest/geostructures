@@ -8,7 +8,7 @@ from collections import defaultdict, Counter
 from datetime import date, datetime, time, timedelta
 from functools import cached_property
 from pathlib import Path
-from typing import cast, Any, List, Dict, Optional, Union, Tuple
+from typing import cast, Any, List, Dict, Optional, Union, Tuple, TypeVar
 
 import numpy as np
 
@@ -17,6 +17,9 @@ from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon, GeoSha
 from geostructures.time import TimeInterval
 from geostructures.calc import haversine_distance_meters
 from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
+
+
+_COL_TYPE = TypeVar('_COL_TYPE', bound='ShapeCollection')
 
 
 class ShapeCollection(LoggingMixin, DefaultZuluMixin):
@@ -79,7 +82,7 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
         hull = spatial.ConvexHull(points)
         return GeoPolygon([Coordinate(*points[x]) for x in hull.vertices])
 
-    def filter_by_dt(self, dt: Union[datetime, TimeInterval]):
+    def filter_by_dt(self: _COL_TYPE, dt: Union[datetime, TimeInterval]) -> _COL_TYPE:
         """
         Subsets the tracks pings according to the date object provided.
 
@@ -102,7 +105,7 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
 
         raise ValueError(f"Unexpected dt object: {dt}")
 
-    def filter_by_intersection(self, shape: GeoShape) -> 'ShapeCollection':
+    def filter_by_intersection(self: _COL_TYPE, shape: GeoShape) -> _COL_TYPE:
         """
         Filter the shape collection using an intersecting geoshape, which is optionally
         time-bounded.
