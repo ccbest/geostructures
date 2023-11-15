@@ -14,7 +14,7 @@ from datetime import datetime
 import math
 import re
 import statistics
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import cast, Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -186,7 +186,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         if isinstance(self.dt, (type(None), datetime)):
             return 0.
 
-        return self.area * self.dt.elapsed().total_seconds()
+        return self.area * cast(TimeInterval, self.dt).elapsed().total_seconds()
 
     def _dt_to_json(self) -> Dict[str, str]:
         """Safely convert time bounds to json"""
