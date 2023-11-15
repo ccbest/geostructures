@@ -11,6 +11,7 @@ __all__ = [
 from abc import abstractmethod
 import copy
 from datetime import datetime
+from functools import cached_property, lru_cache
 import math
 import re
 import statistics
@@ -96,7 +97,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
 
         self.dt = dt
         self._properties = properties or {}
-        self._shapely = None
+        self.to_shapely = lru_cache(maxsize=1)(self._to_shapely)
         self.holes = holes or []
         if any(x.holes for x in self.holes):
             raise ValueError('Holes cannot themselves contain holes.')
@@ -119,7 +120,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
     def __repr__(self):
         """REPL representation of this object"""
 
-    @property
+    @cached_property
     def area(self):
         """
         The area of the shape, in meters squared.
@@ -183,7 +184,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
 
         return self.dt.start
 
-    @property
+    @cached_property
     def volume(self) -> float:
         """
         The volume of the shape, in meters squared seconds.
@@ -518,25 +519,20 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             (GeoPolygon)
         """
 
-    def to_shapely(self):
+    def _to_shapely(self):
         """
         Converts the geoshape into a Shapely shape.
         """
-        if self._shapely:  # pragma: no cover
-            # Check if memoized
-            return self._shapely
-
         import shapely  # pylint: disable=import-outside-toplevel
         rings = self.linear_rings()
         holes = []
         if len(rings) > 1:
             holes = rings[1:]
 
-        self._shapely = shapely.geometry.Polygon(
+        return shapely.geometry.Polygon(
             [x.to_float() for x in rings[0]],
             holes=[[x.to_float() for x in ring] for ring in holes]
         )
-        return self._shapely
 
     def to_wkt(self, **kwargs):
         """
@@ -679,7 +675,7 @@ class GeoPolygon(GeoShape):
     def __repr__(self):
         return f'<GeoPolygon of {len(self.outline) - 1} coordinates>'
 
-    @property
+    @cached_property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         lons, lats = cast(
             Tuple[List[float], List[float]],
@@ -687,7 +683,7 @@ class GeoPolygon(GeoShape):
         )
         return (min(lons), max(lons)), (min(lats), max(lats))
 
-    @property
+    @cached_property
     def centroid(self):
         # Decompose polygon into triangles using vertex pairs around the origin
         poly1 = np.array([x.to_float() for x in self.bounding_coords()])
@@ -1061,7 +1057,7 @@ class GeoCircle(GeoShape):
     def __repr__(self):
         return f'<GeoCircle at {self.centroid.to_float()}; radius {self.radius} meters>'
 
-    @property
+    @cached_property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         nw_bound = inverse_haversine_degrees(
             self.center, 315, self.radius * math.sqrt(2)
@@ -1177,7 +1173,7 @@ class GeoEllipse(GeoShape):
             f'rotation {self.rotation}>'
         )
 
-    @property
+    @cached_property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         lons, lats = cast(
             Tuple[List[float], List[float]],
@@ -1334,7 +1330,7 @@ class GeoRing(GeoShape):
             f'{f"; {self.angle_min}-{self.angle_max} degrees" if self.angle_min else ""}>'
         )
 
-    @property
+    @cached_property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         if self.angle_max - self.angle_min >= 360:
             nw_bound = inverse_haversine_degrees(
@@ -1498,7 +1494,7 @@ class GeoLineString(GeoShape):
     def __repr__(self):
         return f'<GeoLineString with {len(self.coords)} points>'
 
-    @property
+    @cached_property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         lons, lats = cast(
             Tuple[List[float], List[float]],
@@ -1506,7 +1502,7 @@ class GeoLineString(GeoShape):
         )
         return (min(lons), max(lons)), (min(lats), max(lats))
 
-    @property
+    @cached_property
     def centroid(self):
         return Coordinate(
             *[
@@ -1670,14 +1666,9 @@ class GeoLineString(GeoShape):
     def to_polygon(self, **kwargs):
         return GeoPolygon([*self.coords, self.coords[0]], dt=self.dt)
 
-    def to_shapely(self):
-        if self._shapely:  # pragma: no cover
-            # Check if memoized
-            return self._shapely
-
+    def _to_shapely(self):
         import shapely
-        self._shapely = shapely.LineString([x.to_float() for x in self.coords])
-        return self._shapely
+        return shapely.LineString([x.to_float() for x in self.coords])
 
     def to_wkt(self, **kwargs):
         bbox_str = self._linear_ring_to_wkt(self.bounding_coords(**kwargs))
@@ -1863,13 +1854,9 @@ class GeoPoint(GeoShape):
     def to_polygon(self, **kwargs):
         raise NotImplementedError('Points cannot be converted to polygons')
 
-    def to_shapely(self):
-        if self._shapely:  # pragma: no cover
-            return self._shapely
-
+    def _to_shapely(self):
         import shapely
-        self._shapely = shapely.Point(self.centroid.longitude, self.centroid.latitude)
-        return self._shapely
+        return shapely.Point(self.centroid.longitude, self.centroid.latitude)
 
     def to_wkt(self, **_):
         return f'POINT({" ".join(self.center.to_str())})'

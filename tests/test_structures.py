@@ -307,9 +307,7 @@ def test_geoshape_to_shapely(geobox):
         [x.to_float() for x in outline],
         holes=[list(reversed([x.to_float() for x in hole.bounding_coords()]))]
     )
-    assert polygon._shapely == None
     assert polygon.to_shapely() == expected
-    assert polygon._shapely == expected
 
 
 def test_geoshape_set_property():
@@ -1567,9 +1565,7 @@ def test_geopoint_to_geojson(geopoint):
 
 
 def test_geopoint_to_shapely(geopoint):
-    assert geopoint._shapely == None
     assert geopoint.to_shapely() == shapely.Point(0.0, 0.0)
-    assert geopoint._shapely == shapely.Point(0.0, 0.0)
 
 
 def test_geopoint_circumscribing_circle(geopoint):
