@@ -1,3 +1,3 @@
 """The package version"""
 
-__version__ = 'v0.5.1'  # pragma: no cover
+__version__ = 'v0.6.0'  # pragma: no cover
