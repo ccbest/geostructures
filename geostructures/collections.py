@@ -5,7 +5,7 @@ Module for sequences of GeoShapes
 __all__ = ['FeatureCollection', 'ShapeCollection', 'Track']
 
 from collections import defaultdict, Counter
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from functools import cached_property
 from pathlib import Path
 from typing import cast, Any, List, Dict, Optional, Union, Tuple, TypeVar
@@ -99,7 +99,9 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
         # Has to be checked before date - datetimes are dates, but dates are not datetimes
         if isinstance(dt, datetime):
             dt = self._default_to_zulu(dt)
-            return type(self)([x for x in self.geoshapes if x.dt is not None and x.dt == dt])
+            return type(self)(
+                [x for x in self.geoshapes if x.dt is not None and x.dt == TimeInterval(dt, dt)]
+            )
 
         if isinstance(dt, TimeInterval):
             return type(self)(
@@ -568,7 +570,7 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
 
         return True
 
-    def __getitem__(self, val: Union[slice, datetime]):
+    def __getitem__(self, val: slice):
         """
         Permits track slicing by datetime.
 
@@ -586,12 +588,6 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
         Returns:
             Track
         """
-        if isinstance(val, datetime):
-            val = self._default_to_zulu(val)
-            return Track(
-                [x for x in self.geoshapes if x.dt == val]
-            )
-
         _start = self._default_to_zulu(
             val.start or self.geoshapes[0].start
         )
@@ -717,3 +713,14 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
             )
 
         return Track(new_pings)
+
+    def filter_by_time(self, start_time: time, end_time: time) -> 'Track':
+        """Filters the track by time of day"""
+        return Track(
+            [
+                shape for shape in self.geoshapes
+                if start_time <= shape.end.time() <= end_time
+                or start_time <= shape.start.time() <= end_time
+                or shape.start.time() <= start_time <= end_time <= shape.end.time()
+            ]
+        )
