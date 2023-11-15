@@ -96,6 +96,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
 
         self.dt = dt
         self._properties = properties or {}
+        self._shapely = None
         self.holes = holes or []
         if any(x.holes for x in self.holes):
             raise ValueError('Holes cannot themselves contain holes.')
@@ -521,16 +522,21 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         """
         Converts the geoshape into a Shapely shape.
         """
+        if self._shapely:  # pragma: no cover
+            # Check if memoized
+            return self._shapely
+
         import shapely  # pylint: disable=import-outside-toplevel
         rings = self.linear_rings()
         holes = []
         if len(rings) > 1:
             holes = rings[1:]
 
-        return shapely.geometry.Polygon(
+        self._shapely = shapely.geometry.Polygon(
             [x.to_float() for x in rings[0]],
             holes=[[x.to_float() for x in ring] for ring in holes]
         )
+        return self._shapely
 
     def to_wkt(self, **kwargs):
         """
@@ -1665,9 +1671,13 @@ class GeoLineString(GeoShape):
         return GeoPolygon([*self.coords, self.coords[0]], dt=self.dt)
 
     def to_shapely(self):
-        import shapely
+        if self._shapely:  # pragma: no cover
+            # Check if memoized
+            return self._shapely
 
-        return shapely.LineString([x.to_float() for x in self.coords])
+        import shapely
+        self._shapely = shapely.LineString([x.to_float() for x in self.coords])
+        return self._shapely
 
     def to_wkt(self, **kwargs):
         bbox_str = self._linear_ring_to_wkt(self.bounding_coords(**kwargs))
@@ -1854,9 +1864,12 @@ class GeoPoint(GeoShape):
         raise NotImplementedError('Points cannot be converted to polygons')
 
     def to_shapely(self):
-        import shapely
+        if self._shapely:  # pragma: no cover
+            return self._shapely
 
-        return shapely.Point(self.centroid.longitude, self.centroid.latitude)
+        import shapely
+        self._shapely = shapely.Point(self.centroid.longitude, self.centroid.latitude)
+        return self._shapely
 
     def to_wkt(self, **_):
         return f'POINT({" ".join(self.center.to_str())})'
