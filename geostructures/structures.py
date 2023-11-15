@@ -197,7 +197,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         if isinstance(self.dt, (type(None), datetime)):
             return 0.
 
-        return self.area * cast(TimeInterval, self.dt).elapsed().total_seconds()
+        return self.area * cast(TimeInterval, self.dt).elapsed.total_seconds()
 
     def _dt_to_json(self) -> Dict[str, str]:
         """Safely convert time bounds to json"""
@@ -336,12 +336,12 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             bool
         """
 
-    def contains_time(self, time: Union[datetime, TimeInterval]) -> bool:
+    def contains_time(self, dt: Union[datetime, TimeInterval]) -> bool:
         """
         Test if the geoshape's time dimension fully contains either a date or a datetime.
 
         Args:
-            time:
+            dt:
                 A date or a datetime.
 
         Returns:
@@ -350,15 +350,15 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         if self.dt is None:
             return False
 
-        if isinstance(time, datetime):
+        if isinstance(dt, datetime):
             if isinstance(self.dt, datetime):
-                return self._default_to_zulu(time) == self.dt
+                return self._default_to_zulu(dt) == self.dt
 
-            return time in self.dt
+            return dt in self.dt
 
-        if isinstance(time, TimeInterval):
+        if isinstance(dt, TimeInterval):
             if isinstance(self.dt, TimeInterval):
-                return time.issubset(self.dt)
+                return dt.issubset(self.dt)
 
             return False  # TimeIntervals cant be a subset of datetimes
 
@@ -386,8 +386,11 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         """
         # Make sure the times overlap, if present on both
         if self.dt and shape.dt:
-            if not self.contains_time(shape.dt):
+            if not self.intersects_time(shape.dt):
                 return False
+
+        if isinstance(shape, GeoPoint):
+            return shape in self
 
         s_vertices = self.vertices(**kwargs)
         o_vertices = shape.vertices(**kwargs)
@@ -402,6 +405,31 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         # which counts as intersection. Have to use a point from the boundary
         # because the centroid may fall in a hole
         return o_vertices[0][0][0] in self or s_vertices[0][0][0] in shape
+
+    def intersects_time(self, dt: Union[datetime, TimeInterval]) -> bool:
+        """
+        Test if the geoshape's time dimension intersects either a date or a datetime.
+
+        Args:
+            dt:
+                A date or a datetime.
+
+        Returns:
+            bool
+        """
+        if self.dt is None:
+            return False
+
+        if isinstance(dt, datetime):
+            if isinstance(self.dt, datetime):
+                return self._default_to_zulu(dt) == self.dt
+
+            return dt in self.dt
+
+        if isinstance(dt, TimeInterval):
+            return dt.intersects(self.dt)
+
+        raise ValueError('Geoshapes may only contain datetimes and TimeIntervals.')
 
     def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
         """
@@ -1717,6 +1745,11 @@ class GeoPoint(GeoShape):
             dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self.properties)
         )
+
+    def intersects(self, shape: 'GeoShape', **kwargs) -> bool:
+        if isinstance(shape, GeoPoint):
+            return self == shape
+        return self in shape
 
     @classmethod
     def from_geojson(
