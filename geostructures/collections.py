@@ -8,7 +8,7 @@ from collections import defaultdict, Counter
 from datetime import date, datetime, time, timedelta
 from functools import cached_property
 from pathlib import Path
-from typing import cast, Any, List, Dict, Optional, Union
+from typing import cast, Any, List, Dict, Optional, Union, Tuple
 
 import numpy as np
 
@@ -38,6 +38,20 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
     def __len__(self):
         """The track length"""
         return self.geoshapes.__len__()
+
+    @property
+    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        all_bounds = [x.bounds for x in self.geoshapes]
+        return (
+            (
+                min(x[0][0] for x in all_bounds),
+                max(x[0][1] for x in all_bounds),
+            ),
+            (
+                min(x[1][0] for x in all_bounds),
+                max(x[1][1] for x in all_bounds)
+            )
+        )
 
     @property
     def centroid(self):

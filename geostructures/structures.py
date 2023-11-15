@@ -22,6 +22,7 @@ from geostructures.coordinates import Coordinate
 from geostructures.calc import (
     ensure_vertex_bounds,
     inverse_haversine_radians,
+    inverse_haversine_degrees,
     haversine_distance_meters,
     bearing_degrees,
     find_line_intersection,
@@ -129,6 +130,16 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         geod = Geod(ellps="WGS84")
         area, _ = geod.geometry_area_perimeter(self.to_shapely())
         return area
+
+    @property
+    @abstractmethod
+    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        """
+        The longitude and latitude min/max bounds of the shape.
+
+        Returns:
+            ( (min_longitude, max_longitude), (min_latitude, max_latitude) )
+        """
 
     @property
     @abstractmethod
@@ -264,7 +275,6 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             (GeoCircle)
         """
 
-    @abstractmethod
     def circumscribing_rectangle(self):
         """
         Produces a rectangle that entirely encompasses the shape
@@ -272,6 +282,12 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         Returns:
             (GeoBox)
         """
+        lon_bounds, lat_bounds = self.bounds
+        return GeoBox(
+            Coordinate(lon_bounds[0], lat_bounds[1]),
+            Coordinate(lon_bounds[1], lat_bounds[0]),
+            dt=self.dt,
+        )
 
     def contains(self, shape: 'GeoShape', **kwargs) -> bool:
         """
@@ -630,6 +646,14 @@ class GeoPolygon(GeoShape):
         return f'<GeoPolygon of {len(self.outline) - 1} coordinates>'
 
     @property
+    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        lons, lats = cast(
+            Tuple[List[float], List[float]],
+            zip(*[y.to_float() for y in self.outline])
+        )
+        return (min(lons), max(lons)), (min(lats), max(lats))
+
+    @property
     def centroid(self):
         # Decompose polygon into triangles using vertex pairs around the origin
         poly1 = np.array([x.to_float() for x in self.bounding_coords()])
@@ -719,23 +743,12 @@ class GeoPolygon(GeoShape):
         )
         return GeoCircle(centroid, max_dist, dt=self.dt)
 
-    def circumscribing_rectangle(self):
-        lons, lats = zip(*[y.to_float() for y in self.outline])
-        return GeoBox(
-            Coordinate(min(lons), max(lats)),
-            Coordinate(max(lons), min(lats)),
-            dt=self.dt,
-        )
-
     def contains_coordinate(self, coord: Coordinate) -> bool:
         # First see if the point even falls inside the circumscribing rectangle
-        _coord = coord.to_float()
-        lons, lats = zip(*[y.to_float() for y in self.outline])
-        if (
-            min(lons) > _coord[0]
-            or min(lats) > _coord[1]
-            or max(lons) < _coord[0]
-            or max(lats) < _coord[1]
+        lon_bounds, lat_bounds = self.bounds
+        if not (
+            lon_bounds[0] <= coord.longitude <= lon_bounds[1] and
+            lat_bounds[0] <= coord.latitude <= lat_bounds[1]
         ):
             # Falls outside rectangle - not in polygon
             return False
@@ -907,6 +920,13 @@ class GeoBox(GeoShape):
         return f'<GeoBox {self.nw_bound.to_float()} - {self.se_bound.to_float()}>'
 
     @property
+    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        return (
+            (self.nw_bound.longitude, self.se_bound.longitude),
+            (self.se_bound.latitude, self.nw_bound.latitude)
+        )
+
+    @property
     def centroid(self):
         _nw = self.nw_bound.to_float()
         _se = self.se_bound.to_float()
@@ -1008,6 +1028,16 @@ class GeoCircle(GeoShape):
         return f'<GeoCircle at {self.centroid.to_float()}; radius {self.radius} meters>'
 
     @property
+    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        nw_bound = inverse_haversine_degrees(
+            self.center, 315, self.radius * math.sqrt(2)
+        )
+        se_bound = inverse_haversine_degrees(
+            self.center, 135, self.radius * math.sqrt(2)
+        )
+        return (nw_bound.longitude, se_bound.longitude), (se_bound.latitude, nw_bound.latitude)
+
+    @property
     def centroid(self):
         return self.center
 
@@ -1021,17 +1051,6 @@ class GeoCircle(GeoShape):
             coords.append(coord)
 
         return [*coords, coords[0]]
-
-    def circumscribing_rectangle(self):
-        return GeoBox(
-            inverse_haversine_radians(
-                self.center, math.radians(315), self.radius * math.sqrt(2)
-            ),
-            inverse_haversine_radians(
-                self.center, math.radians(135), self.radius * math.sqrt(2)
-            ),
-            dt=self.dt,
-        )
 
     def circumscribing_circle(self):
         return self
@@ -1125,6 +1144,14 @@ class GeoEllipse(GeoShape):
         )
 
     @property
+    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        lons, lats = cast(
+            Tuple[List[float], List[float]],
+            zip(*[y.to_float() for y in self.bounding_coords()])
+        )
+        return (min(lons), max(lons)), (min(lats), max(lats))
+
+    @property
     def centroid(self):
         return self.center
 
@@ -1162,14 +1189,6 @@ class GeoEllipse(GeoShape):
             coords.append(coord)
 
         return [*coords, coords[0]]
-
-    def circumscribing_rectangle(self):
-        lons, lats = zip(*[y.to_float() for y in self.bounding_coords()])
-        return GeoBox(
-            Coordinate(min(lons), max(lats)),
-            Coordinate(max(lons), min(lats)),
-            dt=self.dt,
-        )
 
     def circumscribing_circle(self):
         return GeoCircle(self.center, self.major_axis, dt=self.dt)
@@ -1282,6 +1301,23 @@ class GeoRing(GeoShape):
         )
 
     @property
+    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        if self.angle_max - self.angle_min >= 360:
+            nw_bound = inverse_haversine_degrees(
+                self.center, 315, self.outer_radius * math.sqrt(2)
+            )
+            se_bound = inverse_haversine_degrees(
+                self.center, 135, self.outer_radius * math.sqrt(2)
+            )
+            return (nw_bound.longitude, se_bound.longitude), (se_bound.latitude, nw_bound.latitude)
+
+        lons, lats = cast(
+            Tuple[List[float], List[float]],
+            zip(*[y.to_float() for y in self.bounding_coords()])
+        )
+        return (min(lons), max(lons)), (min(lats), max(lats))
+
+    @property
     def centroid(self):
         if self.angle_min and self.angle_max:
             return self.to_polygon().centroid
@@ -1319,14 +1355,6 @@ class GeoRing(GeoShape):
 
         # Is self-closing
         return [*outer_bounds, *inner_bounds[::-1], outer_bounds[0]]
-
-    def circumscribing_rectangle(self):
-        lons, lats = zip(*[y.to_float() for y in self.bounding_coords()])
-        return GeoBox(
-            Coordinate(min(lons), max(lats)),
-            Coordinate(max(lons), min(lats)),
-            dt=self.dt,
-        )
 
     def circumscribing_circle(self):
         if self.angle_min and self.angle_max:
@@ -1435,6 +1463,14 @@ class GeoLineString(GeoShape):
 
     def __repr__(self):
         return f'<GeoLineString with {len(self.coords)} points>'
+
+    @property
+    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        lons, lats = cast(
+            Tuple[List[float], List[float]],
+            zip(*[y.to_float() for y in self.coords])
+        )
+        return (min(lons), max(lons)), (min(lats), max(lats))
 
     @property
     def centroid(self):
@@ -1644,6 +1680,13 @@ class GeoPoint(GeoShape):
 
     def __repr__(self):
         return f'<GeoPoint at {self.center.to_float()}>'
+
+    @property
+    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        return (
+            (self.center.longitude, self.center.longitude),
+            (self.center.latitude, self.center.latitude)
+        )
 
     @property
     def centroid(self):
