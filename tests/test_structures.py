@@ -94,6 +94,10 @@ def test_geoshape_init():
         )
 
 
+def test_geoshape_area():
+    assert GeoBox(Coordinate(0.0, 1.0), Coordinate(1., 0.)).area == 12308778361.469452
+
+
 def test_geoshape_start():
     geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=default_test_datetime)
     assert geopoint.start == default_test_datetime
@@ -120,6 +124,23 @@ def test_geoshape_end():
 
     with pytest.raises(ValueError):
         _ = GeoCircle(Coordinate('0.0', '0.0'), 50).end
+
+
+def test_geoshape_volume():
+    assert GeoBox(
+        Coordinate(0.0, 1.0),
+        Coordinate(1., 0.),
+        dt=TimeInterval(datetime(2020, 1, 1, 1, 1, 1), datetime(2020, 1, 1, 1, 1, 2))
+    ).volume == 12308778361.469452
+
+    assert GeoBox(
+        Coordinate(0.0, 1.0),
+        Coordinate(1., 0.),
+        dt=TimeInterval(datetime(2020, 1, 1, 1, 1, 1), datetime(2020, 1, 1, 1, 1, 3))
+    ).volume == 24617556722.938904
+
+    assert GeoBox(Coordinate(0.0, 1.0), Coordinate(1., 0.)).volume == 0.
+    assert GeoBox(Coordinate(0.0, 1.0), Coordinate(1., 0.), dt=datetime(2020, 1, 1)).volume == 0.
 
 
 def test_geoshape_contains_dunder():

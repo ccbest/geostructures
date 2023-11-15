@@ -1,6 +1,6 @@
 
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import cast, Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import plotly.express as px
@@ -230,6 +230,10 @@ def draw_collection(
     if _shapes:
         _fig.add_trace(_draw_shapes(_shapes, color, hover_data, opacity).data[0])
 
+    lats, lons = cast(
+        Tuple[List[float], List[float]],
+        tuple(zip(*[shape.centroid.to_float() for shape in collection.geoshapes]))
+    )
     _fig.update_layout(
         coloraxis_showscale=False,  # legends will overlap if not removed
         showlegend=False,
@@ -237,7 +241,7 @@ def draw_collection(
     )
     _fig.update_mapboxes(
         center={'lat': center.latitude, 'lon': center.longitude},
-        zoom=_get_zoom(*zip(*[shape.centroid.to_float() for shape in collection.geoshapes])),
+        zoom=_get_zoom(lats, lons),
     )
     if fig:
         for trace in _fig.data:
