@@ -94,7 +94,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         if isinstance(dt, datetime):
             # Convert to a zero-second time interval
             dt = self._default_to_zulu(dt)
-            self.dt = TimeInterval(dt, dt)
+            self.dt: Optional[TimeInterval] = TimeInterval(dt, dt)
         else:
             self.dt = dt
 
