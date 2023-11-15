@@ -440,6 +440,16 @@ def test_geopolygon_repr(geopolygon):
     assert repr(geopolygon) == '<GeoPolygon of 4 coordinates>'
 
 
+def test_geopolygon_bounds():
+    poly = GeoPolygon(
+        [
+            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
+            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+        ],
+    )
+    assert poly.bounds == ((0., 1.), (0., 1.))
+
+
 def test_geopolygon_contains():
     # Triangle
     polygon = GeoPolygon([
@@ -491,6 +501,7 @@ def test_geopolygon_bounding_coords(geopolygon):
 
     # assert self-closing
     assert geopolygon.bounding_coords() == geopolygon.bounding_coords()
+
 
 def test_geopolygon_copy():
     poly = GeoPolygon(
@@ -710,6 +721,11 @@ def test_geobox_repr(geobox):
     assert repr(geobox) == '<GeoBox (0.0, 1.0) - (1.0, 0.0)>'
 
 
+def test_geobox_bounds():
+    box = GeoBox(Coordinate(0., 1.), Coordinate(1., 0.))
+    assert box.bounds == ((0., 1.), (0., 1.))
+
+
 def test_geobox_bounding_coords(geobox):
     assert geobox.bounding_coords() == [
         Coordinate(0.0, 1.0), Coordinate(0.0, 0.0), Coordinate(1.0, 0.0),
@@ -821,6 +837,12 @@ def test_geocircle_repr(geocircle):
     assert repr(geocircle) == '<GeoCircle at (0.0, 0.0); radius 1000 meters>'
 
 
+def test_geocircle_bounds():
+    assert GeoCircle(Coordinate(0.0, 0.0), 1000).bounds == (
+        (-0.0089932, 0.0089932), (-0.0089932, 0.0089932)
+    )
+
+
 def test_geocircle_to_polygon(geocircle):
     assert geocircle.to_polygon() == GeoPolygon(geocircle.bounding_coords(), dt=default_test_datetime)
 
@@ -928,6 +950,12 @@ def test_geoellipse_hash(geoellipse):
 
 def test_geoellipse_repr(geoellipse):
     assert repr(geoellipse) == '<GeoEllipse at (0.0, 0.0); radius 1000/500; rotation 90>'
+
+
+def test_geoellipse_bounds():
+    assert GeoEllipse(Coordinate(0.0, 0.0), 1000, 500, 45).bounds == (
+        (-0.0071069, 0.0071069), (-0.0071069, 0.0071069)
+    )
 
 
 def test_geoellipse_bounding_coords(geoellipse):
@@ -1045,6 +1073,18 @@ def test_georing_hash(geowedge):
 def test_georing_repr(geowedge, georing):
     assert repr(geowedge) == '<GeoRing at (0.0, 0.0); radii 500/1000; 90-180 degrees>'
     assert repr(georing) == '<GeoRing at (0.0, 0.0); radii 500/1000>'
+
+
+def test_georing_bounds():
+    ring = GeoRing(Coordinate(0., 0.), 1000, 5000)
+    assert ring.bounds == (
+        (-0.0449661, 0.0449661), (-0.0449661, 0.0449661)
+    )
+
+    wedge = GeoRing(Coordinate(0., 0.), 1000, 5000, 90, 180)
+    assert wedge.bounds == (
+        (0., 0.0449661), (-0.0449661, 0.)
+    )
 
 
 def test_georing_bounding_coords(geowedge, georing):
@@ -1193,6 +1233,13 @@ def test_geolinestring_hash(geolinestring):
 
 def test_geolinestring_repr(geolinestring):
     assert repr(geolinestring) == '<GeoLineString with 3 points>'
+
+
+def test_geolinestring_bounds():
+    ls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)])
+    assert ls.bounds == (
+        (0., 1.), (0., 1.)
+    )
 
 
 def test_geolinestring_bounding_coords(geolinestring):
@@ -1376,6 +1423,11 @@ def test_geopoint_hash(geopoint):
 
 def test_geopoint_repr(geopoint):
     assert repr(geopoint) == "<GeoPoint at (0.0, 0.0)>"
+
+
+def test_geopoint_bounds():
+    point = GeoPoint(Coordinate(0., 0.))
+    assert point.bounds == ((0., 0.), (0., 0.))
 
 
 def test_geopoint_bounding_coords(geopoint):

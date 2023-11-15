@@ -715,7 +715,6 @@ class GeoPolygon(GeoShape):
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         # First see if the point even falls inside the circumscribing rectangle
-        _coord = coord.to_float()
         lon_bounds, lat_bounds = self.bounds
         if not (
             lon_bounds[0] <= coord.longitude <= lon_bounds[1] and
@@ -889,6 +888,13 @@ class GeoBox(GeoShape):
 
     def __repr__(self):
         return f'<GeoBox {self.nw_bound.to_float()} - {self.se_bound.to_float()}>'
+
+    @property
+    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        return (
+            (self.nw_bound.longitude, self.se_bound.longitude),
+            (self.se_bound.latitude, self.nw_bound.latitude)
+        )
 
     @property
     def centroid(self):
@@ -1266,13 +1272,20 @@ class GeoRing(GeoShape):
 
     @property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-        nw_bound = inverse_haversine_degrees(
-            self.center, 315, self.outer_radius * math.sqrt(2)
+        if self.angle_max - self.angle_min >= 360:
+            nw_bound = inverse_haversine_degrees(
+                self.center, 315, self.outer_radius * math.sqrt(2)
+            )
+            se_bound = inverse_haversine_degrees(
+                self.center, 135, self.outer_radius * math.sqrt(2)
+            )
+            return (nw_bound.longitude, se_bound.longitude), (se_bound.latitude, nw_bound.latitude)
+
+        lons, lats = cast(
+            Tuple[List[float], List[float]],
+            zip(*[y.to_float() for y in self.bounding_coords()])
         )
-        se_bound = inverse_haversine_degrees(
-            self.center, 135, self.outer_radius * math.sqrt(2)
-        )
-        return (nw_bound.longitude, se_bound.longitude), (se_bound.latitude, nw_bound.latitude)
+        return (min(lons), max(lons)), (min(lats), max(lats))
 
     @property
     def centroid(self):

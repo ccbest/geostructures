@@ -47,6 +47,16 @@ def test_collection_iter():
     ]
 
 
+def test_collection_bounds():
+    col1 = FeatureCollection([
+        GeoBox(Coordinate(-1., 0.), Coordinate(0., -5)),
+        GeoBox(Coordinate(-0.5, 2.), Coordinate(2., -7)),
+    ])
+    assert col1.bounds == (
+        (-1, 2), (-7, 2)
+    )
+
+
 def test_collection_centroid():
     track1 = Track([
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 1)),
