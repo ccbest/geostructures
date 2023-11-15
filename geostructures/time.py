@@ -22,7 +22,7 @@ class TimeInterval(LoggingMixin, DefaultZuluMixin):
         super().__init__()
         end = end if isinstance(end, datetime) else start + end
 
-        if end <= start:
+        if end < start:
             raise ValueError(f'end date {end} must not be less than start date {start}')
 
         self.start, self.end = self._default_to_zulu(start), self._default_to_zulu(end)

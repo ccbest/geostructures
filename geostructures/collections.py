@@ -5,7 +5,7 @@ Module for sequences of GeoShapes
 __all__ = ['FeatureCollection', 'ShapeCollection', 'Track']
 
 from collections import defaultdict, Counter
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from functools import cached_property
 from pathlib import Path
 from typing import cast, Any, List, Dict, Optional, Union, Tuple, TypeVar
@@ -72,7 +72,10 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
             raise ValueError('Cannot create a convex hull from less than three points.')
 
         _points = filter(lambda x: isinstance(x, GeoPoint), self.geoshapes)
-        _lines = cast(List[GeoLineString], filter(lambda x: isinstance(x, GeoLineString), self.geoshapes))
+        _lines = cast(
+            List[GeoLineString],
+            filter(lambda x: isinstance(x, GeoLineString), self.geoshapes)
+        )
         _shapes = filter(lambda x: not isinstance(x, (GeoPoint, GeoLineString)), self.geoshapes)
 
         points = []
@@ -620,17 +623,13 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
             for x, y in zip(self.geoshapes, self.geoshapes[1:])
         ])
 
-    def copy(self):
-        """Returns a shallow copy of self"""
-        return Track(self.geoshapes.copy())
-
     @property
-    def finish(self):
+    def end(self):
         """The timestamp of the final ping"""
         if not self.geoshapes:
             raise ValueError('Cannot compute finish time of an empty track.')
 
-        return self.geoshapes[-1].dt
+        return self.geoshapes[-1].end
 
     @property
     def first(self):
@@ -674,7 +673,7 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
         if not self.geoshapes:
             raise ValueError('Cannot compute start time of an empty track.')
 
-        return self.geoshapes[0].dt
+        return self.geoshapes[0].start
 
     @property
     def time_start_diffs(self):
@@ -687,6 +686,10 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
             (y.start - x.start)
             for x, y in zip(self.geoshapes, self.geoshapes[1:])
         ])
+
+    def copy(self):
+        """Returns a shallow copy of self"""
+        return Track(self.geoshapes.copy())
 
     def convolve_duplicate_timestamps(self):
         """Convolves pings with duplicate timestamps and returns a new track"""
@@ -714,13 +717,3 @@ class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
             )
 
         return Track(new_pings)
-
-    def filter_by_time(self, start_time: time, end_time: time) -> 'Track':
-        return Track(
-            [
-                shape for shape in self.geoshapes
-                if start_time <= shape.end.time() <= end_time
-                or start_time <= shape.start.time() <= end_time
-                or shape.start.time() <= start_time <= end_time <= shape.end.time()
-            ]
-        )
