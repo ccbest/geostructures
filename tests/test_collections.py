@@ -123,6 +123,14 @@ def test_collection_filter_by_dt():
         ),
     ])
 
+    assert col.filter_by_dt(datetime(2020, 1, 1)) == FeatureCollection([
+        GeoCircle(
+            Coordinate(0.0, 1.0),
+            500,
+            dt=datetime(2020, 1, 1)
+        ),
+    ])
+
 
 def test_collection_filter_by_intersection():
     col = FeatureCollection([
@@ -620,8 +628,6 @@ def test_track_getitem():
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 3)),
     ])
 
-    assert track1[datetime(2020, 1, 1)] == Track([GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 1))])
-
     assert track1[:datetime(2020, 1, 2)] == Track([GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 1))])
     assert track1[datetime(2020, 1, 2):] == Track([
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 2)),
@@ -704,12 +710,12 @@ def test_track_finish():
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 2)),
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 3)),
     ])
-    assert track1.finish == datetime(2020, 1, 3, tzinfo=timezone.utc)
+    assert track1.end == datetime(2020, 1, 3, tzinfo=timezone.utc)
     track1.geoshapes.pop(-1)
-    assert track1.finish == datetime(2020, 1, 2, tzinfo=timezone.utc)
+    assert track1.end == datetime(2020, 1, 2, tzinfo=timezone.utc)
 
     with pytest.raises(ValueError):
-        _ = Track([]).finish
+        _ = Track([]).end
 
 
 def test_track_speed_diffs():
@@ -772,7 +778,7 @@ def test_track_time_diffs():
         ]
     )
 
-    assert track1.time_start_diffs[0] == track1.geoshapes[1].dt - track1.geoshapes[0].dt
+    assert track1.time_start_diffs[0] == track1.geoshapes[1].dt.start - track1.geoshapes[0].dt.start
     assert len(track1) - 1 == len(track1.time_start_diffs)
 
     with pytest.raises(ValueError):

@@ -255,9 +255,6 @@ def test_geoshape_intersects_time():
     assert not geopoint.intersects_time(datetime(2020, 1, 4, 12))
     assert not geopoint.intersects_time(TimeInterval(datetime(2020, 1, 1, 14), datetime(2020, 1, 1, 16)))
 
-    with pytest.raises(ValueError):
-        geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 12), datetime(2020, 1, 3, 12)))
-        geopoint.intersects_time('not a date')
 
 
 def test_shape_to_geojson(geocircle):
@@ -307,9 +304,7 @@ def test_geoshape_to_shapely(geobox):
         [x.to_float() for x in outline],
         holes=[list(reversed([x.to_float() for x in hole.bounding_coords()]))]
     )
-    assert polygon._shapely == None
     assert polygon.to_shapely() == expected
-    assert polygon._shapely == expected
 
 
 def test_geoshape_set_property():

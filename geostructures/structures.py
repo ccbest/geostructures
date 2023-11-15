@@ -92,9 +92,12 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
     ):
         super().__init__()
         if isinstance(dt, datetime):
+            # Convert to a zero-second time interval
             dt = self._default_to_zulu(dt)
+            self.dt: Optional[TimeInterval] = TimeInterval(dt, dt)
+        else:
+            self.dt = dt
 
-        self.dt = dt
         self._properties = properties or {}
         self._shapely = None
         self.holes = holes or []
@@ -158,9 +161,6 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         if not self.dt:
             raise ValueError("GeoShape has no associated time information.")
 
-        if isinstance(self.dt, datetime):
-            return self.dt
-
         return self.dt.end
 
     @property
@@ -178,9 +178,6 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         if not self.dt:
             raise ValueError("GeoShape has no associated time information.")
 
-        if isinstance(self.dt, datetime):
-            return self.dt
-
         return self.dt.start
 
     @property
@@ -195,10 +192,10 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         Returns:
             float
         """
-        if isinstance(self.dt, (type(None), datetime)):
+        if self.dt is None:
             return 0.
 
-        return self.area * cast(TimeInterval, self.dt).elapsed.total_seconds()
+        return self.area * self.dt.elapsed.total_seconds()
 
     def _dt_to_json(self) -> Dict[str, str]:
         """Safely convert time bounds to json"""
@@ -351,19 +348,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         if self.dt is None:
             return False
 
-        if isinstance(dt, datetime):
-            if isinstance(self.dt, datetime):
-                return self._default_to_zulu(dt) == self.dt
-
-            return dt in self.dt
-
-        if isinstance(dt, TimeInterval):
-            if isinstance(self.dt, TimeInterval):
-                return dt.issubset(self.dt)
-
-            return False  # TimeIntervals cant be a subset of datetimes
-
-        raise ValueError('Geoshapes may only contain datetimes and TimeIntervals.')
+        return dt in self.dt
 
     @abstractmethod
     def copy(self):
@@ -421,16 +406,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         if self.dt is None:
             return False
 
-        if isinstance(dt, datetime):
-            if isinstance(self.dt, datetime):
-                return self._default_to_zulu(dt) == self.dt
-
-            return dt in self.dt
-
-        if isinstance(dt, TimeInterval):
-            return dt.intersects(self.dt)
-
-        raise ValueError('Geoshapes may only contain datetimes and TimeIntervals.')
+        return self.dt.intersects(dt)
 
     def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
         """
@@ -522,21 +498,16 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         """
         Converts the geoshape into a Shapely shape.
         """
-        if self._shapely:  # pragma: no cover
-            # Check if memoized
-            return self._shapely
-
         import shapely  # pylint: disable=import-outside-toplevel
         rings = self.linear_rings()
         holes = []
         if len(rings) > 1:
             holes = rings[1:]
 
-        self._shapely = shapely.geometry.Polygon(
+        return shapely.geometry.Polygon(
             [x.to_float() for x in rings[0]],
             holes=[[x.to_float() for x in ring] for ring in holes]
         )
-        return self._shapely
 
     def to_wkt(self, **kwargs):
         """
