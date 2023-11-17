@@ -1102,7 +1102,7 @@ class GeoEllipse(GeoShape):
         minor_axis: (float)
             The minimum radius value
 
-        rotation: (int)
+        rotation: (float)
             The major axis's degree offset from North (expressed as East of North)
 
     """
@@ -1112,7 +1112,7 @@ class GeoEllipse(GeoShape):
         center: Coordinate,
         major_axis: float,
         minor_axis: float,
-        rotation: int,
+        rotation: float,
         holes: Optional[List[GeoShape]] = None,
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
@@ -1245,11 +1245,11 @@ class GeoRing(GeoShape):
         outer_radius: (float)
             The length of the outer circle's radius, in meters
 
-        angle_min: (int) (Optional)
+        angle_min: (float) (Optional)
             The minimum angle (expressed as degrees East of North) from which to create a
             wedge shape. If not provided, an angle of 0 degrees will be inferred.
 
-        angle_max: (int) (Optional)
+        angle_max: (float) (Optional)
             The maximum angle (expressed as degrees East of North) from which to create a
             wedge shape. If not provided, an angle of 360 degrees will be inferred.
 
@@ -1260,8 +1260,8 @@ class GeoRing(GeoShape):
         center: Coordinate,
         inner_radius: float,
         outer_radius: float,
-        angle_min: Optional[int] = None,
-        angle_max: Optional[int] = None,
+        angle_min: float = 0.0,
+        angle_max: float = 360.0,
         holes: Optional[List[GeoShape]] = None,
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
@@ -1270,8 +1270,8 @@ class GeoRing(GeoShape):
         self.center = center
         self.inner_radius = inner_radius
         self.outer_radius = outer_radius
-        self.angle_min = angle_min or 0
-        self.angle_max = angle_max or 360
+        self.angle_min = angle_min
+        self.angle_max = angle_max
 
     def __eq__(self, other):
         if not isinstance(other, GeoRing):
