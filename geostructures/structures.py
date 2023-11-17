@@ -1270,6 +1270,8 @@ class GeoRing(GeoShape):
         self.center = center
         self.inner_radius = inner_radius
         self.outer_radius = outer_radius
+        self.angle_min = angle_min
+        self.angle_max = angle_max
 
     def __eq__(self, other):
         if not isinstance(other, GeoRing):
