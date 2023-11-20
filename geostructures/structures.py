@@ -864,6 +864,48 @@ class GeoPolygon(GeoShape):
 
         return GeoPolygon(outline, holes=holes, dt=dt, properties=properties)
 
+    @classmethod
+    def from_kml(
+            cls,
+            polygon,
+            properties: Optional[Dict] = None
+    ):
+        """
+        Creates a GeoPolygon from a fastkml polygon.
+
+        Args:
+            polygon:
+                A fastkml polygon
+
+        Returns:
+             GeoPolygon
+        """
+
+        from fastkml import geometry
+        holegroups = []
+        holes = []
+        outline = []
+        outerring = _RE_COORD.findall(polygon.geometry.exterior.to_wkt())
+        for coord in outerring:
+            parsedc = _parse_wkt_coord_group(coord)
+            outline.append(parsedc[0])
+
+        holelist = list(polygon.geometry.interiors)
+        for hole in holelist:
+            holecoord = hole.to_wkt()
+            holecoord = _RE_COORD.findall(holecoord)
+            holegroups.append(holecoord)
+
+        if len(holegroups) > 0:
+            for holegroup in holegroups:
+                parsedhole = []
+                for holecoord in holegroup:
+                    parsedcoord = _parse_wkt_coord_group(holecoord)
+                    parsedhole.append(parsedcoord[0])
+                geohole = GeoPolygon(parsedhole)
+                holes.append(geohole)
+
+        return GeoPolygon(outline, *holes, dt=polygon.timeStamp, properties=properties)
     def to_wkt(self, **kwargs):
         """
         Converts the shape to its WKT string representation
@@ -1615,6 +1657,24 @@ class GeoLineString(GeoShape):
             properties=properties
         )
 
+    @classmethod
+    def from_kml(
+            cls,
+            line,
+            properties: Optional[Dict] = None
+    ):
+        """Create a GeoLineString from a fast kml linestring"""
+        wkt_str = line.geometry.to_wkt()
+
+        coord_groups = _RE_COORD.findall(wkt_str)
+        coordinates = ",".join(coord_groups)
+
+        return GeoLineString(
+            _parse_wkt_coord_group(coordinates),
+            dt=line.timeStamp,
+            properties=properties
+        )
+
     def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
         raise NotImplementedError("Linestrings are not comprised of linear rings.")
 
@@ -1808,6 +1868,25 @@ class GeoPoint(GeoShape):
             properties=properties
         )
 
+    @classmethod
+    def from_kml(cls,
+                 point,
+                 properties: Optional[Dict] = None):
+        """
+        Creates a GeoPoint from a fastkml Point
+        Args:
+            point:
+                A fastkml Point
+
+        Returns:
+            GeoPoint
+        """
+        from fastkml import geometry
+        return GeoPoint(
+            Coordinate(point.geometry.x, point.geometry.y),
+            dt=point.timeStamp,
+            properties=properties
+        )
     def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
         raise NotImplementedError("Points are not comprised of linear rings.")
 

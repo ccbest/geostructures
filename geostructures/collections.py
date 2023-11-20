@@ -335,6 +335,55 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
 
         return FeatureCollection(shapes)
 
+    @classmethod
+    def from_kml(cls, kmlstring):
+        """
+       Creates a Track or FeatureCollection from a kml file
+
+        Args:
+            kmlstring:
+                A kml string encoded in utf-8
+
+        Returns:
+            An object of this class's type
+        """
+        from fastkml import kml, geometry
+        k = kml.KML()
+        k.from_string(kmlstring)
+        document = list(k.features())
+        shapes = []
+        placemarklist = []
+
+        def parse_placemarks(document, destinationlist):
+
+            for feature in document:
+                if isinstance(feature, kml.Placemark):
+                    placemark = feature
+                    destinationlist.append(placemark)
+            for feature in document:
+                if isinstance(feature, kml.Folder):
+                    parse_placemarks(list(feature.features()), destinationlist)
+                if isinstance(feature, kml.Document):
+                    parse_placemarks(list(feature.features()), destinationlist)
+            return destinationlist
+
+        placemarklist = parse_placemarks(document, placemarklist)
+
+        for shape in placemarklist:
+            if hasattr(shape, "geometry"):  # check if the placemark has a geometry or not
+                if isinstance(shape.geometry, geometry.Point):
+                    shapes.append(GeoPoint.from_kml(shape))
+                    continue
+
+                if isinstance(shape.geometry, geometry.Polygon):
+                    shapes.append(GeoPolygon.from_kml(shape))
+                    continue
+
+                if isinstance(shape.geometry, geometry.LineString) or isinstance(shape.geometry, geometry.LinearRing):
+                    shapes.append(GeoLineString.from_kml(shape))
+                    continue
+
+        return cls(shapes)
     def intersects(self, shape: GeoShape):
         """
         Boolean determination of whether any pings from the track exist inside the provided

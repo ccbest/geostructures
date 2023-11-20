@@ -18,6 +18,7 @@ ConditionalPackageInterceptor.permit_packages(
         'plotly': 'plotly>=5,<6',
         'pyproj': 'pyproj>=3.6,<4',
         'scipy': 'scipy>=3.0.7,<4.0',
+        'fastkml': 'fastkml>=0.12.0,<1.0',
     }
 )
 sys.meta_path.append(ConditionalPackageInterceptor)  # type: ignore
