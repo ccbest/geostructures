@@ -881,7 +881,6 @@ class GeoPolygon(GeoShape):
              GeoPolygon
         """
 
-        from fastkml import geometry
         holegroups = []
         holes = []
         outline = []
@@ -906,6 +905,7 @@ class GeoPolygon(GeoShape):
                 holes.append(geohole)
 
         return GeoPolygon(outline, *holes, dt=polygon.timeStamp, properties=properties)
+
     def to_wkt(self, **kwargs):
         """
         Converts the shape to its WKT string representation
@@ -1881,12 +1881,12 @@ class GeoPoint(GeoShape):
         Returns:
             GeoPoint
         """
-        from fastkml import geometry
         return GeoPoint(
             Coordinate(point.geometry.x, point.geometry.y),
             dt=point.timeStamp,
             properties=properties
         )
+
     def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
         raise NotImplementedError("Points are not comprised of linear rings.")
 

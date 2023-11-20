@@ -384,6 +384,7 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
                     continue
 
         return cls(shapes)
+
     def intersects(self, shape: GeoShape):
         """
         Boolean determination of whether any pings from the track exist inside the provided
