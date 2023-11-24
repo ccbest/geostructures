@@ -231,7 +231,7 @@ We welcome all contributors! Please review [CONTRIBUTING.md](./CONTRIBUTING.md) 
 Carl Best (Sr. Data Scientist/Project Owner)\
 https://github.com/ccbest/
 
-Eli Talbert (Sr. Data Scientist/PhD)
+Eli Talbert (Sr. Data Scientist/PhD)\
 https://github.com/etalbert102
 
 Jessica Moore (Sr. Data Scientist)\
