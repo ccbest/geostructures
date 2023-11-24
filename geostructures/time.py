@@ -7,10 +7,10 @@ __all__ = ['TimeInterval']
 from datetime import datetime, timedelta
 from typing import Optional, Union
 
-from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
+from geostructures.utils.mixins import DefaultZuluMixin
 
 
-class TimeInterval(LoggingMixin, DefaultZuluMixin):
+class TimeInterval(DefaultZuluMixin):
     """A class representing a right-open time interval"""
 
     def __init__(
