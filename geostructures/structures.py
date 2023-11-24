@@ -18,6 +18,7 @@ from typing import cast, Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
+from geostructures import LOGGER
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
     ensure_vertex_bounds,
@@ -29,7 +30,7 @@ from geostructures.calc import (
     do_vertices_intersect
 )
 from geostructures.utils.functions import round_half_up
-from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
+from geostructures.utils.mixins import DefaultZuluMixin, WarnOnceMixin
 from geostructures.time import TimeInterval
 
 
@@ -80,7 +81,7 @@ def _parse_wkt_coord_group(group: str) -> List[Coordinate]:
     ]
 
 
-class GeoShape(LoggingMixin, DefaultZuluMixin):
+class GeoShape(DefaultZuluMixin):
 
     """Abstract base class for all geoshapes"""
 
@@ -555,7 +556,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         ]
 
 
-class GeoPolygon(GeoShape):
+class GeoPolygon(GeoShape, WarnOnceMixin):
 
     """
     A Polygon, as expressed by an ordered list of Coordinates. The final Coordinate
@@ -587,7 +588,7 @@ class GeoPolygon(GeoShape):
         super().__init__(holes=holes, dt=dt, properties=properties)
 
         if not outline[0] == outline[-1]:
-            self.logger.warning(
+            LOGGER.warning(
                 'Polygon outlines must be self-closing; your final point will be '
                 'connected to your starting point.'
             )
@@ -595,8 +596,8 @@ class GeoPolygon(GeoShape):
 
         if not self._test_counter_clockwise(outline) ^ _is_hole:
             self.warn_once(
-                'Your polygon appears to be defined (mostly) clockwise, violating the '
-                'right hand rule. Flipping coordinate order; this warning will not repeat.'
+                'Polygon violates the right hand rule. Inverting coordinate '
+                'order; this warning will not repeat.'
             )
             outline = outline[::-1]
 

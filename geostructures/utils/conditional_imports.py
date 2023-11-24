@@ -10,10 +10,8 @@ import subprocess
 import sys
 from typing import Union
 
-from geostructures.utils.mixins import LoggingMixin
 
-
-class ConditionalPackageInterceptor(LoggingMixin):  # pragma: no cover
+class ConditionalPackageInterceptor:  # pragma: no cover
     """
     Provides automatic pip installation of a package if it isn't found. Only packages added to this
     object using the .permit_packages() method are allowed to be automatically installed.

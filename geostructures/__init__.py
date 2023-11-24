@@ -1,6 +1,7 @@
 
 import sys
 
+from geostructures.utils.logging import LOGGER
 from geostructures.coordinates import Coordinate
 from geostructures.structures import (
     GeoBox, GeoCircle, GeoEllipse, GeoLineString, GeoPoint, GeoPolygon,
@@ -30,5 +31,6 @@ __all__ = [
     'GeoLineString',
     'GeoPoint',
     'GeoPolygon',
-    'GeoRing'
+    'GeoRing',
+    'LOGGER',
 ]

@@ -1,14 +1,14 @@
 
 import re
 
-from geostructures.utils.mixins import LoggingMixin
+from geostructures.utils.mixins import WarnOnceMixin
 
 
-class Foo(LoggingMixin):
+class Foo(WarnOnceMixin):
     pass
 
 
-class Bar(LoggingMixin):
+class Bar(WarnOnceMixin):
     pass
 
 
