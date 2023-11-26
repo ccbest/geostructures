@@ -526,7 +526,7 @@ class NiemeyerHasher(Hasher):
                     continue
 
                 checked.add(near_gh)
-                if niemeyer_to_geobox(near_gh, self.base).intersects(linestring):
+                if niemeyer_to_geobox(near_gh, self.base).intersects_shape(linestring):
                     valid.add(near_gh)
                     queue.add(near_gh)
 
@@ -572,7 +572,7 @@ class NiemeyerHasher(Hasher):
                     continue
 
                 checked.add(near_gh)
-                if niemeyer_to_geobox(near_gh, self.base).intersects(polygon):
+                if niemeyer_to_geobox(near_gh, self.base).intersects_shape(polygon):
                     valid.add(near_gh)
                     queue.add(near_gh)
 
