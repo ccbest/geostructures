@@ -291,10 +291,9 @@ def h3_choropleth(
     _lats, _lons = [], []
     for _hex, weight in hexmap.items():
         boundary = h3.h3_to_geo_boundary(_hex)
-        center= h3.h3_to_geo(_hex)
         poly = GeoPolygon(
             [Coordinate(*x[::-1]) for x in [*boundary, boundary[0]]],
-            properties={'weight': weight, 'center point': center},
+            properties={'weight': weight},
         )
         polygons.append(poly.to_geojson(id=_hex, properties=property_map))
         _lat, _lon = h3.h3_to_geo(_hex)
@@ -312,7 +311,7 @@ def h3_choropleth(
             {
                 'id': hex_id,
                 'weight': weight,
-                'center point': center,
+                'center point': h3.h3_to_geo(hex_id),
                 **{
                     key: property_map.get(hex_id, {}).get(key, '')
                     for key in prop_keys
@@ -325,7 +324,7 @@ def h3_choropleth(
         mapbox_style="carto-positron",
         opacity=0.5,
         featureidkey='id',
-        hover_data=['id', 'weight', 'center point' *prop_keys],
+        hover_data=['id', 'weight', 'center point', *prop_keys],
     )
 
     if fig:
