@@ -324,7 +324,7 @@ def h3_choropleth(
         mapbox_style="carto-positron",
         opacity=0.5,
         featureidkey='id',
-        hover_data=['id', 'weight', 'center',*prop_keys],
+        hover_data=['id', 'weight', 'center', *prop_keys],
     )
 
     if fig:
