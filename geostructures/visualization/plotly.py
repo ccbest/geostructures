@@ -311,6 +311,7 @@ def h3_choropleth(
             {
                 'id': hex_id,
                 'weight': weight,
+                'center': h3.h3_to_geo(hex_id),
                 **{
                     key: property_map.get(hex_id, {}).get(key, '')
                     for key in prop_keys
@@ -323,7 +324,7 @@ def h3_choropleth(
         mapbox_style="carto-positron",
         opacity=0.5,
         featureidkey='id',
-        hover_data=['id', 'weight', *prop_keys],
+        hover_data=['id', 'weight', 'center',*prop_keys],
     )
 
     if fig:
