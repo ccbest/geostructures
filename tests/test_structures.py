@@ -162,27 +162,38 @@ def test_geoshape_bounding_vertices():
 
 
 def test_geoshape_contains():
-    # Base case
-    circle_outer = GeoCircle(Coordinate(0., 0.), 5_000)
-    circle_inner = GeoCircle(Coordinate(0., 0.), 2_000)
+    # Base Case
+    circle_outer = GeoCircle(Coordinate(0., 0.), 5_000, dt=TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 3)))
+    circle_inner = GeoCircle(Coordinate(0., 0.), 2_000, dt=datetime(2020, 1, 2, 12))
     assert circle_outer.contains(circle_inner)
-    assert not circle_inner.contains(circle_outer)
 
     # Time bounding
     circle_outer = GeoCircle(Coordinate(0., 0.), 5_000, dt=datetime(2020, 1, 2))
     circle_inner = GeoCircle(Coordinate(0., 0.), 2_000, dt=datetime(2020, 1, 1))
     assert not circle_outer.contains(circle_inner)
 
+    # dt not defined
+    circle_outer = GeoCircle(Coordinate(0., 0.), 5_000)
+    circle_inner = GeoCircle(Coordinate(0., 0.), 2_000)
+    assert circle_outer.contains(circle_inner)
+
+
+def test_geoshape_contains_shape():
+    # Base case
+    circle_outer = GeoCircle(Coordinate(0., 0.), 5_000)
+    circle_inner = GeoCircle(Coordinate(0., 0.), 2_000)
+    assert circle_outer.contains_shape(circle_inner)
+    assert not circle_inner.contains_shape(circle_outer)
+
     # Intersecting
-    Coordinate(0.0899322, 0.0)
     circle1 = GeoCircle(Coordinate(0., 0.), 5_000)
     circle2 = GeoCircle(Coordinate(0.0899322, 0.0), 6_000)
-    assert not circle1.contains(circle2)
+    assert not circle1.contains_shape(circle2)
 
     # inner circle fully contained within hole
     circle_outer = GeoCircle(Coordinate(0., 0.,), 5_000, holes=[GeoCircle(Coordinate(0., 0.,), 4_000)])
     circle_inner = GeoCircle(Coordinate(0., 0.), 2_000)
-    assert not circle_outer.contains(circle_inner)
+    assert not circle_outer.contains_shape(circle_inner)
 
 
 def test_geoshape_contains_time():
@@ -206,38 +217,38 @@ def test_geoshape_contains_time():
         geopoint.contains_time('not a date')
 
 
-def test_geoshape_intersects():
+def test_geoshape_intersects_shape():
     circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000)
     circle2 = GeoCircle(Coordinate(0.0899322, 0.0), 5_000)  # Exactly 10km to the right
     # Exactly one point where shapes intersect
-    assert circle1.intersects(circle2)
-    assert circle2.intersects(circle1)
+    assert circle1.intersects_shape(circle2)
+    assert circle2.intersects_shape(circle1)
 
     circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000)
     circle2 = GeoCircle(Coordinate(0.0899321, 0.0), 5_000)  # Nudged just barely to the left
-    assert circle1.intersects(circle2)
-    assert circle2.intersects(circle1)
+    assert circle1.intersects_shape(circle2)
+    assert circle2.intersects_shape(circle1)
 
     circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000)
     circle2 = GeoCircle(Coordinate(0.0899323, 0.0), 5_000)  # Nudged just barely to the right
-    assert not circle1.intersects(circle2)
-    assert not circle2.intersects(circle1)
+    assert not circle1.intersects_shape(circle2)
+    assert not circle2.intersects_shape(circle1)
 
     # Same as above, but time bounds different
     circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000, dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2)))
     circle2 = GeoCircle(Coordinate(0.0899321, 0.0), 5_000, dt=TimeInterval(datetime(2020, 1, 3), datetime(2020, 1, 4)))
-    assert not circle1.intersects(circle2)
-    assert not circle2.intersects(circle1)
+    assert not circle1.intersects_shape(circle2)
+    assert not circle2.intersects_shape(circle1)
 
     circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000)
     circle2 = GeoCircle(Coordinate(0.0, 0.0), 2_000)  # Fully contained
-    assert circle1.intersects(circle2)
-    assert circle2.intersects(circle1)
+    assert circle1.intersects_shape(circle2)
+    assert circle2.intersects_shape(circle1)
 
     # points
     point = GeoPoint(Coordinate(0., 0.))
-    assert circle1.intersects(point)
-    assert point.intersects(circle1)
+    assert circle1.intersects_shape(point)
+    assert point.intersects_shape(circle1)
 
 
 def test_geoshape_intersects_time():
@@ -1351,14 +1362,14 @@ def test_geolinestring_from_geojson():
         GeoLineString.from_geojson(bad_gjson)
 
 
-def test_geolinestring_intersects():
+def test_geolinestring_intersects_shape():
     ls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)])
     circle = GeoCircle(Coordinate(0.0, 0.0), 5_000)
-    assert ls.intersects(circle)
+    assert ls.intersects_shape(circle)
 
     ls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)])
     circle = GeoCircle(Coordinate(0.0, 0.0), 5_000)
-    assert ls.intersects(circle)
+    assert ls.intersects_shape(circle)
 
 
 def test_geolinestring_linear_rings(geolinestring):
@@ -1536,11 +1547,11 @@ def test_geopoint_from_shapely():
 
 def test_geopoint_intersects():
     point = GeoPoint(Coordinate(0., 0.))
-    assert point.intersects(GeoCircle(Coordinate(0., 0.), 500))
-    assert point.intersects(point)
+    assert point.intersects_shape(GeoCircle(Coordinate(0., 0.), 500))
+    assert point.intersects_shape(point)
 
-    assert not point.intersects(GeoCircle(Coordinate(1., 0.), 500))
-    assert not point.intersects(GeoPoint(Coordinate(0.001, 0.001)))
+    assert not point.intersects_shape(GeoCircle(Coordinate(1., 0.), 500))
+    assert not point.intersects_shape(GeoPoint(Coordinate(0.001, 0.001)))
 
 
 def test_geopoint_to_geojson(geopoint):

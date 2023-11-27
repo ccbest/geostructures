@@ -18,6 +18,7 @@ from typing import cast, Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
+from geostructures import LOGGER
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
     ensure_vertex_bounds,
@@ -29,7 +30,7 @@ from geostructures.calc import (
     do_vertices_intersect
 )
 from geostructures.utils.functions import round_half_up
-from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
+from geostructures.utils.mixins import DefaultZuluMixin, WarnOnceMixin
 from geostructures.time import TimeInterval
 
 
@@ -80,7 +81,7 @@ def _parse_wkt_coord_group(group: str) -> List[Coordinate]:
     ]
 
 
-class GeoShape(LoggingMixin, DefaultZuluMixin):
+class GeoShape(DefaultZuluMixin):
 
     """Abstract base class for all geoshapes"""
 
@@ -289,7 +290,8 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
 
     def contains(self, shape: 'GeoShape', **kwargs) -> bool:
         """
-        Tests whether this shape fully contains another one.
+        Tests whether this shape fully contains another one, along both
+        the spatial and time axes
 
         Args:
             shape:
@@ -308,18 +310,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
             if not self.contains_time(shape.dt):
                 return False
 
-        s_vertices = self.vertices(**kwargs)
-        o_vertices = shape.vertices(**kwargs)
-        if do_vertices_intersect(
-            [x for vertex_ring in s_vertices for x in vertex_ring],
-            [x for vertex_ring in o_vertices for x in vertex_ring]
-        ):
-            # At least one vertex pair intersects - cannot be contained
-            return False
-
-        # No vertices intersect, so make sure one point along the boundary is
-        # contained
-        return o_vertices[0][0][0] in self
+        return self.contains_shape(shape, **kwargs)
 
     @abstractmethod
     def contains_coordinate(self, coord: Coordinate) -> bool:
@@ -333,6 +324,36 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         Returns:
             bool
         """
+
+    def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+        """
+        Tests whether this shape fully contains another one.
+
+        Args:
+            shape:
+                A geoshape
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+
+        Returns:
+            bool
+        """
+
+        s_vertices = self.vertices(**kwargs)
+        o_vertices = shape.vertices(**kwargs)
+        if do_vertices_intersect(
+            [x for vertex_ring in s_vertices for x in vertex_ring],
+            [x for vertex_ring in o_vertices for x in vertex_ring]
+        ):
+            # At least one vertex pair intersects - cannot be contained
+            return False
+
+        # No vertices intersect, so make sure one point along the boundary is
+        # contained
+        return o_vertices[0][0][0] in self
 
     def contains_time(self, dt: Union[datetime, TimeInterval]) -> bool:
         """
@@ -356,7 +377,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
 
     def intersects(self, shape: 'GeoShape', **kwargs) -> bool:
         """
-        Tests whether another shape intersects this one.
+        Tests whether another shape intersects this one along both the spatial and time axes.
 
         Args:
             shape:
@@ -368,7 +389,30 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
                 points generated along the curve
 
         Returns:
+            bool
+        """
+        # Make sure the times overlap, if present on both
+        if self.dt and shape.dt:
+            if not self.intersects_time(shape.dt):
+                return False
 
+        return self.intersects_shape(shape, **kwargs)
+
+    def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+        """
+        Tests whether another shape intersects this one along its spatial axes.
+
+        Args:
+            shape:
+                A geoshape
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+
+        Returns:
+            bool
         """
         # Make sure the times overlap, if present on both
         if self.dt and shape.dt:
@@ -394,7 +438,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
 
     def intersects_time(self, dt: Union[datetime, TimeInterval]) -> bool:
         """
-        Test if the geoshape's time dimension intersects either a date or a datetime.
+        Test if the geoshape's time dimension intersects either a point or interval in time.
 
         Args:
             dt:
@@ -555,7 +599,7 @@ class GeoShape(LoggingMixin, DefaultZuluMixin):
         ]
 
 
-class GeoPolygon(GeoShape):
+class GeoPolygon(GeoShape, WarnOnceMixin):
 
     """
     A Polygon, as expressed by an ordered list of Coordinates. The final Coordinate
@@ -587,7 +631,7 @@ class GeoPolygon(GeoShape):
         super().__init__(holes=holes, dt=dt, properties=properties)
 
         if not outline[0] == outline[-1]:
-            self.logger.warning(
+            LOGGER.warning(
                 'Polygon outlines must be self-closing; your final point will be '
                 'connected to your starting point.'
             )
@@ -595,8 +639,8 @@ class GeoPolygon(GeoShape):
 
         if not self._test_counter_clockwise(outline) ^ _is_hole:
             self.warn_once(
-                'Your polygon appears to be defined (mostly) clockwise, violating the '
-                'right hand rule. Flipping coordinate order; this warning will not repeat.'
+                'Polygon violates the right hand rule. Inverting coordinate '
+                'order; this warning will not repeat.'
             )
             outline = outline[::-1]
 
@@ -1787,7 +1831,7 @@ class GeoPoint(GeoShape):
             properties=copy.deepcopy(self.properties)
         )
 
-    def intersects(self, shape: 'GeoShape', **kwargs) -> bool:
+    def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
         if isinstance(shape, GeoPoint):
             return self == shape
         return self in shape

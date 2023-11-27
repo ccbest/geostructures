@@ -12,17 +12,17 @@ from typing import cast, Any, List, Dict, Optional, Union, Tuple, TypeVar
 
 import numpy as np
 
-from geostructures.coordinates import Coordinate
+from geostructures import Coordinate, LOGGER
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon, GeoShape
 from geostructures.time import TimeInterval
 from geostructures.calc import haversine_distance_meters
-from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
+from geostructures.utils.mixins import DefaultZuluMixin
 
 
 _COL_TYPE = TypeVar('_COL_TYPE', bound='ShapeCollection')
 
 
-class ShapeCollection(LoggingMixin, DefaultZuluMixin):
+class ShapeCollection(DefaultZuluMixin):
 
     def __init__(self, geoshapes: List[GeoShape]):
         super().__init__()
@@ -494,7 +494,7 @@ class ShapeCollection(LoggingMixin, DefaultZuluMixin):
             c = Counter(x[0] for x in _types)
             if c.most_common(1)[0][1] > 1:
                 # Just log a warning - still want to try to write the file
-                self.logger.warning(
+                LOGGER.warning(
                     'Conflicting data types found in properties; '
                     'your shapefile may not get written correctly'
                 )
@@ -592,7 +592,7 @@ class FeatureCollection(ShapeCollection):
         return FeatureCollection(self.geoshapes.copy())
 
 
-class Track(ShapeCollection, LoggingMixin, DefaultZuluMixin):
+class Track(ShapeCollection, DefaultZuluMixin):
 
     """
     A sequence of chronologically-ordered (by start time) GeoShapes
