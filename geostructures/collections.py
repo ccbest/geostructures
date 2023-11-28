@@ -155,7 +155,7 @@ class ShapeCollection(DefaultZuluMixin):
         if gjson.get('type') != 'FeatureCollection':
             raise ValueError('Malformed GeoJSON; expected FeatureCollection')
 
-        shapes = []
+        shapes: List[GeoShape] = []
         for feature in gjson.get('features', []):
             geom_type = feature.get('geometry', {}).get('type')
             if geom_type == 'Point':

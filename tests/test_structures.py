@@ -267,7 +267,6 @@ def test_geoshape_intersects_time():
     assert not geopoint.intersects_time(TimeInterval(datetime(2020, 1, 1, 14), datetime(2020, 1, 1, 16)))
 
 
-
 def test_shape_to_geojson(geocircle):
     # Assert kwargs and properties end up in the right place
     assert geocircle.to_geojson(properties={'test_prop': 1}, test_kwarg=2) == {
@@ -331,6 +330,12 @@ def test_geoshape_set_property():
         'datetime_end': datetime(2020, 1, 1, 12, tzinfo=timezone.utc),
         'test_property': 1
     }
+
+
+def test_geoshape_strip_dt():
+    point = GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 12))
+    expected = GeoPoint(Coordinate('0.0', '0.0'))
+    assert point.strip_dt() == expected
 
 
 def test_geoshape_vertices():
