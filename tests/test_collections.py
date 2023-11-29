@@ -284,6 +284,63 @@ def test_collection_from_shapely():
     assert FeatureCollection.from_shapely(gcol) == expected
 
 
+def test_collection_from_kml():
+    kmlstring='''<?xml version="1.0" encoding="UTF-8"?>
+    <kml xmlns="http://www.opengis.net/kml/2.2">
+    <Document><name>My document</name>
+    <description>Content</description>
+    <Style id="Lump">
+    <LineStyle><color>CD0000FF</color><width>2</width></LineStyle>
+    <PolyStyle><color>9AFF0000</color></PolyStyle>
+    </Style>
+    <Style id="Path">
+    <LineStyle><color>FF0000FF</color><width>3</width></LineStyle>
+    </Style>
+    <Style id="markerstyle">
+    <IconStyle><Icon><href>
+    http://maps.google.com/intl/en_us/mapfiles/ms/micons/red-dot.png
+    </href></Icon></IconStyle>
+    </Style>
+    <Placemark><name>NAME</name>
+    <description>YES</description>
+    <styleUrl>#Path</styleUrl>
+    <Polygon>
+    <tessellate>1</tessellate>
+    <altitudeMode>clampToGround</altitudeMode>
+    <outerBoundaryIs><LinearRing><coordinates>
+    0.0,0.0,0.0 
+    1.0,1.0,0.0 
+    2.0,0.0,0.0 
+    </coordinates></LinearRing></outerBoundaryIs>
+    </Polygon>
+    </Placemark>
+    <Placemark><name>NAME</name>
+    <description>YES</description>
+    <styleUrl>#Path</styleUrl>
+    <LineString>
+    <tessellate>1</tessellate>
+    <altitudeMode>clampToGround</altitudeMode>
+    <coordinates>
+    0.0,0.0,0.0 
+    1.0,1.0,0.0 
+    2.0,2.0,0.0 
+    </coordinates>
+    </LineString>
+    </Placemark>
+    <Placemark><name>NAME</name>
+    <description>YES</description>
+    <styleUrl>#markerstyle</styleUrl>
+    <Point>
+    <coordinates>0.0,0.0,0.0</coordinates>
+    </Point>
+    </Placemark> 
+    </Document>
+    </kml>'''
+    gls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 2.0)])
+    gpolygon = GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)])
+    gpoint = GeoPoint(Coordinate(0.0, 0.0))
+    expected = FeatureCollection([gpolygon, gls, gpoint])
+    assert FeatureCollection.from_kml(kmlstring) == expected
 def test_collection_to_geojson():
     shapes = [
         GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0)),
