@@ -6,7 +6,6 @@ import pandas as pd
 import numpy as np
 import random
 from datetime import datetime
-from math import floor, ceil
 import geostructures as gs
 from geostructures import Coordinate
 from geostructures.structures import GeoShape
@@ -41,7 +40,7 @@ def make_random_ellipses(n: int, centroid_ul: Coordinate, centroid_lr: Coordinat
             tend, tst = tst, tend
         ells.append(gs.GeoEllipse(Coordinate(cx, cy), smaj, smin, rot, dt=TimeInterval(datetime.fromtimestamp(tst), datetime.fromtimestamp(tend))))  # type: ignore
 
-    return gscol.Track(ells)  # type: ignore
+    return gscol.FeatureCollection(ells)  # type: ignore
 
 
 def process_shape(shape_ind: Tuple[int, GeoShape], dx: float, dy: float, dt: float):
@@ -90,7 +89,7 @@ class TimeCube:
     dx: float
     dy: float
     dt: float
-
+    """A class representing a collection of 3D cubes with the z dimension representing time"""
     # dt is in seconds (fractional ok)
     def __init__(self, shapes: gscol.Track, dx: float, dy: float, dt: float):
         self.dx = dx
