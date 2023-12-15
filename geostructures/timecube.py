@@ -1,3 +1,5 @@
+"""Data structure for relating collections of geospatial objects to each other in time"""
+
 import multiprocessing
 import functools
 import pandas as pd
@@ -11,6 +13,7 @@ from geostructures import Coordinate
 from geostructures.structures import GeoShape
 from geostructures import collections as gscol
 from geostructures.time import TimeInterval
+from geostructures.utils.functions import round_down, round_up
 
 import plotly.graph_objects as go
 
@@ -42,29 +45,43 @@ def make_random_ellipses(n: int, centroid_ul: Coordinate, centroid_lr: Coordinat
     return gscol.Track(ells)  # type: ignore
 
 
-def memoize(f):
-    memo = {}
-
-    def helper(x):
-        if x not in memo:
-            memo[x] = f(x)
-        return memo[x]
-    return helper
 
 
-def _round_down(x: float, nearest: float = 1.0) -> float:
+def round_down(x: float, nearest: float = 1.0) -> float:
+    """
+    Rounds numbers down to the nearest specified float, 
+    where a 1.0 rounds down to the nearest whole number and .1
+    rounds down to the nearest tenth.
+
+    Args:
+        value:
+            The float value to be rounded
+        nearest:
+            The nearest float to round the float value down to
+
+    """
     inv = 1 / nearest
     return floor(x * inv) / inv
 
 
-def _round_up(x: float, nearest: float = 1.0) -> float:
+def round_up(x: float, nearest: float = 1.0) -> float:
+    """
+    Rounds numbers up to the nearest specified float, 
+    where a 1.0 rounds up to the nearest whole number and .1
+    rounds up to the nearest tenth.
+
+    Args:
+        value:
+            The float value to be rounded
+        nearest:
+            The nearest float to round the float value up to
+
+    """
     inv = 1 / nearest
     return ceil(x * inv) / inv
 
 
-@memoize
-def gs2shape(s: gs.GeoBox):
-    return s.to_shapely()
+
 
 
 def process_shape(shape_ind: Tuple[int, GeoShape], dx: float, dy: float, dt: float):
@@ -72,13 +89,13 @@ def process_shape(shape_ind: Tuple[int, GeoShape], dx: float, dy: float, dt: flo
     ((sh_minx, sh_maxx), (sh_miny, sh_maxy)) = shape.bounds
     sh_mint, sh_maxt = shape.start.timestamp(), shape.end.timestamp()
 
-    minx = _round_down(sh_minx, dx)
-    miny = _round_down(sh_miny, dy)
-    maxx = _round_up(sh_maxx, dx)
-    maxy = _round_up(sh_maxy, dy)
-    mint = _round_down(sh_mint, dt)
-    maxt = _round_up(sh_maxt, dt)
-    shapely_shape = gs2shape(shape)
+    minx = round_down(sh_minx, dx)
+    miny = round_down(sh_miny, dy)
+    maxx = round_up(sh_maxx, dx)
+    maxy = round_up(sh_maxy, dy)
+    mint = round_down(sh_mint, dt)
+    maxt = round_up(sh_maxt, dt)
+    shapely_shape = shape.to_shapely()
 
     bininfo = []
     for x in np.arange(minx, maxx, dx):
@@ -88,7 +105,7 @@ def process_shape(shape_ind: Tuple[int, GeoShape], dx: float, dy: float, dt: flo
                 lr = Coordinate(x + dx, y + dy)
                 tbin = TimeInterval(datetime.fromtimestamp(t), datetime.fromtimestamp(t + dt))
                 bin = gs.GeoBox(ul, lr, dt=tbin)
-                shapely_bin = gs2shape(bin)
+                shapely_bin = bin.to_shapely()
                 t_intersect = shape.dt.intersection(tbin)  # type: ignore
                 area = shapely_bin.intersection(shapely_shape).area / shapely_bin.area * (0 if t_intersect is None else 1)
                 
@@ -122,9 +139,9 @@ class TimeCube:
         self.cube_bounds = tuple(list(shapes.bounds) + [(shapes.start, shapes.end)])
 
         self.bin_bounds = (
-            (_round_down(self.cube_bounds[0][0], self.dx), _round_up(self.cube_bounds[0][1], self.dx)),
-            (_round_down(self.cube_bounds[1][0], self.dy), _round_up(self.cube_bounds[1][1], self.dy)),
-            (datetime.fromtimestamp(_round_down(self.cube_bounds[2][0].timestamp(), self.dt)), datetime.fromtimestamp(_round_up(self.cube_bounds[2][1].timestamp(), self.dt)))
+            (round_down(self.cube_bounds[0][0], self.dx), round_up(self.cube_bounds[0][1], self.dx)),
+            (round_down(self.cube_bounds[1][0], self.dy), round_up(self.cube_bounds[1][1], self.dy)),
+            (datetime.fromtimestamp(round_down(self.cube_bounds[2][0].timestamp(), self.dt)), datetime.fromtimestamp(round_up(self.cube_bounds[2][1].timestamp(), self.dt)))
         )
 
         df = pd.DataFrame()
@@ -153,8 +170,8 @@ class TimeCube:
         return df.reset_index()
 
     def coverage_over_time(self, x: float, y: float, rank_by='volume') -> pd.DataFrame:
-        x_bin = _round_down(x, self.dx)
-        y_bin = _round_down(y, self.dy)
+        x_bin = round_down(x, self.dx)
+        y_bin = round_down(y, self.dy)
         res = self.bin_df[(np.isclose(self.bin_df['x'], x_bin)) & (np.isclose(self.bin_df['y'], y_bin))].drop(['shapeno'], axis=1)
         df = res.groupby(['t', 'x', 'y']) \
             .agg({'area': ['sum', 'count'], 'volume': 'sum'})
