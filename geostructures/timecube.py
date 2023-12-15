@@ -7,7 +7,6 @@ import numpy as np
 import random
 from datetime import datetime
 from math import floor, ceil
-from tqdm import tqdm
 import geostructures as gs
 from geostructures import Coordinate
 from geostructures.structures import GeoShape
@@ -43,45 +42,6 @@ def make_random_ellipses(n: int, centroid_ul: Coordinate, centroid_lr: Coordinat
         ells.append(gs.GeoEllipse(Coordinate(cx, cy), smaj, smin, rot, dt=TimeInterval(datetime.fromtimestamp(tst), datetime.fromtimestamp(tend))))  # type: ignore
 
     return gscol.Track(ells)  # type: ignore
-
-
-
-
-def round_down(x: float, nearest: float = 1.0) -> float:
-    """
-    Rounds numbers down to the nearest specified float, 
-    where a 1.0 rounds down to the nearest whole number and .1
-    rounds down to the nearest tenth.
-
-    Args:
-        value:
-            The float value to be rounded
-        nearest:
-            The nearest float to round the float value down to
-
-    """
-    inv = 1 / nearest
-    return floor(x * inv) / inv
-
-
-def round_up(x: float, nearest: float = 1.0) -> float:
-    """
-    Rounds numbers up to the nearest specified float, 
-    where a 1.0 rounds up to the nearest whole number and .1
-    rounds up to the nearest tenth.
-
-    Args:
-        value:
-            The float value to be rounded
-        nearest:
-            The nearest float to round the float value up to
-
-    """
-    inv = 1 / nearest
-    return ceil(x * inv) / inv
-
-
-
 
 
 def process_shape(shape_ind: Tuple[int, GeoShape], dx: float, dy: float, dt: float):
@@ -150,8 +110,7 @@ class TimeCube:
         print(f'{chunksize=}, {p._processes=}')
         partial_func = functools.partial(process_shape, dx=self.dx, dy=self.dy, dt=self.dt)
         with multiprocessing.Pool() as pool:
-            df = pd.concat(tqdm(pool.imap_unordered(partial_func, enumerate(shapes), chunksize=chunksize), total=len(shapes)), ignore_index=True)
-        #df = pd.concat(tqdm(p.imap(, enumerate(shapes), chunksize=chunksize), total=len(shapes)), ignore_index=True)
+            df = pd.concat(pool.imap_unordered(partial_func, enumerate(shapes), chunksize=chunksize))
         self.bin_df = df.reset_index()
 
     def rank_coverage(self, rank_by='volume') -> pd.DataFrame:
@@ -211,7 +170,7 @@ def _draw_layers(tc: TimeCube, rank_by: str, min_density: float):
     coverages = list(dn[rank_by])
     max_cov = max(coverages)
     norm_cov = [float(x) / max_cov for x in coverages]
-    for i, r in tqdm(dn.iterrows(), total=len(dn)):
+    for i, r in dn.iterrows():
         x0, y0 = r['x'], r['y']
         x1, y1 = x0 + tc.dx, y0 + tc.dy
         poly = _get_poly(x0, y0, x1, y1, norm_cov[i])
