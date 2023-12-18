@@ -202,49 +202,54 @@ def _draw_lines1(
         go.Figure
     """
     hover_data = hover_data or []
-    data = [
-    {
-        'id': idx,
-        'lat': shape.centroid.latitude,
-        'lon': shape.centroid.longitude,
-        'color': color,
-        'lat/lon':  ', '.join(point.to_str()[::-1]),
-        **{key: shape.properties.get(key, '') for key in hover_data}
-    } for idx, shape in enumerate(lines) for point in shape.bounding_coords()
-]
+    
     # Create an empty Figure
     fig = go.Figure()
-
-    # Add each line to the figure
     for idx, shape in enumerate(lines):
+        shapedata=[] 
+        for point in shape.bounding_coords():
+            pointdata = {
+                    'id': idx,
+                    'lat': point.latitude,
+                    'lon': point.longitude,
+                    'color': color,
+                    'lat/lon':  ', '.join(point.to_str()[::-1]),
+                    **{key: shape.properties.get(key, '') for key in hover_data}
+                } 
+            
+            shapedata.append(pointdata)
+        
         lats=[]
         longs=[]
-        
-        for point in data:
-            lats.append(point['lat'])
-            longs.append(point['lon'])
+        combined_hover_list=[]
+        for point in shapedata:
             hover_elements=[f"{k}= {v}" for k, v in point.items() if k in ('lat/lon',*hover_data)]
             combined_hover = '<br>'.join(hover_elements)
+            combined_hover_list.append(combined_hover)
+            lats.append(point['lat'])
+            longs.append(point['lon'])
 
         fig.add_trace(
              go.Scattermapbox(
                     lon= longs,
                     lat= lats,
-                    mode='markers+lines',
+                    mode='lines',
                     line=dict(color=color),
                     hoverinfo='text',
-                    hovertext= combined_hover,
+                    text=combined_hover_list
                 )
             )
 
     # Update the layout of the figure
     fig.update_layout(
-        autosize=True,
-        hovermode='closest',
+        mapbox_style="carto-positron",
         mapbox=dict(
-            style="carto-positron",
-            zoom=10,
-        ),
+            center=dict(
+                lat=0,
+                lon=0
+            ),
+            zoom=1
+        )
     )
 
     # Return the figure
