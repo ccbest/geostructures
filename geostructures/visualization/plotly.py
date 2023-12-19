@@ -6,65 +6,38 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.graph_objects import Figure
+import plotly.colors as colors
 
 from geostructures import Coordinate, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.structures import GeoShape
 from geostructures.collections import FeatureCollection, ShapeCollection
 from geostructures.geohash import H3Hasher
 
+def convert_colors(color: str):
+    """
+    Converts color strings to RGB colors
+    
+    Args:
+        color:
+            a color string 
+    
+    Returns:
+        an rgb string
+    """
+    if color=='yellow':
+        rgbstring='rgb(255,255,0)'
+    elif color=='blue':
+        rgbstring='rgb(0,0,255)'
+    elif color=='green':
+        rgbstring='rgb(0,255,0)'
+    elif color=='gray':
+        rgbstring='rgb(128,128,128)'
+    else:
+        rgbstring='rgb(255,0,0)'
+
+    return rgbstring  
 
 def _draw_points(
-    points: List[GeoPoint],
-    color: str,
-    hover_data: Optional[List] = None,
-    opacity: Optional[float] = None,
-    **kwargs
-):
-    """
-    Plots a series of GeoPoints to a plotly graph objects Figure
-
-    Args:
-        points:
-            A list of GeoPoints
-
-        hover_data:
-            A list of properties that should be displayed on shape tooltips
-
-        opacity:
-            The desired shape opacity
-
-    Returns:
-        go.Figure
-    """
-    hover_data = hover_data or []
-
-    return px.scatter_mapbox(
-        [
-            {
-                'id': idx,
-                'lat': shape.centroid.latitude,
-                'lon': shape.centroid.longitude,
-                'color': color,
-                'lat/lon': ', '.join(shape.centroid.to_str()),
-                **{key: shape.properties.get(key, '') for key in hover_data}
-            } for idx, shape in enumerate(points)
-        ],
-        lon='lon',
-        lat='lat',
-        color='color',
-        color_discrete_map={color: color},
-        mapbox_style="carto-positron",
-        opacity=opacity or 0.5,
-        hover_data={
-            'id': False,
-            'lat': False,
-            'lon': False,
-            'color': False,
-            **{k: True for k in ('lat/lon', *hover_data)}
-        }
-    )
-
-def _draw_points1(
     points: List[GeoPoint],
     color: str,
     hover_data: Optional[List] = None,
@@ -121,18 +94,8 @@ def _draw_points1(
             hoverinfo='text'
         ))
 
-    fig.update_layout(
-        mapbox_style="carto-positron",
-        mapbox=dict(
-            center=dict(
-                lat=sum(p['lat'] for p in data) / len(data),
-                lon=sum(p['lon'] for p in data) / len(data)
-            ),
-            zoom=5
-        )
-    )
-
     return fig
+
 
 def _draw_lines(
     lines: List[GeoLineString],
@@ -147,53 +110,8 @@ def _draw_lines(
         lines:
              A list of GeoLineStrings
 
-        hover_data:
-            A list of properties that should be displayed on shape tooltips
-
-    Returns:
-        go.Figure
-    """
-    hover_data = hover_data or []
-
-    return px.line_mapbox(
-        [
-            {
-                'id': idx,
-                'lat': point.latitude,
-                'lon': point.longitude,
-                'color': color,
-                'lat/lon': ', '.join(point.to_str()[::-1]),
-                **{key: shape.properties.get(key, '') for key in hover_data}
-            } for idx, shape in enumerate(lines) for point in shape.bounding_coords()
-        ],
-        lon='lon',
-        lat='lat',
-        color='color',
-        color_discrete_map={color: color},
-        mapbox_style="carto-positron",
-        hover_data={
-            'lat': False,
-            'lon': False,
-            'color': False,
-            'id': False,
-            **{k: True for k in ('lat/lon', *hover_data)}
-        },
-    )
-
-
-
-def _draw_lines1(
-    lines: List[GeoLineString],
-    color: str,
-    hover_data: Optional[List] = None,
-    **kwargs
-):
-    """
-    Plots a series of GeoLineStrings to a plotly graph objects Figure
-
-    Args:
-        lines:
-             A list of GeoLineStrings
+        color:
+            The desired shape color   
 
         hover_data:
             A list of properties that should be displayed on shape tooltips
@@ -203,7 +121,6 @@ def _draw_lines1(
     """
     hover_data = hover_data or []
     
-    # Create an empty Figure
     fig = go.Figure()
     for idx, shape in enumerate(lines):
         shapedata=[] 
@@ -240,7 +157,7 @@ def _draw_lines1(
                 )
             )
 
-    # Update the layout of the figure
+
     fig.update_layout(
         mapbox_style="carto-positron",
         mapbox=dict(
@@ -252,8 +169,9 @@ def _draw_lines1(
         )
     )
 
-    # Return the figure
+
     return fig
+
 
 
 def _draw_shapes(
@@ -280,26 +198,40 @@ def _draw_shapes(
         go.Figure
     """
     hover_data = hover_data or []
-    return px.choropleth_mapbox(
-        [
-            {
-                'id': idx,
-                'color': color,
-                **{key: shape.properties.get(key, '') for key in hover_data}
-            } for idx, shape in enumerate(shapes)
-        ],
-        geojson=FeatureCollection(shapes).to_geojson(),
-        locations='id',
-        color='color',
-        color_discrete_map={color: color},
-        mapbox_style="carto-positron",
-        opacity=opacity or 0.5,
-        featureidkey='id',
-        hover_data={
-            'color': False,
-            **{k: True for k in hover_data},
-        }
+
+    data = [
+        {
+            'id': idx,
+            'color': color,
+            **{key: shape.properties.get(key, '') for key in hover_data}
+        } for idx, shape in enumerate(shapes)
+    ]
+
+    #created combined hover information
+    combined_hover_list=[]
+    for shape in data:
+        hover_elements=[f"{k}= {v}" for k, v in shape.items() if k in ('id',*hover_data)]
+        combined_hover = '<br>'.join(hover_elements)
+        combined_hover_list.append(combined_hover)
+
+    fig = go.Figure(go.Choroplethmapbox(geojson=FeatureCollection(shapes).to_geojson(),
+    locations=[str(idx) for idx in range(len(shapes))],
+    z=[0]*len(shapes),
+    colorscale=[[0, convert_colors(color)], [1, convert_colors(color)]], 
+    marker_opacity=opacity or 0.5,hoverinfo='text',
+    text=combined_hover_list
+    )  
+    ) 
+
+
+    # Set map layout
+    fig.update_layout(
+        mapbox_style='carto-positron',
+        mapbox_zoom=4,
+        mapbox_center={'lat': 37.8, 'lon': -96},
     )
+
+    return fig
 
 
 def _get_zoom(lats: List[float], lons: List[float]) -> float:
@@ -318,6 +250,7 @@ def _get_zoom(lats: List[float], lons: List[float]) -> float:
         xp=[0, 5 ** -10, 4 ** -10, 3 ** -10, 2 ** -10, 1 ** -10, 1 ** -5],
         fp=[20, 15, 14, 13, 12, 7, 5],
     ))
+
 
 
 def draw_collection(
@@ -369,83 +302,9 @@ def draw_collection(
     if _points:
         _fig = go.Figure(_fig.data + _draw_points(_points, color, hover_data, opacity).data)
     if _lines:
-        for trace in _draw_lines(_lines, color, hover_data).data:
-            _fig.add_trace(trace)
+        _fig = go.Figure(_fig.data + _draw_lines(_lines, color, hover_data).data)
     if _shapes:
-        _fig.add_trace(_draw_shapes(_shapes, color, hover_data, opacity).data[0])
-
-    lats, lons = cast(
-        Tuple[List[float], List[float]],
-        tuple(zip(*[shape.centroid.to_float() for shape in collection.geoshapes]))
-    )
-    _fig.update_layout(
-        coloraxis_showscale=False,  # legends will overlap if not removed
-        showlegend=False,
-        mapbox_style="carto-positron",
-    )
-    _fig.update_mapboxes(
-        center={'lat': center.latitude, 'lon': center.longitude},
-        zoom=_get_zoom(lats, lons),
-    )
-    if fig:
-        for trace in _fig.data:
-            fig.add_trace(trace)
-        return fig
-
-    return _fig
-
-def draw_collection1(
-    collection: FeatureCollection,
-    hover_data: Optional[List] = None,
-    opacity: Optional[float] = None,
-    color: Optional[str] = None,
-    fig: Optional[Figure] = None
-):
-    """
-    Draws a FeatureCollection as a plotly choropleth.
-
-    Shapes will be colored according to the 'weight' property, if present. Otherwise
-    all shapes will be given the default weight of 1.0.
-
-    Args:
-        collection:
-            A geostructures FeatureCollection
-
-        hover_data:
-            A list of properties that should be displayed on shape tooltips
-
-        opacity:
-            The desired shape opacity
-
-        color:
-            The color to draw shapes as
-
-        fig:
-            A plotly figure. If passed the draw layer will be appended to the passed
-            fig instead of creating a new one.
-
-    Returns:
-        A plotly figure
-    """
-    if not hover_data:
-        hover_data = sorted(
-            set(key for geoshape in collection.geoshapes for key in geoshape.properties)
-        )
-
-    _points = [x for x in collection if isinstance(x, GeoPoint)]
-    _lines = [x for x in collection if isinstance(x, GeoLineString)]
-    _shapes = [x for x in collection if not isinstance(x, (GeoLineString, GeoPoint))]
-
-    center = collection.centroid
-    color = color or 'red'
-
-    _fig = go.Figure()
-    if _points:
-        _fig = go.Figure(_fig.data + _draw_points1(_points, color, hover_data, opacity).data)
-    if _lines:
-        _fig = go.Figure(_fig.data + _draw_lines1(_lines, color, hover_data).data)
-    if _shapes:
-        _fig.add_trace(_draw_shapes(_shapes, color, hover_data, opacity).data[0])
+        _fig = go.Figure(_fig.data +_draw_shapes(_shapes, color, hover_data, opacity).data)
 
     lats, lons = cast(
         Tuple[List[float], List[float]],
