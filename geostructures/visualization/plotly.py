@@ -1,4 +1,4 @@
-
+""" Plotly visualizations """
 from collections import defaultdict
 from typing import cast, Any, Dict, List, Optional, Tuple
 
@@ -6,36 +6,37 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.graph_objects import Figure
-import plotly.colors as colors
 
 from geostructures import Coordinate, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.structures import GeoShape
 from geostructures.collections import FeatureCollection, ShapeCollection
 from geostructures.geohash import H3Hasher
 
+
 def convert_colors(color: str):
     """
-    Converts color strings to RGB colors
-    
+    Converts select CSS color strings to an RGB color string
+
     Args:
         color:
-            a color string 
-    
+            a color string
+
     Returns:
         an rgb string
     """
-    if color=='yellow':
-        rgbstring='rgb(255,255,0)'
-    elif color=='blue':
-        rgbstring='rgb(0,0,255)'
-    elif color=='green':
-        rgbstring='rgb(0,255,0)'
-    elif color=='gray':
-        rgbstring='rgb(128,128,128)'
+    if color == 'yellow':
+        rgbstring = 'rgb(255,255,0)'
+    elif color == 'blue':
+        rgbstring = 'rgb(0,0,255)'
+    elif color == 'green':
+        rgbstring = 'rgb(0,255,0)'
+    elif color == 'gray':
+        rgbstring = 'rgb(128,128,128)'
     else:
-        rgbstring='rgb(255,0,0)'
+        rgbstring = 'rgb(255,0,0)'
 
-    return rgbstring  
+    return rgbstring
+
 
 def _draw_points(
     points: List[GeoPoint],
@@ -52,7 +53,7 @@ def _draw_points(
             A list of GeoPoints
 
         color:
-            The desired shape color    
+            The desired shape color
 
         hover_data:
             A list of properties that should be displayed on shape tooltips
@@ -79,7 +80,7 @@ def _draw_points(
     fig = go.Figure()
 
     for point in data:
-        hover_elements=[f"{k}= {v}" for k, v in point.items() if k in ('lat/lon',*hover_data)]
+        hover_elements = [f"{k} = {v}" for k, v in point.items() if k in ('lat/lon', *hover_data)]
         combined_hover = '<br>'.join(hover_elements)
         fig.add_trace(go.Scattermapbox(
             lon=[point['lon']],
@@ -111,7 +112,7 @@ def _draw_lines(
              A list of GeoLineStrings
 
         color:
-            The desired shape color   
+            The desired shape color
 
         hover_data:
             A list of properties that should be displayed on shape tooltips
@@ -120,10 +121,10 @@ def _draw_lines(
         go.Figure
     """
     hover_data = hover_data or []
-    
+
     fig = go.Figure()
     for idx, shape in enumerate(lines):
-        shapedata=[] 
+        shapedata = []
         for point in shape.bounding_coords():
             pointdata = {
                     'id': idx,
@@ -132,46 +133,32 @@ def _draw_lines(
                     'color': color,
                     'lat/lon':  ', '.join(point.to_str()[::-1]),
                     **{key: shape.properties.get(key, '') for key in hover_data}
-                } 
-            
+                }
+
             shapedata.append(pointdata)
-        
-        lats=[]
-        longs=[]
-        combined_hover_list=[]
-        for point in shapedata:
-            hover_elements=[f"{k}= {v}" for k, v in point.items() if k in ('lat/lon',*hover_data)]
+
+        lats = []
+        longs = []
+        combined_hover_list = []
+        for datapoint in shapedata:
+            hover_elements = [f"{k} = {v}" for k, v in datapoint.items() if k in ('lat/lon', *hover_data)]
             combined_hover = '<br>'.join(hover_elements)
             combined_hover_list.append(combined_hover)
-            lats.append(point['lat'])
-            longs.append(point['lon'])
+            lats.append(datapoint['lat'])
+            longs.append(datapoint['lon'])
 
         fig.add_trace(
              go.Scattermapbox(
-                    lon= longs,
-                    lat= lats,
+                    lon=longs,
+                    lat=lats,
                     mode='lines',
-                    line=dict(color=color),
+                    line={"color": color},
                     hoverinfo='text',
                     text=combined_hover_list
                 )
             )
 
-
-    fig.update_layout(
-        mapbox_style="carto-positron",
-        mapbox=dict(
-            center=dict(
-                lat=0,
-                lon=0
-            ),
-            zoom=1
-        )
-    )
-
-
     return fig
-
 
 
 def _draw_shapes(
@@ -207,29 +194,22 @@ def _draw_shapes(
         } for idx, shape in enumerate(shapes)
     ]
 
-    #created combined hover information
-    combined_hover_list=[]
+    combined_hover_list = []
     for shape in data:
-        hover_elements=[f"{k}= {v}" for k, v in shape.items() if k in ('id',*hover_data)]
+        hover_elements = [f"{k}= {v}" for k, v in shape.items() if k in ('id', *hover_data)]
         combined_hover = '<br>'.join(hover_elements)
         combined_hover_list.append(combined_hover)
 
-    fig = go.Figure(go.Choroplethmapbox(geojson=FeatureCollection(shapes).to_geojson(),
-    locations=[str(idx) for idx in range(len(shapes))],
-    z=[0]*len(shapes),
-    colorscale=[[0, convert_colors(color)], [1, convert_colors(color)]], 
-    marker_opacity=opacity or 0.5,hoverinfo='text',
-    text=combined_hover_list
-    )  
-    ) 
-
-
-    # Set map layout
-    fig.update_layout(
-        mapbox_style='carto-positron',
-        mapbox_zoom=4,
-        mapbox_center={'lat': 37.8, 'lon': -96},
-    )
+    fig = go.Figure(
+        go.Choroplethmapbox(
+            geojson=FeatureCollection(shapes).to_geojson(),
+            locations=[str(idx) for idx in range(len(shapes))],
+            z=[0]*len(shapes),
+            colorscale=[[0, convert_colors(color)], [1, convert_colors(color)]],
+            marker_opacity=opacity or 0.5, hoverinfo='text',
+            text=combined_hover_list
+        )
+        )
 
     return fig
 
@@ -250,7 +230,6 @@ def _get_zoom(lats: List[float], lons: List[float]) -> float:
         xp=[0, 5 ** -10, 4 ** -10, 3 ** -10, 2 ** -10, 1 ** -10, 1 ** -5],
         fp=[20, 15, 14, 13, 12, 7, 5],
     ))
-
 
 
 def draw_collection(
@@ -304,7 +283,7 @@ def draw_collection(
     if _lines:
         _fig = go.Figure(_fig.data + _draw_lines(_lines, color, hover_data).data)
     if _shapes:
-        _fig = go.Figure(_fig.data +_draw_shapes(_shapes, color, hover_data, opacity).data)
+        _fig = go.Figure(_fig.data + _draw_shapes(_shapes, color, hover_data, opacity).data)
 
     lats, lons = cast(
         Tuple[List[float], List[float]],
@@ -325,6 +304,7 @@ def draw_collection(
         return fig
 
     return _fig
+
 
 def h3_choropleth(
         hexmap: Dict[str, float],
