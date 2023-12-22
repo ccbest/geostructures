@@ -8,10 +8,11 @@ import abc
 from collections import defaultdict, Counter
 from typing import Dict, List, Optional, Sequence, Set, Tuple, TypedDict
 
-from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint
+from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.structures import GeoShape
-from geostructures.collections import ShapeCollection
+from geostructures.collections import FeatureCollection, ShapeCollection
 from geostructures.calc import find_line_intersection
+from h3 import h3_to_geo_boundary
 
 
 _NIEMEYER_CONFIG_TYPE = TypedDict(
@@ -629,3 +630,20 @@ class NiemeyerHasher(Hasher):
             return self._hash_linestring(shape)
 
         return self._hash_polygon(shape)
+
+
+def convert_hashmap(hexmap: Dict[str, float]):
+    """
+    Converts an H3 hashmap into a geostructure FeatureCollection
+
+    Args:
+        hexmap:
+            A dictionary of h3 hexagon ids to their corresponding weights. 
+    """
+    polygon_hex_list=[]
+    for hex in hexmap:
+        geojson_hex=h3_to_geo_boundary(hex[0], geo_json=True)
+        polgon_hex=GeoPolygon(geojson_hex, properties={'weight':hex[1]})
+        polygon_hex_list.append(polgon_hex)
+    
+    return FeatureCollection(polygon_hex_list)
