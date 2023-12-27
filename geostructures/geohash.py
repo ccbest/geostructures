@@ -2,7 +2,7 @@
 Module for geohash transformers
 """
 
-__all__ = ['H3Hasher', 'Hasher']
+__all__ = ['H3Hasher', 'Hasher', 'convert_hashmap']
 
 import abc
 from collections import defaultdict, Counter
@@ -642,8 +642,15 @@ def convert_hashmap(hexmap: Dict[str, float]):
     """
     polygon_hex_list=[]
     for hex in hexmap:
-        geojson_hex=h3_to_geo_boundary(hex[0], geo_json=True)
-        polgon_hex=GeoPolygon(geojson_hex, properties={'weight':hex[1]})
+        coordList = []
+        points = []
+        coordList = h3_to_geo_boundary(hex, geo_json=True)
+        points = [Coordinate(coord[0],coord[1]) for coord in coordList]
+        if isinstance(hexmap, dict):
+            polgon_hex=GeoPolygon(points, properties={'weight':hexmap.get(hex)})
+        else:
+            polgon_hex=GeoPolygon(points)
+
         polygon_hex_list.append(polgon_hex)
     
     return FeatureCollection(polygon_hex_list)

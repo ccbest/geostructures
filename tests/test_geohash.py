@@ -1,11 +1,11 @@
 
 import pytest
 
-from geostructures import Coordinate, GeoBox, GeoCircle, GeoLineString, GeoPoint
+from geostructures import Coordinate, GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.collections import FeatureCollection
 from geostructures.geohash import (
     coord_to_niemeyer, get_niemeyer_subhashes, niemeyer_to_geobox,
-    H3Hasher, NiemeyerHasher
+    H3Hasher, NiemeyerHasher, convert_hashmap
 )
 
 
@@ -192,3 +192,15 @@ def test_niemeyer_hash_shape():
         'c000001a', 'c000001b', 'c0000023', 'c0000025', 'c0000026', 'c0000027',
         'c0000028', 'c0000029', 'c000002a', 'c0000030'
     }
+
+def test_convert_hashmap():
+    testhashmap={'87195da49ffffff'}
+    polygon = GeoPolygon(
+    [
+        Coordinate(-0.14556038501053445, 51.52194368343689), Coordinate(-0.16020367734345392, 51.51507903672858), 
+        Coordinate(-0.15716008247709198, 51.5028484942742), Coordinate(-0.13948087736730877, 51.49748360263347),
+        Coordinate(-0.12484220854872598, 51.504347239648745), Coordinate(-0.12787812145596703, 51.51657677751165),
+        Coordinate(-0.14556038501053445, 51.52194368343689) 
+    ]
+)
+    assert convert_hashmap(testhashmap) == FeatureCollection([polygon])
