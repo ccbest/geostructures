@@ -638,19 +638,19 @@ def convert_hashmap(hexmap: Dict[str, float]):
 
     Args:
         hexmap:
-            A dictionary of h3 hexagon ids to their corresponding weights. 
+            A dictionary of h3 hexagon ids to their corresponding weights.
     """
-    polygon_hex_list=[]
+    polygon_hex_list = []
     for hex in hexmap:
         coordList = []
         points = []
         coordList = h3_to_geo_boundary(hex, geo_json=True)
-        points = [Coordinate(coord[0],coord[1]) for coord in coordList]
+        points = [Coordinate(coord[0], coord[1]) for coord in coordList]
         if isinstance(hexmap, dict):
-            polgon_hex=GeoPolygon(points, properties={'weight':hexmap.get(hex)})
+            polgon_hex = GeoPolygon(points, properties={'weight': hexmap.get(hex)})
         else:
-            polgon_hex=GeoPolygon(points)
+            polgon_hex = GeoPolygon(points)
 
         polygon_hex_list.append(polgon_hex)
-    
+
     return FeatureCollection(polygon_hex_list)
