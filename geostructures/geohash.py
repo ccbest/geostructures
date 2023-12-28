@@ -646,7 +646,7 @@ def convert_hashmap(hexmap: Dict[str, float]):
         coordList = []
         points = []
         coordList = h3_to_geo_boundary(hex, geo_json=True)
-        points = [Coordinate(round_half_up(coord[0],8), round_half_up(coord[1],8)) for coord in coordList]
+        points = [Coordinate(round_half_up(coord[0], 8), round_half_up(coord[1], 8)) for coord in coordList]
         if isinstance(hexmap, dict):
             polgon_hex = GeoPolygon(points, properties={'weight': hexmap.get(hex)})
         else:
