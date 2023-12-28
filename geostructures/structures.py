@@ -98,8 +98,10 @@ class GeoShape(DefaultZuluMixin):
             # Convert to a zero-second time interval
             dt = self._default_to_zulu(dt)
             self.dt: Optional[TimeInterval] = TimeInterval(dt, dt)
-        else:
+        elif dt is None or isinstance(dt, TimeInterval):
             self.dt = dt
+        else:
+            raise ValueError('dt must be a datetime or TimeInterval. The inputted value was: {}'.format(dt))
 
         self._properties = properties or {}
         self._shapely = None
@@ -959,6 +961,11 @@ class GeoBox(GeoShape):
         self.nw_bound = nw_bound
         self.se_bound = se_bound
 
+        if not isinstance(nw_bound, Coordinate):
+            raise Exception('The NW bound must be a coordinate. The input value was: {}'.format(nw_bound))
+        if not isinstance(se_bound, Coordinate):
+            raise Exception('The SE bound must be a coordinate. The input value was: {}'.format(se_bound))
+
     def __eq__(self, other):
         if not isinstance(other, GeoBox):
             return False
@@ -1066,7 +1073,13 @@ class GeoCircle(GeoShape):
     ):
         super().__init__(holes=holes, dt=dt, properties=properties)
         self.center = center
-        self.radius = radius
+        try:
+            self.radius = float(radius)
+        except ValueError:
+            raise ValueError("radius distance should be in meters")
+
+        if not isinstance(center, Coordinate):
+            raise Exception('The center must be a coordinate. The input value was: {}'.format(center))
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, GeoCircle):
@@ -1172,9 +1185,18 @@ class GeoEllipse(GeoShape):
         super().__init__(holes=holes, dt=dt, properties=properties)
 
         self.center = center
-        self.major_axis = major_axis
-        self.minor_axis = minor_axis
+        try:
+            self.major_axis = float(major_axis)
+            self.minor_axis = float(minor_axis)
+        except ValueError:
+            raise ValueError("Axis distance should be in meters")
         self.rotation = rotation
+
+        if not isinstance(center, Coordinate):
+            raise Exception('The center must be a coordinate. The input value was: {}'.format(center))
+
+        if self.rotation < 0 or self.rotation > 360:
+            raise Exception('rotation should be in degrees. The input value of was: {}'.format(rotation))
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, GeoEllipse):
@@ -1320,10 +1342,20 @@ class GeoRing(GeoShape):
     ):
         super().__init__(holes=holes, dt=dt, properties=properties)
         self.center = center
-        self.inner_radius = inner_radius
-        self.outer_radius = outer_radius
+        try:
+            self.inner_radius = float(inner_radius)
+            self.outer_radius = float(outer_radius)
+        except ValueError:
+            raise ValueError("radius distance should be in meters")
         self.angle_min = angle_min
         self.angle_max = angle_max
+
+        if not isinstance(center, Coordinate):
+            raise Exception('The center must be a coordinate. The input value was: {}'.format(center))
+        if angle_min < 0 or angle_min > 360:
+            raise Exception('angle_min should be in degrees. The input value was: {}'.format(angle_min))
+        if angle_max < 0 or angle_max > 360:
+            raise Exception('angle_max should be in degrees. The input value was: {}'.format(angle_max))
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, GeoRing):
@@ -1504,6 +1536,7 @@ class GeoLineString(GeoShape):
 
     """
     A LineString (or more colloquially, a path) consisting of a series of
+    coordinates.
     """
 
     def __init__(
@@ -1514,6 +1547,9 @@ class GeoLineString(GeoShape):
     ):
         super().__init__(dt=dt, properties=properties)
         self.coords = coords
+
+        if not isinstance(coords[0], Coordinate):
+            raise Exception('The list must contain coordinates. The inputted value was: {}'.format(coords))
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, GeoLineString):
@@ -1738,6 +1774,9 @@ class GeoPoint(GeoShape):
     ):
         super().__init__(dt=dt, properties=properties)
         self.center = center
+
+        if not isinstance(center, Coordinate):
+            raise Exception('The center must be a coordinate. The input value was: {}'.format(center))
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, GeoPoint):
