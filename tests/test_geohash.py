@@ -197,10 +197,10 @@ def test_convert_hashmap():
     testhashmap={'87195da49ffffff'}
     polygon = GeoPolygon(
     [
-        Coordinate(-0.14556038501053445, 51.52194368343689), Coordinate(-0.16020367734345392, 51.51507903672858), 
-        Coordinate(-0.15716008247709198, 51.5028484942742), Coordinate(-0.13948087736730877, 51.49748360263347),
-        Coordinate(-0.12484220854872598, 51.504347239648745), Coordinate(-0.12787812145596703, 51.51657677751165),
-        Coordinate(-0.14556038501053445, 51.52194368343689) 
+        Coordinate(-0.14556039, 51.52194368), Coordinate(-0.16020368, 51.51507904), 
+        Coordinate(-0.15716008, 51.50284849), Coordinate(-0.13948088, 51.49748360),
+        Coordinate(-0.12484221, 51.50434724), Coordinate(-0.12787812, 51.51657678),
+        Coordinate(-0.14556039, 51.52194368) 
     ]
 )
     assert convert_hashmap(testhashmap) == FeatureCollection([polygon])

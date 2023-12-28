@@ -12,6 +12,7 @@ from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint, GeoPolygo
 from geostructures.structures import GeoShape
 from geostructures.collections import FeatureCollection, ShapeCollection
 from geostructures.calc import find_line_intersection
+from geostructures.utils.functions import round_half_up
 from h3 import h3_to_geo_boundary
 
 
@@ -640,12 +641,12 @@ def convert_hashmap(hexmap: Dict[str, float]):
         hexmap:
             A dictionary of h3 hexagon ids to their corresponding weights.
     """
-    polygon_hex_list = []
+    polygon_hex_list: List[GeoShape] = []
     for hex in hexmap:
         coordList = []
         points = []
         coordList = h3_to_geo_boundary(hex, geo_json=True)
-        points = [Coordinate(coord[0], coord[1]) for coord in coordList]
+        points = [Coordinate(round_half_up(coord[0],8), round_half_up(coord[1],8)) for coord in coordList]
         if isinstance(hexmap, dict):
             polgon_hex = GeoPolygon(points, properties={'weight': hexmap.get(hex)})
         else:
