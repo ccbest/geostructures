@@ -893,7 +893,7 @@ def test_geocircle_hash(geocircle):
 
 
 def test_geocircle_repr(geocircle):
-    assert repr(geocircle) == '<GeoCircle at (0.0, 0.0); radius 1000 meters>'
+    assert repr(geocircle) == '<GeoCircle at (0.0, 0.0); radius 1000.0 meters>'
 
 
 def test_geocircle_bounds():
@@ -1008,7 +1008,7 @@ def test_geoellipse_hash(geoellipse):
 
 
 def test_geoellipse_repr(geoellipse):
-    assert repr(geoellipse) == '<GeoEllipse at (0.0, 0.0); radius 1000/500; rotation 90>'
+    assert repr(geoellipse) == '<GeoEllipse at (0.0, 0.0); radius 1000.0/500.0; rotation 90>'
 
 
 def test_geoellipse_bounds():
@@ -1130,8 +1130,8 @@ def test_georing_hash(geowedge):
 
 
 def test_georing_repr(geowedge, georing):
-    assert repr(geowedge) == '<GeoRing at (0.0, 0.0); radii 500/1000; 90-180 degrees>'
-    assert repr(georing) == '<GeoRing at (0.0, 0.0); radii 500/1000>'
+    assert repr(geowedge) == '<GeoRing at (0.0, 0.0); radii 500.0/1000.0; 90-180 degrees>'
+    assert repr(georing) == '<GeoRing at (0.0, 0.0); radii 500.0/1000.0>'
 
 
 def test_georing_bounds():
