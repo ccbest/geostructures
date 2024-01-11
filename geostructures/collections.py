@@ -252,11 +252,10 @@ class ShapeCollection(DefaultZuluMixin):
     @classmethod
     def from_shapefile(
         cls,
-        fpath: Union[str, Path],
+        zip_fpath: Union[str, Path],
         time_start_field: str = 'datetime_s',
         time_end_field: str = 'datetime_e',
     ):
-
         import shapefile
 
         def _get_dt(rec):
@@ -282,30 +281,51 @@ class ShapeCollection(DefaultZuluMixin):
             return GeoPoint(Coordinate(*shape.points[0]), dt=dt, properties=props)
 
         def _create_polygon(shape, dt, props):
-            return GeoPolygon([Coordinate(*x) for x in shape.points], dt=dt, properties=props)
+            """
+            Create a polygon out of a pyshyp polygon. Note that "points" are continuous across
+            the bounding coords and holes, so if multiple "parts" are present we need to segment
+            the list of points. "parts" will only provide the indices for segmentation.
+            """
+            parts = list(shape.parts)
+            if parts == [0]:
+                return GeoPolygon([Coordinate(*x) for x in shape.points], dt=dt, properties=props)
+
+            rings = [
+                [Coordinate(*x) for x in shape.points[start: stop]]
+                for start, stop in zip(shape.parts, [*shape.parts[1:], -1])
+            ]
+            holes = [GeoPolygon(x) for x in rings[1:]]
+            return GeoPolygon(rings[0], holes=holes, dt=dt, properties=props)
 
         def _create_linestring(shape, dt, props):
             return GeoLineString([Coordinate(*x) for x in shape.points], dt=dt, properties=props)
 
-        reader = shapefile.Reader(fpath)
-
-        type_map = {
-            'POLYLINE': _create_linestring,
-            'POINT': _create_point,
-            'POLYGON': _create_polygon,
-        }
-        shape_fn = type_map.get(reader.shapeTypeName)
-        if not shape_fn:  # pragma: no cover
-            raise ValueError(
-                f'Shapefile contains unsupported shape type: {reader.shapeTypeName}'
-            )
-
         shapes = []
-        for shape, record in zip(reader.shapes(), reader.records()):
-            props = record.as_dict()
-            dt = _get_dt(props)
-            props = {k: v for k, v in props.items() if k not in (time_start_field, time_end_field)}
-            shapes.append(shape_fn(shape, dt=dt, props=props))
+        with ZipFile(zip_fpath, 'r') as z:
+            files_in_zip = z.namelist()
+
+        for file_name in files_in_zip:
+            if not file_name.endswith('.shp'):
+                continue
+
+            reader = shapefile.Reader(os.sep.join([zip_fpath, file_name]))
+
+            type_map = {
+                'POLYLINE': _create_linestring,
+                'POINT': _create_point,
+                'POLYGON': _create_polygon,
+            }
+            shape_fn = type_map.get(reader.shapeTypeName)
+            if not shape_fn:  # pragma: no cover
+                raise ValueError(
+                    f'Shapefile contains unsupported shape type: {reader.shapeTypeName}'
+                )
+
+            for shape, record in zip(reader.shapes(), reader.records()):
+                props = record.as_dict()
+                dt = _get_dt(props)
+                props = {k: v for k, v in props.items() if k not in (time_start_field, time_end_field)}
+                shapes.append(shape_fn(shape, dt=dt, props=props))
 
         return cls(shapes)
 
