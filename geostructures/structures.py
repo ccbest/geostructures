@@ -1107,7 +1107,7 @@ class GeoCircle(GeoShape):
             coord = inverse_haversine_radians(self.center, angle, self.radius)
             coords.append(coord)
 
-        return [*coords, coords[0]]
+        return coords
 
     def circumscribing_circle(self) -> 'GeoCircle':
         return self
@@ -1245,7 +1245,7 @@ class GeoEllipse(GeoShape):
             )
             coords.append(coord)
 
-        return [*coords, coords[0]]
+        return coords
 
     def circumscribing_circle(self) -> GeoCircle:
         return GeoCircle(self.center, self.major_axis, dt=self.dt)
@@ -1408,10 +1408,11 @@ class GeoRing(GeoShape):
     def bounding_coords(self, **kwargs) -> List[Coordinate]:
         outer_bounds, inner_bounds = self._draw_bounds(**kwargs)
 
+        # Is a ring
         if self.angle_min == 0 and self.angle_max == 360:
-            return [*outer_bounds, outer_bounds[0]]
+            return outer_bounds
 
-        # Is self-closing
+        # Is a wedge
         return [*outer_bounds, *inner_bounds[::-1], outer_bounds[0]]
 
     def circumscribing_circle(self) -> GeoCircle:
