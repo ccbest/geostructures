@@ -308,7 +308,7 @@ class ShapeCollection(DefaultZuluMixin):
             if not file_name.endswith('.shp'):
                 continue
 
-            reader = shapefile.Reader(os.sep.join([zip_fpath, file_name]))
+            reader = shapefile.Reader(Path(zip_fpath) / file_name)
 
             type_map = {
                 'POLYLINE': _create_linestring,
@@ -441,7 +441,9 @@ class ShapeCollection(DefaultZuluMixin):
                 return val.isoformat()
             return val
 
-        points, lines, shapes = [], [], []
+        points: List[GeoShape] = []
+        lines: List[GeoShape] = []
+        shapes: List[GeoShape] = []
         for shape in self.geoshapes:
             if not isinstance(shape, (GeoPoint, GeoLineString)):
                 shapes.append(shape)
