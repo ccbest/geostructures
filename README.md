@@ -140,6 +140,13 @@ collection.from_geopandas( a geopandas DataFrame )
 # Creates a GeoJSON FeatureCollection
 collection.to_geojson()
 collection.from_geojson( { a geojson object } )
+
+# Write a FeatureCollection to an ESRI Shapefile
+from zipfile import ZipFile
+with ZipFile('shapefile_name.zip', 'w') as zfile:
+    collection.to_shapefile(zfile)
+
+collection.from_shapefile('shapefile_name.zip')
 ```
 
 #### Plotting Shapes

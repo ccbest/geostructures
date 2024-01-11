@@ -1477,9 +1477,14 @@ class GeoRing(GeoShape):
         ]
 
     def to_polygon(self, **kwargs) -> GeoPolygon:
+        rings = self.linear_rings(**kwargs)
+        holes = self.holes
+        if len(rings) > 1:
+            holes += [GeoPolygon(x) for x in rings[1:]]
+
         return GeoPolygon(
-            self.bounding_coords(**kwargs),
-            holes=self.holes,
+            rings[0],
+            holes=holes,
             dt=self.dt,
             properties=self._properties
         )

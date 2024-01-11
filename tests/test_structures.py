@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 import pytest
 import shapely
 from shapely import wkt
@@ -1263,8 +1263,24 @@ def test_georing_to_wkt():
     assert wedge.to_wkt() == 'POLYGON((0.0 -0.0089932,0.0014068 -0.0088825,0.0027791 -0.0085531,0.0040828 -0.008013,0.0052861 -0.0072757,0.0063592 -0.0063592,0.0072757 -0.0052861,0.008013 -0.0040828,0.0085531 -0.0027791,0.0088825 -0.0014068,0.0089932 0.0,0.0044966 0.0,0.0044412 -0.0007034,0.0042765 -0.0013895,0.0040065 -0.0020414,0.0036378 -0.002643,0.0031796 -0.0031796,0.002643 -0.0036378,0.0020414 -0.0040065,0.0013895 -0.0042765,0.0007034 -0.0044412,0.0 -0.0044966,0.0 -0.0089932))'
 
 
-def test_georing_to_polygon(georing):
-    assert georing.to_polygon() == GeoPolygon(georing.bounding_coords(), dt=default_test_datetime)
+def test_georing_to_polygon():
+    georing = GeoRing(Coordinate(0.0, 0.0), 500, 1000, dt=default_test_datetime)
+
+    # Because its not a wedge, should become a polygon with a hole
+    rings = georing.linear_rings()
+    assert georing.to_polygon() == GeoPolygon(
+        rings[0],
+        holes=[GeoPolygon(rings[1])],
+        dt=default_test_datetime
+    )
+
+    # Is a wedge, so just a normal polygon
+    geowedge = GeoRing(Coordinate(0.0, 0.0), 500, 1000, 90, 180, dt=default_test_datetime)
+    rings = geowedge.linear_rings()
+    assert geowedge.to_polygon() == GeoPolygon(
+        rings[0],
+        dt=default_test_datetime
+    )
 
 
 def test_geolinestring_contains_dunder(geolinestring):
