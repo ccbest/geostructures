@@ -291,10 +291,10 @@ class ShapeCollection(DefaultZuluMixin):
                 return GeoPolygon([Coordinate(*x) for x in shape.points], dt=dt, properties=props)
 
             rings = [
-                [Coordinate(*x) for x in shape.points[start: stop]]
+                [Coordinate(*x) for x in shape.points[start: stop if stop > 0 else None]]
                 for start, stop in zip(shape.parts, [*shape.parts[1:], -1])
             ]
-            holes = [GeoPolygon(x) for x in rings[1:]]
+            holes = [GeoPolygon(x[::-1]) for x in rings[1:]]
             return GeoPolygon(rings[0], holes=holes, dt=dt, properties=props)
 
         def _create_linestring(shape, dt, props):
