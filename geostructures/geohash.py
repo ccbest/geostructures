@@ -2,7 +2,10 @@
 Module for geohash transformers
 """
 
-__all__ = ['H3Hasher', 'Hasher']
+__all__ = [
+    'H3Hasher', 'Hasher', 'NiemeyerHasher', 'coord_to_niemeyer',
+    'niemeyer_to_geobox'
+]
 
 import abc
 from collections import defaultdict, Counter
