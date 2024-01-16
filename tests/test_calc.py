@@ -20,10 +20,10 @@ def test_do_edges_intersect():
     assert do_edges_intersect(edge_a, edge_b)
 
 
-def test_ensure_vertex_bounds():
-    assert ensure_vertex_bounds(Coordinate(179., 0.), Coordinate(179.5, 0.)) == (Coordinate(179., 0.), Coordinate(179.5, 0.))
-    assert ensure_vertex_bounds(Coordinate(179., 0.), Coordinate(-179, 0.)) == (Coordinate(179., 0.), Coordinate(181, 0., _bounded=False))
-    assert ensure_vertex_bounds(Coordinate(-179., 0.), Coordinate(179, 0.)) == (Coordinate(-179., 0.), Coordinate(-181, 0., _bounded=False))
+def test_ensure_edge_bounds():
+    assert ensure_edge_bounds(Coordinate(179., 0.), Coordinate(179.5, 0.)) == (Coordinate(179., 0.), Coordinate(179.5, 0.))
+    assert ensure_edge_bounds(Coordinate(179., 0.), Coordinate(-179, 0.)) == (Coordinate(179., 0.), Coordinate(181, 0., _bounded=False))
+    assert ensure_edge_bounds(Coordinate(-179., 0.), Coordinate(179, 0.)) == (Coordinate(-179., 0.), Coordinate(-181, 0., _bounded=False))
 
 
 def test_find_line_intersection():
