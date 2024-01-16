@@ -10,14 +10,14 @@ def test_bearing_degrees():
     assert bearing_degrees(Coordinate(0.0, 0.0), Coordinate(0.001, 0.001), precision=9) == 44.999999996
 
 
-def test_do_vertices_intersect():
-    vertices_a = [
+def test_do_edges_intersect():
+    edge_a = [
         (Coordinate(179, -1), Coordinate(-179, 1)),
     ]
-    vertices_b = [
+    edge_b = [
         (Coordinate(178, -1), Coordinate(-178, 1))
     ]
-    assert do_vertices_intersect(vertices_a, vertices_b)
+    assert do_edges_intersect(edge_a, edge_b)
 
 
 def test_ensure_vertex_bounds():
