@@ -336,7 +336,7 @@ def test_collection_convex_hull():
     )
     points = [x.centroid.to_float() for x in track.geoshapes]
     hull = ConvexHull(points)
-    assert GeoPolygon([Coordinate(*points[x]) for x in hull.vertices]) == track.convex_hull
+    assert GeoPolygon([Coordinate(*points[x]) for x in hull.edges]) == track.convex_hull
 
     # Fewer than 3 points
     new_track = Track([
