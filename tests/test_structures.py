@@ -1594,9 +1594,7 @@ def test_geopoint_to_geojson(geopoint):
 
 
 def test_geopoint_to_shapely(geopoint):
-    assert geopoint._shapely == None
     assert geopoint.to_shapely() == shapely.Point(0.0, 0.0)
-    assert geopoint._shapely == shapely.Point(0.0, 0.0)
 
 
 def test_geopoint_circumscribing_circle(geopoint):

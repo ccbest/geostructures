@@ -45,7 +45,7 @@ class ShapeCollection(DefaultZuluMixin):
         """The track length"""
         return self.geoshapes.__len__()
 
-    @property
+    @cached_property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         all_bounds = [x.bounds for x in self.geoshapes]
         return (
@@ -708,7 +708,7 @@ class Track(ShapeCollection, DefaultZuluMixin):
 
         return self.geoshapes[0].start
 
-    @property
+    @cached_property
     def time_start_diffs(self):
         """Provides an array of the time differences between chronologically-ordered
         pings. The length of the returned array will always be len(self) - 1"""
