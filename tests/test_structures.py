@@ -151,9 +151,9 @@ def test_geoshape_contains_dunder():
     assert GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 1)) in GeoCircle(Coordinate('0.0', '0.0'), 500, dt=None)
 
 
-def test_geoshape_bounding_vertices():
+def test_geoshape_bounding_edges():
     poly = GeoPolygon([Coordinate(1.0, 0.0), Coordinate(1.0, 1.0), Coordinate(0.0, 0.5), Coordinate(1.0, 0.0)])
-    assert poly.bounding_vertices() == [
+    assert poly.bounding_edges() == [
         (Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)),
         (Coordinate(1.0, 1.0), Coordinate(0.0, 0.5)),
         (Coordinate(0.0, 0.5), Coordinate(1.0, 0.0)),
@@ -338,7 +338,7 @@ def test_geoshape_strip_dt():
     assert point.strip_dt() == expected
 
 
-def test_geoshape_vertices():
+def test_geoshape_edges():
     polygon = GeoPolygon(
         [
             Coordinate(1.0, 0.0), Coordinate(1.0, 1.0),
@@ -351,7 +351,7 @@ def test_geoshape_vertices():
             ])
         ]
     )
-    assert polygon.vertices() == [
+    assert polygon.edges() == [
         [
             (Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)),
             (Coordinate(1.0, 1.0), Coordinate(0.0, 0.5)),
@@ -1510,9 +1510,9 @@ def test_geopoint_bounding_coords(geopoint):
         _ = geopoint.bounding_coords()
 
 
-def test_geopoint_bounding_vertices():
+def test_geopoint_bounding_edges():
     with pytest.raises(NotImplementedError):
-        _ = GeoPoint(Coordinate(0., 0.)).bounding_vertices()
+        _ = GeoPoint(Coordinate(0., 0.)).bounding_edges()
 
 
 def test_geopoint_copy():
@@ -1638,6 +1638,6 @@ def test_geopoint_to_polygon(geopoint):
         geopoint.to_polygon()
 
 
-def test_geopoint_vertices():
+def test_geopoint_edges():
     with pytest.raises(NotImplementedError):
-        _ = GeoPoint(Coordinate(0., 0.)).vertices()
+        _ = GeoPoint(Coordinate(0., 0.)).edges()

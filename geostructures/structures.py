@@ -21,13 +21,13 @@ import numpy as np
 from geostructures import LOGGER
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
-    ensure_vertex_bounds,
+    ensure_edge_bounds,
     inverse_haversine_radians,
     inverse_haversine_degrees,
     haversine_distance_meters,
     bearing_degrees,
     find_line_intersection,
-    do_vertices_intersect
+    do_edges_intersect
 )
 from geostructures.utils.functions import round_half_up
 from geostructures.utils.mixins import DefaultZuluMixin, WarnOnceMixin
@@ -245,16 +245,16 @@ class GeoShape(DefaultZuluMixin):
             A list of coordinates, representing the boundary.
         """
 
-    def bounding_vertices(self, **kwargs) -> List[Tuple[Coordinate, Coordinate]]:
+    def bounding_edges(self, **kwargs) -> List[Tuple[Coordinate, Coordinate]]:
         """
-        Returns a list of vertices, defined as a 2-tuple (start and end) of coordinates, that
+        Returns a list of edges, defined as a 2-tuple (start and end) of coordinates, that
         represent the polygon's boundary.
 
         Using discrete coordinates to represent a continuous curve implies some level of data
         loss. You can minimize this loss by specifying k, which represents the number of
         points drawn.
 
-        Does not include information about holes - see the vertices method.
+        Does not include information about holes - see the edges method.
 
         Keyword Args:
             k: (int)
@@ -262,7 +262,7 @@ class GeoShape(DefaultZuluMixin):
                 points generated along the curve
 
         Returns:
-            A list of 2-tuples representing the vertices
+            A list of 2-tuples representing the edges
         """
         bounding_coords = self.bounding_coords(**kwargs)
         return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
@@ -344,18 +344,18 @@ class GeoShape(DefaultZuluMixin):
             bool
         """
 
-        s_vertices = self.vertices(**kwargs)
-        o_vertices = shape.vertices(**kwargs)
-        if do_vertices_intersect(
-            [x for vertex_ring in s_vertices for x in vertex_ring],
-            [x for vertex_ring in o_vertices for x in vertex_ring]
+        s_edges = self.edges(**kwargs)
+        o_edges = shape.edges(**kwargs)
+        if do_edges_intersect(
+            [x for edge_ring in s_edges for x in edge_ring],
+            [x for edge_ring in o_edges for x in edge_ring]
         ):
-            # At least one vertex pair intersects - cannot be contained
+            # At least one edge pair intersects - cannot be contained
             return False
 
-        # No vertices intersect, so make sure one point along the boundary is
+        # No edges intersect, so make sure one point along the boundary is
         # contained
-        return o_vertices[0][0][0] in self
+        return o_edges[0][0][0] in self
 
     def contains_time(self, dt: Union[datetime, TimeInterval]) -> bool:
         """
@@ -424,19 +424,19 @@ class GeoShape(DefaultZuluMixin):
         if isinstance(shape, GeoPoint):
             return shape in self
 
-        s_vertices = self.vertices(**kwargs)
-        o_vertices = shape.vertices(**kwargs)
-        if do_vertices_intersect(
-            [x for vertex_ring in s_vertices for x in vertex_ring],
-            [x for vertex_ring in o_vertices for x in vertex_ring]
+        s_edges = self.edges(**kwargs)
+        o_edges = shape.edges(**kwargs)
+        if do_edges_intersect(
+            [x for edge_ring in s_edges for x in edge_ring],
+            [x for edge_ring in o_edges for x in edge_ring]
         ):
-            # At least one vertex pair intersects
+            # At least one edge pair intersects
             return True
 
-        # If no vertices intersect, one shape could still contain the other
+        # If no edges intersect, one shape could still contain the other
         # which counts as intersection. Have to use a point from the boundary
         # because the centroid may fall in a hole
-        return o_vertices[0][0][0] in self or s_vertices[0][0][0] in shape
+        return o_edges[0][0][0] in self or s_edges[0][0][0] in shape
 
     def intersects_time(self, dt: Union[datetime, TimeInterval]) -> bool:
         """
@@ -576,19 +576,19 @@ class GeoShape(DefaultZuluMixin):
         )
         return f'POLYGON({bbox_str})'
 
-    def vertices(self, **kwargs) -> List[List[Tuple[Coordinate, Coordinate]]]:
+    def edges(self, **kwargs) -> List[List[Tuple[Coordinate, Coordinate]]]:
         """
-        Returns lists of vertices, defined as a 2-tuple (start and end) of coordinates, for the
+        Returns lists of edges, defined as a 2-tuple (start and end) of coordinates, for the
         outer boundary as well as holes in the polygon.
 
-        Operates similar to the `bounding_vertices` method but includes information about holes
+        Operates similar to the `bounding_edges` method but includes information about holes
         in the shape.
 
         Using discrete coordinates to represent a continuous curve implies some level of data
         loss. You can minimize this loss by specifying k, which represents the number of
         points drawn.
 
-        Does not include information about holes - see the vertices method.
+        Does not include information about holes - see the edges method.
 
         Keyword Args:
             k: (int)
@@ -596,7 +596,7 @@ class GeoShape(DefaultZuluMixin):
                 points generated along the curve
 
         Returns:
-            Lists of 2-tuples representing vertices. The first list will always represent
+            Lists of 2-tuples representing edges. The first list will always represent
             the shape's boundary, and any following lists will represent holes.
         """
         rings = self.linear_rings(**kwargs)
@@ -752,8 +752,8 @@ class GeoPolygon(GeoShape, WarnOnceMixin):
         """
         test_line = (coord, Coordinate(180, float(coord.latitude)))
         _intersections = 0
-        for vertex in zip(polygon, [*polygon[1:], polygon[0]]):
-            intersection = find_line_intersection(test_line, vertex)
+        for edge in zip(polygon, [*polygon[1:], polygon[0]]):
+            intersection = find_line_intersection(test_line, edge)
             if not intersection:
                 continue
 
@@ -783,7 +783,7 @@ class GeoPolygon(GeoShape, WarnOnceMixin):
         ans = sum(
             (y.longitude - x.longitude) * (y.latitude + x.latitude)
             for x, y in map(
-                lambda x: ensure_vertex_bounds(x[0], x[1]),
+                lambda x: ensure_edge_bounds(x[0], x[1]),
                 zip(bounds, [*bounds[1:], bounds[0]])
             )
         )
@@ -1552,7 +1552,7 @@ class GeoLineString(GeoShape):
     def bounding_coords(self, **_) -> List[Coordinate]:
         return self.coords
 
-    def bounding_vertices(self, **_) -> List[Tuple[Coordinate, Coordinate]]:
+    def bounding_edges(self, **_) -> List[Tuple[Coordinate, Coordinate]]:
         return list(zip(self.bounding_coords(), self.bounding_coords()[1:]))
 
     def circumscribing_circle(self) -> GeoCircle:
@@ -1721,8 +1721,8 @@ class GeoLineString(GeoShape):
         bbox_str = self._linear_ring_to_wkt(self.bounding_coords(**kwargs))
         return f'LINESTRING{bbox_str}'
 
-    def vertices(self, **_) -> List[List[Tuple[Coordinate, Coordinate]]]:
-        return [self.bounding_vertices()]
+    def edges(self, **_) -> List[List[Tuple[Coordinate, Coordinate]]]:
+        return [self.bounding_edges()]
 
 
 class GeoPoint(GeoShape):
@@ -1771,7 +1771,7 @@ class GeoPoint(GeoShape):
     def bounding_coords(self, **kwargs):
         raise NotImplementedError('Points are not bounded')
 
-    def bounding_vertices(self, **kwargs):
+    def bounding_edges(self, **kwargs):
         raise NotImplementedError('Points are not bounded')
 
     def circumscribing_circle(self):
@@ -1912,5 +1912,5 @@ class GeoPoint(GeoShape):
     def to_wkt(self, **_) -> str:
         return f'POINT({" ".join(self.center.to_str())})'
 
-    def vertices(self, **kwargs):
+    def edges(self, **kwargs):
         raise NotImplementedError('Points are not bounded')
