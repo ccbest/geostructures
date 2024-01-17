@@ -345,8 +345,20 @@ class GeoShape(DefaultZuluMixin):
             bool
         """
 
+        bbox_tested = False
+        if kwargs.get('k', 0) > 4:
+             if self.contains_shape(shape.circumscribing_rectangle()):
+                return True
+             else:
+                 bbox_tested = True
+
         s_edges = self.edges(**kwargs)
         o_edges = shape.edges(**kwargs)
+
+        if not bbox_tested and len(o_edges) > 4:
+            if self.contains_shape(shape.circumscribing_rectangle()):
+                return True
+        
         if do_edges_intersect(
             [x for edge_ring in s_edges for x in edge_ring],
             [x for edge_ring in o_edges for x in edge_ring]
