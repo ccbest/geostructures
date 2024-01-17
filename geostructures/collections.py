@@ -86,7 +86,7 @@ class ShapeCollection(DefaultZuluMixin):
         points += [y.to_float() for x in _lines for y in x.coords]
         points += [x.centroid.to_float() for x in _points]
         hull = spatial.ConvexHull(points)
-        return GeoPolygon([Coordinate(*points[x]) for x in [*hull.edges, hull.edges[0]]])
+        return GeoPolygon([Coordinate(*points[x]) for x in [*hull.vertices, hull.vertices[0]]])
 
     def filter_by_dt(self: _COL_TYPE, dt: Union[datetime, TimeInterval]) -> _COL_TYPE:
         """
