@@ -3,7 +3,7 @@ Module for geohash transformers
 """
 
 __all__ = [
-    'H3Hasher', 'Hasher', 'NiemeyerHasher', 'coord_to_niemeyer',
+    'H3Hasher', 'HasherBase', 'NiemeyerHasher',
     'niemeyer_to_geobox'
 ]
 
@@ -120,7 +120,7 @@ def _decode_niemeyer(geohash: str, base: int) -> Tuple[float, float, float, floa
     return lon, lat, lon_error, lat_error
 
 
-def coord_to_niemeyer(coordinate: Coordinate, length: int, base: int) -> str:
+def _coord_to_niemeyer(coordinate: Coordinate, length: int, base: int) -> str:
     """
     Find the geohash (of a specific base/length) in which a lat/lon point falls.
 
@@ -177,7 +177,7 @@ def coord_to_niemeyer(coordinate: Coordinate, length: int, base: int) -> str:
     return geohash
 
 
-def get_niemeyer_subhashes(geohash: str, base: int) -> Set[str]:
+def _get_niemeyer_subhashes(geohash: str, base: int) -> Set[str]:
     """
     Given a Niemeyer geohash and its base, return the subhashes.
 
@@ -223,7 +223,7 @@ def niemeyer_to_geobox(geohash: str, base: int) -> GeoBox:
     )
 
 
-class Hasher(abc.ABC):
+class HasherBase(abc.ABC):
 
     """
     Base class for all geohasher objects.
@@ -265,7 +265,7 @@ class Hasher(abc.ABC):
         """
 
 
-class H3Hasher(Hasher):
+class H3Hasher(HasherBase):
     """
     Converts geoshapes or collections of geoshapes into H3 geohashes.
 
@@ -457,7 +457,7 @@ class H3Hasher(Hasher):
         return self._hash_polygon(shape, resolution)
 
 
-class NiemeyerHasher(Hasher):
+class NiemeyerHasher(HasherBase):
 
     """
     Converts geoshapes or collections of geoshapes into Niemeyer geohashes.
@@ -494,14 +494,14 @@ class NiemeyerHasher(Hasher):
 
         return [
             # from directly above, then clockwise
-            coord_to_niemeyer(Coordinate(lon, lat + lat_err * 2), length, base),
-            coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat + lat_err * 2), length, base),
-            coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat), length, base),
-            coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat - lat_err * 2), length, base),
-            coord_to_niemeyer(Coordinate(lon, lat - lat_err * 2), length, base),
-            coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat - lat_err * 2), length, base),
-            coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat), length, base),
-            coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat + lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon, lat + lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat + lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat), length, base),
+            _coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat - lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon, lat - lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat - lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat), length, base),
+            _coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat + lat_err * 2), length, base),
         ]
 
     def _hash_linestring(
@@ -519,7 +519,7 @@ class NiemeyerHasher(Hasher):
             A set of geohashes
         """
         valid, checked, queue = set(), set(), set()
-        start = coord_to_niemeyer(linestring.coords[0], self.length, self.base)
+        start = _coord_to_niemeyer(linestring.coords[0], self.length, self.base)
         queue.add(start)
 
         while queue:
@@ -549,7 +549,7 @@ class NiemeyerHasher(Hasher):
         Returns:
             A set of geohashes
         """
-        return {coord_to_niemeyer(point, self.length, self.base)}
+        return {_coord_to_niemeyer(point, self.length, self.base)}
 
     def _hash_polygon(
         self,
@@ -565,7 +565,7 @@ class NiemeyerHasher(Hasher):
             (Set[str]) the geohashes that cover the polygon
         """
         valid, checked, queue = set(), set(), set()
-        start = coord_to_niemeyer(polygon.bounding_coords()[0], self.length, self.base)
+        start = _coord_to_niemeyer(polygon.bounding_coords()[0], self.length, self.base)
         queue.add(start)
 
         while queue:
