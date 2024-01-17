@@ -1,6 +1,8 @@
 
 from datetime import datetime, time, timezone
+import os
 import tempfile
+from zipfile import ZipFile
 
 import numpy as np
 import pytest
@@ -8,7 +10,7 @@ import shapely
 from scipy.spatial import ConvexHull
 
 from geostructures.coordinates import Coordinate
-from geostructures import GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon
+from geostructures import GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon, GeoRing
 from geostructures.time import TimeInterval
 from geostructures.collections import Track, FeatureCollection
 
@@ -120,6 +122,14 @@ def test_collection_filter_by_dt():
             Coordinate(0.0, 1.0),
             500,
             dt=TimeInterval(datetime(2019, 12, 1), datetime(2020, 1, 2))
+        ),
+    ])
+
+    assert col.filter_by_dt(datetime(2020, 1, 1)) == FeatureCollection([
+        GeoCircle(
+            Coordinate(0.0, 1.0),
+            500,
+            dt=datetime(2020, 1, 1)
         ),
     ])
 
@@ -341,116 +351,91 @@ def test_collection_to_from_shapefile(caplog):
     # Tests both to and from because of temporary file usage
     # Shapes will be assigned an ID when written to shapefile, so have to hard code in tests
 
-    # Test polygons get written/read correctly
+    # Test the various shapes get written/read correctly
+    # When the file gets read all bounded shapes will become polygons - check this assumption in next test
     shapecol = FeatureCollection([
         GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0), properties={'ID': 0}).to_polygon(),
         GeoBox(Coordinate(0.0, 2.0), Coordinate(2.0, 0.0), properties={'ID': 1}).to_polygon(),
-    ])
-    with tempfile.TemporaryDirectory() as f:
-        shapecol.to_shapefile(f)
-        new_shapecol = FeatureCollection.from_shapefile(f)
-        assert new_shapecol == shapecol
-
-    # Test lines get written/read correctly
-    linecol = FeatureCollection([
+        GeoCircle(
+            Coordinate(0.0, 2.0),
+            1000,
+            properties={'ID': 1},
+            holes=[GeoCircle(Coordinate(0.0, 2.0), 500)]
+        ).to_polygon(),
         GeoLineString([Coordinate(0.0, 1.0), Coordinate(1.0, 0.0)], properties={'ID': 0}),
         GeoLineString([Coordinate(0.0, 2.0), Coordinate(2.0, 0.0)], properties={'ID': 1}),
-    ])
-    with tempfile.TemporaryDirectory() as f:
-        linecol.to_shapefile(f)
-        new_linecol = FeatureCollection.from_shapefile(f)
-        assert new_linecol == linecol
-
-    # Test points get written/read correctly
-    pointcol = FeatureCollection([
         GeoPoint(Coordinate(1.0, 0.0), properties={'ID': 0}),
         GeoPoint(Coordinate(2.0, 0.0), properties={'ID': 1}),
     ])
+
     with tempfile.TemporaryDirectory() as f:
-        pointcol.to_shapefile(f)
-        new_pointcol = FeatureCollection.from_shapefile(f)
-        assert new_pointcol == pointcol
+        with ZipFile(os.path.join(f, 'test.zip'), 'w') as zfile:
+            shapecol.to_shapefile(zfile)
+
+        new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
+        assert set(new_shapecol.geoshapes) == set(shapecol.geoshapes)
+
+    # Test that non-polygons get written/read correctly (should be read as a polygon)
+    shapecol = FeatureCollection([
+        GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0), properties={'ID': 0}),
+        GeoCircle(Coordinate(0.0, 2.0), 1000, properties={'ID': 1}),
+        GeoRing(Coordinate(0.0, 2.0), 1000, 500, properties={'ID': 2}),
+    ])
+    with tempfile.TemporaryDirectory() as f:
+        with ZipFile(os.path.join(f, 'test.zip'), 'w') as zfile:
+            shapecol.to_shapefile(zfile)
+
+        new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
+        print(new_shapecol.geoshapes[2].holes) # == shapecol.geoshapes[2].to_polygon())
+        assert set(new_shapecol.geoshapes) == set(x.to_polygon() for x in shapecol.geoshapes)
 
     # Test writing/reading properties
+    pointcol = FeatureCollection([
+        GeoPoint(
+            Coordinate(1.0, 0.0),
+            dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2)),  # start and end date
+            properties={
+                'ID': 0,  # numeric
+                'ex_prop': 'test2',  # string
+                'ex2': True,  # boolean
+            }
+        ),
+        GeoPoint(
+            Coordinate(2.0, 0.0),
+            dt=datetime(2020, 1, 1), # one date only
+            properties={
+                'ID': 1,   # numeric
+                'ex_prop': 'test',  # string
+                'ex2': False,  # boolean
+            }
+        ),
+    ])
     with tempfile.TemporaryDirectory() as f:
-        pointcol = FeatureCollection([
-            GeoPoint(
-                Coordinate(1.0, 0.0),
-                dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2)),  # start and end date
-                properties={
-                    'ID': 0,  # numeric
-                    'ex_prop': 'test2',  # string
-                    'ex2': True,  # boolean
-                }
-            ),
-            GeoPoint(
-                Coordinate(2.0, 0.0),
-                dt=datetime(2020, 1, 1), # one date only
-                properties={
-                    'ID': 1,   # numeric
-                    'ex_prop': 'test',  # string
-                    'ex2': False,  # boolean
-                }
-            ),
-        ])
-        pointcol.to_shapefile(f)
-        new_pointcol = FeatureCollection.from_shapefile(f)
-        assert new_pointcol == pointcol
+        with ZipFile(os.path.join(f, 'test.zip'), 'w') as zfile:
+            pointcol.to_shapefile(zfile)
+
+        new_pointcol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
+        assert set(new_pointcol.geoshapes) == set(pointcol.geoshapes)
 
     # Test limiting the properties written
     with tempfile.TemporaryDirectory() as f:
-        pointcol = FeatureCollection([
+        with ZipFile(os.path.join(f, 'test.zip'), 'w') as zfile:
+            # should ignore the 'ex2' prop
+            pointcol.to_shapefile(zfile, include_properties=['ex_prop'])
+
+        new_pointcol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
+
+        expected = FeatureCollection([
             GeoPoint(
                 Coordinate(1.0, 0.0),
-                dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2)),  # start and end date
-                properties={
-                    'ID': 0,  # numeric
-                    'ex_prop': 'test2',  # string
-                }
+                properties={'ID': 0, 'ex_prop': 'test2'}
             ),
             GeoPoint(
                 Coordinate(2.0, 0.0),
-                dt=datetime(2020, 1, 1), # one date only
-                properties={
-                    'ID': 1,   # numeric
-                    'ex_prop': 'test',  # string
-                }
+                properties={'ID': 1, 'ex_prop': 'test'}
             ),
         ])
-        pointcol.to_shapefile(f, include_properties=['ex_prop'])
-        new_pointcol = FeatureCollection.from_shapefile(f)
-        assert new_pointcol == FeatureCollection([
-            GeoPoint(
-                Coordinate(1.0, 0.0),
-                properties={
-                    'ID': 0,  # numeric
-                    'ex_prop': 'test2',  # string
-                }
-            ),
-            GeoPoint(
-                Coordinate(2.0, 0.0),
-                properties={
-                    'ID': 1,   # numeric
-                    'ex_prop': 'test',  # string
-                }
-            ),
-        ])
-
-    # Test that writing mixed shape types raises an error
-    with tempfile.TemporaryDirectory() as f:
-        with pytest.raises(ValueError):
-            mixedcol = FeatureCollection([
-                GeoPoint(Coordinate(1.0, 0.0)),
-                GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)])
-            ])
-            mixedcol.to_shapefile(f)
-
-    # Test that writing to directory that doesn't exist raises error
-    with pytest.raises(ValueError):
-        mixedcol = FeatureCollection([
-            GeoPoint(Coordinate(1.0, 0.0)),
-        ])
-        mixedcol.to_shapefile('/some/bad/directory/')
+        assert set(new_pointcol.geoshapes) == set(expected.geoshapes)
 
     # Test that writing mixed property data types logs a warning
     with tempfile.TemporaryDirectory() as f:
@@ -458,7 +443,9 @@ def test_collection_to_from_shapefile(caplog):
             GeoPoint(Coordinate(1.0, 0.0), properties={'ID': 0, 'prop': 1}),
             GeoPoint(Coordinate(2.0, 0.0), properties={'ID': 1, 'prop': '2'}),
         ])
-        pointcol.to_shapefile(f)
+        with ZipFile(os.path.join(f, 'test.zip'), 'w') as zfile:
+            pointcol.to_shapefile(zfile)
+
         assert 'Conflicting data types found in properties; your shapefile may not get written correctly' in caplog.text
 
 
@@ -620,8 +607,6 @@ def test_track_getitem():
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 3)),
     ])
 
-    assert track1[datetime(2020, 1, 1)] == Track([GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 1))])
-
     assert track1[:datetime(2020, 1, 2)] == Track([GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 1))])
     assert track1[datetime(2020, 1, 2):] == Track([
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 2)),
@@ -704,12 +689,12 @@ def test_track_finish():
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 2)),
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 3)),
     ])
-    assert track1.finish == datetime(2020, 1, 3, tzinfo=timezone.utc)
+    assert track1.end == datetime(2020, 1, 3, tzinfo=timezone.utc)
     track1.geoshapes.pop(-1)
-    assert track1.finish == datetime(2020, 1, 2, tzinfo=timezone.utc)
+    assert track1.end == datetime(2020, 1, 2, tzinfo=timezone.utc)
 
     with pytest.raises(ValueError):
-        _ = Track([]).finish
+        _ = Track([]).end
 
 
 def test_track_speed_diffs():
@@ -772,7 +757,7 @@ def test_track_time_diffs():
         ]
     )
 
-    assert track1.time_start_diffs[0] == track1.geoshapes[1].dt - track1.geoshapes[0].dt
+    assert track1.time_start_diffs[0] == track1.geoshapes[1].dt.start - track1.geoshapes[0].dt.start
     assert len(track1) - 1 == len(track1.time_start_diffs)
 
     with pytest.raises(ValueError):

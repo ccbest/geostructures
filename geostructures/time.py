@@ -7,10 +7,10 @@ __all__ = ['TimeInterval']
 from datetime import datetime, timedelta
 from typing import Optional, Union
 
-from geostructures.utils.mixins import LoggingMixin, DefaultZuluMixin
+from geostructures.utils.mixins import DefaultZuluMixin
 
 
-class TimeInterval(LoggingMixin, DefaultZuluMixin):
+class TimeInterval(DefaultZuluMixin):
     """A class representing a right-open time interval"""
 
     def __init__(
@@ -22,7 +22,7 @@ class TimeInterval(LoggingMixin, DefaultZuluMixin):
         super().__init__()
         end = end if isinstance(end, datetime) else start + end
 
-        if end <= start:
+        if end < start:
             raise ValueError(f'end date {end} must not be less than start date {start}')
 
         self.start, self.end = self._default_to_zulu(start), self._default_to_zulu(end)
@@ -41,7 +41,10 @@ class TimeInterval(LoggingMixin, DefaultZuluMixin):
     def __contains__(self, time: Union[datetime, TimeInterval]) -> bool:
         """Returns true if datetime is within range"""
         if isinstance(time, datetime):
-            return self.start <= self._default_to_zulu(time) < self.end
+            time = self._default_to_zulu(time)
+            if self.is_instant:
+                return self.start == time
+            return self.start <= time < self.end
 
         if isinstance(time, TimeInterval):
             return self.issuperset(time)
@@ -55,6 +58,10 @@ class TimeInterval(LoggingMixin, DefaultZuluMixin):
     def elapsed(self):
         """Returns elapsed time (as a timedelta) for the interval"""
         return self.end - self.start
+
+    @property
+    def is_instant(self):
+        return self.start == self.end
 
     def copy(self):
         return TimeInterval(self.start, self.end)
@@ -74,6 +81,8 @@ class TimeInterval(LoggingMixin, DefaultZuluMixin):
 
     def isdisjoint(self, other: TimeInterval) -> bool:
         """Returns True if time intervals do not overlap."""
+        if self.is_instant or other.is_instant:
+            return self.end < other.start or self.start > other.end
         return self.end <= other.start or self.start >= other.end
 
     def issubset(self, other: TimeInterval) -> bool:

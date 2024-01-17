@@ -4,22 +4,22 @@ import pytest
 from geostructures import Coordinate, GeoBox, GeoCircle, GeoLineString, GeoPoint
 from geostructures.collections import FeatureCollection
 from geostructures.geohash import (
-    coord_to_niemeyer, get_niemeyer_subhashes, niemeyer_to_geobox,
+    _coord_to_niemeyer, _get_niemeyer_subhashes, niemeyer_to_geobox,
     H3Hasher, NiemeyerHasher
 )
 
 
 def test_coord_to_niemeyer():
     coord = Coordinate(0.1, -0.1)
-    assert coord_to_niemeyer(coord, 8, 16) == '95555659'
+    assert _coord_to_niemeyer(coord, 8, 16) == '95555659'
 
     with pytest.raises(ValueError):
-        _ = coord_to_niemeyer(coord, 8, 42)
+        _ = _coord_to_niemeyer(coord, 8, 42)
 
 
 def test_get_niemeyer_subhashes():
     geohash = '95555659'
-    assert get_niemeyer_subhashes(geohash, 16) == {
+    assert _get_niemeyer_subhashes(geohash, 16) == {
         '955556590', '955556591', '955556592', '955556593', '955556594',
         '955556595', '955556596', '955556597', '955556598', '955556599',
         '95555659a', '95555659b', '95555659c', '95555659d', '95555659e',
@@ -27,7 +27,7 @@ def test_get_niemeyer_subhashes():
     }
 
     with pytest.raises(ValueError):
-        get_niemeyer_subhashes(geohash, 42)
+        _get_niemeyer_subhashes(geohash, 42)
 
 
 def test_niemeyer_to_geobox():

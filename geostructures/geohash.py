@@ -2,7 +2,10 @@
 Module for geohash transformers
 """
 
-__all__ = ['H3Hasher', 'Hasher']
+__all__ = [
+    'H3Hasher', 'HasherBase', 'NiemeyerHasher',
+    'niemeyer_to_geobox'
+]
 
 import abc
 from collections import defaultdict, Counter
@@ -117,7 +120,7 @@ def _decode_niemeyer(geohash: str, base: int) -> Tuple[float, float, float, floa
     return lon, lat, lon_error, lat_error
 
 
-def coord_to_niemeyer(coordinate: Coordinate, length: int, base: int) -> str:
+def _coord_to_niemeyer(coordinate: Coordinate, length: int, base: int) -> str:
     """
     Find the geohash (of a specific base/length) in which a lat/lon point falls.
 
@@ -174,7 +177,7 @@ def coord_to_niemeyer(coordinate: Coordinate, length: int, base: int) -> str:
     return geohash
 
 
-def get_niemeyer_subhashes(geohash: str, base: int) -> Set[str]:
+def _get_niemeyer_subhashes(geohash: str, base: int) -> Set[str]:
     """
     Given a Niemeyer geohash and its base, return the subhashes.
 
@@ -220,7 +223,7 @@ def niemeyer_to_geobox(geohash: str, base: int) -> GeoBox:
     )
 
 
-class Hasher(abc.ABC):
+class HasherBase(abc.ABC):
 
     """
     Base class for all geohasher objects.
@@ -262,7 +265,7 @@ class Hasher(abc.ABC):
         """
 
 
-class H3Hasher(Hasher):
+class H3Hasher(HasherBase):
     """
     Converts geoshapes or collections of geoshapes into H3 geohashes.
 
@@ -309,7 +312,7 @@ class H3Hasher(Hasher):
         Returns all geohashes that intersect a linestring.
 
         Because H3 only returns hexes between hex centroids, we create a 1-ring buffer around
-        H3's line and test each hex to make sure it intersects a given vertex of the
+        H3's line and test each hex to make sure it intersects a given element of the
         linestring.
 
         Args:
@@ -325,11 +328,11 @@ class H3Hasher(Hasher):
         import h3
 
         _hexes = set()
-        for vertex in zip(linestring.bounding_coords(), linestring.bounding_coords()[1:]):
+        for edge in zip(linestring.bounding_coords(), linestring.bounding_coords()[1:]):
             # Get h3's straight line hexes
             line_hashes = h3.h3_line(
-                h3.geo_to_h3(vertex[0].latitude, vertex[0].longitude, resolution),
-                h3.geo_to_h3(vertex[1].latitude, vertex[1].longitude, resolution)
+                h3.geo_to_h3(edge[0].latitude, edge[0].longitude, resolution),
+                h3.geo_to_h3(edge[1].latitude, edge[1].longitude, resolution)
             )
             # Add single ring buffer
             all_hexes = set(
@@ -341,7 +344,7 @@ class H3Hasher(Hasher):
             for _hex in all_hexes:
                 bounds = [Coordinate(y, x) for x, y in h3.h3_to_geo_boundary(_hex)]
                 for hex_edge in zip(bounds, [*bounds[1:], bounds[0]]):
-                    if find_line_intersection(vertex, hex_edge):
+                    if find_line_intersection(edge, hex_edge):
                         _hexes.add(_hex)
                         break
 
@@ -454,7 +457,7 @@ class H3Hasher(Hasher):
         return self._hash_polygon(shape, resolution)
 
 
-class NiemeyerHasher(Hasher):
+class NiemeyerHasher(HasherBase):
 
     """
     Converts geoshapes or collections of geoshapes into Niemeyer geohashes.
@@ -491,14 +494,14 @@ class NiemeyerHasher(Hasher):
 
         return [
             # from directly above, then clockwise
-            coord_to_niemeyer(Coordinate(lon, lat + lat_err * 2), length, base),
-            coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat + lat_err * 2), length, base),
-            coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat), length, base),
-            coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat - lat_err * 2), length, base),
-            coord_to_niemeyer(Coordinate(lon, lat - lat_err * 2), length, base),
-            coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat - lat_err * 2), length, base),
-            coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat), length, base),
-            coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat + lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon, lat + lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat + lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat), length, base),
+            _coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat - lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon, lat - lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat - lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat), length, base),
+            _coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat + lat_err * 2), length, base),
         ]
 
     def _hash_linestring(
@@ -516,7 +519,7 @@ class NiemeyerHasher(Hasher):
             A set of geohashes
         """
         valid, checked, queue = set(), set(), set()
-        start = coord_to_niemeyer(linestring.coords[0], self.length, self.base)
+        start = _coord_to_niemeyer(linestring.coords[0], self.length, self.base)
         queue.add(start)
 
         while queue:
@@ -526,7 +529,7 @@ class NiemeyerHasher(Hasher):
                     continue
 
                 checked.add(near_gh)
-                if niemeyer_to_geobox(near_gh, self.base).intersects(linestring):
+                if niemeyer_to_geobox(near_gh, self.base).intersects_shape(linestring):
                     valid.add(near_gh)
                     queue.add(near_gh)
 
@@ -546,7 +549,7 @@ class NiemeyerHasher(Hasher):
         Returns:
             A set of geohashes
         """
-        return {coord_to_niemeyer(point, self.length, self.base)}
+        return {_coord_to_niemeyer(point, self.length, self.base)}
 
     def _hash_polygon(
         self,
@@ -562,7 +565,7 @@ class NiemeyerHasher(Hasher):
             (Set[str]) the geohashes that cover the polygon
         """
         valid, checked, queue = set(), set(), set()
-        start = coord_to_niemeyer(polygon.bounding_coords()[0], self.length, self.base)
+        start = _coord_to_niemeyer(polygon.bounding_coords()[0], self.length, self.base)
         queue.add(start)
 
         while queue:
@@ -572,7 +575,7 @@ class NiemeyerHasher(Hasher):
                     continue
 
                 checked.add(near_gh)
-                if niemeyer_to_geobox(near_gh, self.base).intersects(polygon):
+                if niemeyer_to_geobox(near_gh, self.base).intersects_shape(polygon):
                     valid.add(near_gh)
                     queue.add(near_gh)
 
