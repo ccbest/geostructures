@@ -7,6 +7,7 @@ from geostructures.structures import (
     GeoBox, GeoCircle, GeoEllipse, GeoLineString, GeoPoint, GeoPolygon,
     GeoRing
 )
+from geostructures.collections import FeatureCollection, Track
 from geostructures.utils.conditional_imports import ConditionalPackageInterceptor
 
 
@@ -25,6 +26,7 @@ sys.meta_path.append(ConditionalPackageInterceptor)  # type: ignore
 
 __all__ = [
     'Coordinate',
+    'FeatureCollection',
     'GeoBox',
     'GeoCircle',
     'GeoEllipse',
@@ -32,5 +34,6 @@ __all__ = [
     'GeoPoint',
     'GeoPolygon',
     'GeoRing',
+    'Track',
     'LOGGER',
 ]
