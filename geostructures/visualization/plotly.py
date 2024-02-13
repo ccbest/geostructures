@@ -163,8 +163,11 @@ def _get_zoom(lats: List[float], lons: List[float]) -> float:
     Determines the appropriate zoom level for a collection of geoshapes
 
     Args:
-        collection:
-            A FeatureCollection
+        lats:
+            all latitudes being drawn
+
+        lons:
+            all longitudes being drawn
 
     Returns:
         float
@@ -177,7 +180,7 @@ def _get_zoom(lats: List[float], lons: List[float]) -> float:
 
 
 def draw_collection(
-    collection: FeatureCollection,
+    collection: ShapeCollection,
     hover_data: Optional[List] = None,
     opacity: Optional[float] = None,
     color: Optional[str] = None,
