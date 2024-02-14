@@ -9,7 +9,7 @@ __all__ = [
 
 import abc
 from collections import defaultdict, Counter
-from typing import Dict, List, Optional, Sequence, Set, Tuple, TypedDict
+from typing import Dict, List, Optional, Sequence, Set, Tuple, TypedDict, Any
 
 from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint
 from geostructures.structures import GeoShape
@@ -379,10 +379,11 @@ class H3Hasher(HasherBase):
             self,
             collection: ShapeCollection,
             **kwargs
-    ) -> Dict[str, float]:
+    ) -> Dict[str, Any]:
         """
-        Hashes a collection of geoshapes and counts the number
-        of times each hash appears.
+        Hash a geostructures FeatureCollection. Returns a dictionary of hashes with 
+        values equal to the output of an aggregation function over the shapes that 
+        intersect each hash (by default, the number of shapes).
 
         Args:
             collection:
@@ -391,6 +392,8 @@ class H3Hasher(HasherBase):
         Keyword Args:
             resolution:
                 The H3 resolution to apply
+            agg_fn:
+                A function that accepts a list of geoshapes
 
         Returns:
             A dictionary of H3 geohashes mapped to their corresponding
@@ -400,14 +403,16 @@ class H3Hasher(HasherBase):
         if not resolution:
             raise ValueError('You must pass a H3 resolution.')
 
-        out_hexes: Dict[str, float] = defaultdict(lambda: 0)
+        agg_fn = kwargs.get('agg_fn', len)
+        hash_dict = {}
+        for shape in collection.geoshapes:
+            shape_hashes = self.hash_shape(shape, resolution=resolution)
+            for hash in shape_hashes:
+                if hash not in hash_dict.keys():
+                    hash_dict[hash] = []
+                hash_dict[hash] = hash_dict[hash] + shape
+        return {h: agg_fn(shape_list) for h, shape_list in hash_dict.items()}
 
-        for shape in collection:
-            _hexes = self.hash_shape(shape, resolution=resolution)
-            for _hex in _hexes:
-                out_hexes[_hex] += 1
-
-        return dict(out_hexes)
 
     def hash_coordinates(self, coordinates: Sequence[Coordinate], **kwargs):
         """
@@ -581,23 +586,37 @@ class NiemeyerHasher(HasherBase):
 
         return valid
 
-    def hash_collection(self, collection: ShapeCollection, **_):
+    def hash_collection(
+        self, 
+        collection: ShapeCollection, 
+        **kwargs
+    ) -> Dict[str, Any]:
         """
-        Hash a geostructures FeatureCollection. Returns a dictionary of hashes and
-        the corresponding number of shapes the hash has been observed in.
+        Hash a geostructures FeatureCollection. Returns a dictionary of hashes with 
+        values equal to the output of an aggregation function over the shapes that 
+        intersect each hash (by default, the number of shapes).
 
         Args:
             collection:
                 A geostructures FeatureCollection
 
+        Keyword Args:
+            agg_fn:
+                A function that accepts a list of geoshapes
+
         Returns:
             dict
         """
-        counter: Counter = Counter()
+        agg_fn = kwargs.get('agg_fn', len)
+        hash_dict = {}
         for shape in collection.geoshapes:
-            counter.update(self.hash_shape(shape))
+            shape_hashes = self.hash_shape(shape)
+            for hash in shape_hashes:
+                if hash not in hash_dict.keys():
+                    hash_dict[hash] = []
+                hash_dict[hash] = hash_dict[hash] + shape
+        return {h: agg_fn(shape_list) for h, shape_list in hash_dict.items()}
 
-        return dict(counter)
 
     def hash_coordinates(self, coordinates: Sequence[Coordinate]):
         """
