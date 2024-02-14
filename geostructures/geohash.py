@@ -410,7 +410,7 @@ class H3Hasher(HasherBase):
             for hash in shape_hashes:
                 if hash not in hash_dict.keys():
                     hash_dict[hash] = []
-                hash_dict[hash] = hash_dict[hash] + shape
+                hash_dict[hash] += [shape]
         return {h: agg_fn(shape_list) for h, shape_list in hash_dict.items()}
 
     def hash_coordinates(self, coordinates: Sequence[Coordinate], **kwargs):
@@ -614,7 +614,7 @@ class NiemeyerHasher(HasherBase):
             for hash in shape_hashes:
                 if hash not in hash_dict.keys():
                     hash_dict[hash] = []
-                hash_dict[hash] = hash_dict[hash] + shape
+                hash_dict[hash] += [shape]
         return {h: agg_fn(shape_list) for h, shape_list in hash_dict.items()}
 
     def hash_coordinates(self, coordinates: Sequence[Coordinate]):
