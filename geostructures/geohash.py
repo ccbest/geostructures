@@ -413,7 +413,6 @@ class H3Hasher(HasherBase):
                 hash_dict[hash] = hash_dict[hash] + shape
         return {h: agg_fn(shape_list) for h, shape_list in hash_dict.items()}
 
-
     def hash_coordinates(self, coordinates: Sequence[Coordinate], **kwargs):
         """
         Hashes a collection of coordinates and counts the number
@@ -616,7 +615,6 @@ class NiemeyerHasher(HasherBase):
                     hash_dict[hash] = []
                 hash_dict[hash] = hash_dict[hash] + shape
         return {h: agg_fn(shape_list) for h, shape_list in hash_dict.items()}
-
 
     def hash_coordinates(self, coordinates: Sequence[Coordinate]):
         """
