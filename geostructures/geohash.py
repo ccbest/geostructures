@@ -404,7 +404,7 @@ class H3Hasher(HasherBase):
             raise ValueError('You must pass a H3 resolution.')
 
         agg_fn = kwargs.get('agg_fn', len)
-        hash_dict = {}
+        hash_dict: Dict[str, List[GeoShape]] = {}
         for shape in collection.geoshapes:
             shape_hashes = self.hash_shape(shape, resolution=resolution)
             for hash in shape_hashes:
@@ -608,7 +608,7 @@ class NiemeyerHasher(HasherBase):
             aggregation function
         """
         agg_fn = kwargs.get('agg_fn', len)
-        hash_dict = {}
+        hash_dict: Dict[str, List[GeoShape]] = {}
         for shape in collection.geoshapes:
             shape_hashes = self.hash_shape(shape)
             for hash in shape_hashes:
