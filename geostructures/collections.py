@@ -231,17 +231,17 @@ class ShapeCollection(DefaultZuluMixin):
         for record in df.to_dict('records'):
             dt = _get_dt(record)
             props = {k: v for k, v in record.items() if k in prop_fields}
-            if record['geometry'].geom_type=='Point':
+            if record['geometry'].geom_type == 'Point':
                 shapes.append(GeoPoint.from_wkt(record['geometry'].wkt, dt, props))
                 continue
 
-            if record['geometry'].geom_type=='Linestring':
+            if record['geometry'].geom_type == 'Linestring':
                 shapes.append(
                     GeoLineString.from_wkt(record['geometry'].wkt, dt, props)
                 )
                 continue
 
-            if record['geometry'].geom_type=='Polygon':
+            if record['geometry'].geom_type == 'Polygon':
                 shapes.append(
                     GeoPolygon.from_wkt(record['geometry'].wkt, dt, props)
                 )
