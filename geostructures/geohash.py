@@ -8,7 +8,7 @@ __all__ = [
 ]
 
 import abc
-from collections import defaultdict, Counter
+from collections import Counter
 from typing import Dict, List, Optional, Sequence, Set, Tuple, TypedDict, Any
 
 from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint
