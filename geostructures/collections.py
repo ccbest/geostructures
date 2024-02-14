@@ -235,7 +235,7 @@ class ShapeCollection(DefaultZuluMixin):
                 shapes.append(GeoPoint.from_wkt(record['geometry'].wkt, dt, props))
                 continue
 
-            if record['geometry'].geom_type == 'Linestring':
+            if record['geometry'].geom_type == 'LineString':
                 shapes.append(
                     GeoLineString.from_wkt(record['geometry'].wkt, dt, props)
                 )
