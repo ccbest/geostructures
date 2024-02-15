@@ -1206,8 +1206,8 @@ class GeoEllipse(GeoShape):
         rot_rad = math.radians(self.rotation)
         cos_rot_sq = math.cos(rot_rad)**2
         sin_rot_sq = math.sin(rot_rad)**2
-        semi_major_sq = (self.major_axis * 0.5)**2
-        semi_minor_sq = (self.minor_axis * 0.5)**2
+        semi_major_sq = (self.major_axis)**2
+        semi_minor_sq = (self.minor_axis)**2
 
         dx = math.sqrt(semi_major_sq * sin_rot_sq + semi_minor_sq * cos_rot_sq)
         dy = math.sqrt(semi_major_sq * cos_rot_sq + semi_minor_sq * sin_rot_sq)
