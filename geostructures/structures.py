@@ -1203,7 +1203,7 @@ class GeoEllipse(GeoShape):
 
     @cached_property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-        rot_rad = math.radians(rot)
+        rot_rad = math.radians(self.rotation)
         cos_rot_sq = math.cos(rot_rad)**2
         sin_rot_sq = math.sin(rot_rad)**2
         semi_major_sq = (self.major_axis * 0.5)**2
