@@ -1,5 +1,6 @@
 
 import pytest
+from datetime import datetime
 
 from geostructures import Coordinate, GeoBox, GeoCircle, GeoLineString, GeoPoint
 from geostructures.collections import FeatureCollection
@@ -8,6 +9,7 @@ from geostructures.geohash import (
     H3Hasher, NiemeyerHasher
 )
 from geostructures.time import TimeInterval
+from geostructures.utils.agg_functions import *
 
 
 def test_coord_to_niemeyer():
@@ -130,7 +132,7 @@ def test_hash_collection_with_total_time():
     fcol = FeatureCollection([shape, shape2])
     hasher = H3Hasher(resolution=9)
 
-    assert hasher.hash_collection(fcol) == {
+    assert hasher.hash_collection(fcol, agg_fn=total_time) == {
         '89754e64d2fffff': 10800.0,
         '89754e64d2bffff': 3600.0,
         '89754e64983ffff': 3600.0,
@@ -155,7 +157,7 @@ def test_hash_collection_with_unique_entities():
     fcol = FeatureCollection([shape, shape2, shape3])
     hasher = H3Hasher(resolution=9)
 
-    assert hasher.hash_collection(fcol) == {
+    assert hasher.hash_collection(fcol, agg_fn=unique_entities) == {
         '89754e64d2fffff': 2,
         '89754e64d2bffff': 1,
         '89754e64983ffff': 1,
