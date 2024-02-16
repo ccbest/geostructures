@@ -7,6 +7,7 @@ from geostructures.geohash import (
     _coord_to_niemeyer, _get_niemeyer_subhashes, niemeyer_to_geobox,
     H3Hasher, NiemeyerHasher
 )
+from geostructures.time import TimeInterval
 
 
 def test_coord_to_niemeyer():
@@ -149,7 +150,7 @@ def test_hash_collection_with_unique_entities():
                       properties={'entity': 1})
     shape2 = GeoCircle(Coordinate(0.0, 0.0), 300,
                       properties={'entity': 2})
-    shape2 = GeoCircle(Coordinate(0.0, 0.0), 450,
+    shape3 = GeoCircle(Coordinate(0.0, 0.0), 450,
                       properties={'entity': 1})
     fcol = FeatureCollection([shape, shape2, shape3])
     hasher = H3Hasher(resolution=9)
