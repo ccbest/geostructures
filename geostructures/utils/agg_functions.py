@@ -13,6 +13,7 @@ def total_time(shapes: List[GeoShape]) -> float:
     return (sum([(shape.dt.end - shape.dt.start).total_seconds()
                  if shape.dt else 0 for shape in shapes]))
 
+
 def unique_entities(shapes: List[GeoShape]) -> float:
     """If each shape is attributed to an entity in the properties field, this counts the
     number of distinct entities that could have been in each hash."""
