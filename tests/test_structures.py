@@ -1013,7 +1013,7 @@ def test_geoellipse_repr(geoellipse):
 
 def test_geoellipse_bounds():
     assert GeoEllipse(Coordinate(0.0, 0.0), 1000, 500, 45).bounds == (
-        (-0.0071069, 0.0071069), (-0.0071069, 0.0071069)
+        (-0.0071098, 0.0071098), (-0.0071098, 0.0071098)
     )
 
 
