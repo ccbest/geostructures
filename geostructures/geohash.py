@@ -236,8 +236,8 @@ class HasherBase(abc.ABC):
         **kwargs
     ) -> Dict[str, Any]:
         """
-        Returns a dictionary of hashes with values equal to the output of an aggregation 
-        function over the shapes that intersect each hash (by default, the number of 
+        Returns a dictionary of hashes with values equal to the output of an aggregation
+        function over the shapes that intersect each hash (by default, the number of
         shapes).
 
         Args:
