@@ -1203,11 +1203,21 @@ class GeoEllipse(GeoShape):
 
     @cached_property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-        lons, lats = cast(
-            Tuple[List[float], List[float]],
-            zip(*[y.to_float() for y in self.bounding_coords()])
-        )
-        return (min(lons), max(lons)), (min(lats), max(lats))
+        rot_rad = math.radians(self.rotation)
+        cos_rot_sq = math.cos(rot_rad)**2
+        sin_rot_sq = math.sin(rot_rad)**2
+        semi_major_sq = (self.major_axis)**2
+        semi_minor_sq = (self.minor_axis)**2
+
+        dx = math.sqrt(semi_major_sq * sin_rot_sq + semi_minor_sq * cos_rot_sq)
+        dy = math.sqrt(semi_major_sq * cos_rot_sq + semi_minor_sq * sin_rot_sq)
+
+        _, max_lat = inverse_haversine_degrees(self.centroid, 0, dy).to_float()
+        max_lon, _ = inverse_haversine_degrees(self.centroid, 90, dx).to_float()
+        _, min_lat = inverse_haversine_degrees(self.centroid, 180, dy).to_float()
+        min_lon, _ = inverse_haversine_degrees(self.centroid, 270, dx).to_float()
+
+        return (min_lon, max_lon), (min_lat, max_lat)
 
     @property
     def centroid(self) -> Coordinate:
