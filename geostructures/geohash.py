@@ -8,8 +8,8 @@ __all__ = [
 ]
 
 import abc
-from collections import Counter
-from typing import Dict, List, Optional, Sequence, Set, Tuple, TypedDict, Any
+from collections import Counter, defaultdict
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, TypedDict
 
 from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint
 from geostructures.structures import GeoShape
@@ -234,14 +234,19 @@ class HasherBase(abc.ABC):
         self,
         collection: ShapeCollection,
         **kwargs
-    ) -> Dict[str, float]:
+    ) -> Dict[str, Any]:
         """
-        Returns a dictionary which maps each unique geohash observed over a collection
-        of geoshapes mapped to the number of shapes it's been observed in.
+        Returns a dictionary of hashes with values equal to the output of an aggregation 
+        function over the shapes that intersect each hash (by default, the number of 
+        shapes).
 
         Args:
             collection:
                 A collection (Track or FeatureCollection) from geostructures.collections
+
+        Keyword Args:
+            agg_fn:
+                A function that accepts a list of geoshapes
 
         Returns:
             dict
@@ -404,13 +409,11 @@ class H3Hasher(HasherBase):
             raise ValueError('You must pass a H3 resolution.')
 
         agg_fn = kwargs.get('agg_fn', len)
-        hash_dict: Dict[str, List[GeoShape]] = {}
+        hash_dict: Dict[str, List[GeoShape]] = defaultdict(list)
         for shape in collection.geoshapes:
             shape_hashes = self.hash_shape(shape, resolution=resolution)
             for hash in shape_hashes:
-                if hash not in hash_dict.keys():
-                    hash_dict[hash] = []
-                hash_dict[hash] += [shape]
+                hash_dict[hash].append(shape)
         return {h: agg_fn(shape_list) for h, shape_list in hash_dict.items()}
 
     def hash_coordinates(self, coordinates: Sequence[Coordinate], **kwargs):
@@ -608,13 +611,11 @@ class NiemeyerHasher(HasherBase):
             aggregation function
         """
         agg_fn = kwargs.get('agg_fn', len)
-        hash_dict: Dict[str, List[GeoShape]] = {}
+        hash_dict: Dict[str, List[GeoShape]] = defaultdict(list)
         for shape in collection.geoshapes:
             shape_hashes = self.hash_shape(shape)
             for hash in shape_hashes:
-                if hash not in hash_dict.keys():
-                    hash_dict[hash] = []
-                hash_dict[hash] += [shape]
+                hash_dict[hash].append(shape)
         return {h: agg_fn(shape_list) for h, shape_list in hash_dict.items()}
 
     def hash_coordinates(self, coordinates: Sequence[Coordinate]):
