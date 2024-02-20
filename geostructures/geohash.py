@@ -646,7 +646,7 @@ class NiemeyerHasher(HasherBase):
         agg_fn = kwargs.get('agg_fn', len)
         hash_dict: Dict[str, List[Coordinate]] = defaultdict(list)
         for coordinate in coordinates:
-            hash_dict[self.hash_shape(coordinate).pop()].append(coordinate)
+            hash_dict[self._hash_point(coordinate).pop()].append(coordinate)
         return {h: agg_fn(coord_list) for h, coord_list in hash_dict.items()}
 
     def hash_shape(self, shape: GeoShape, **_):
