@@ -283,6 +283,9 @@ class GeoShape(DefaultZuluMixin):
         inplace:
             Return a new object? Defaults to False.
         """
+        if not self.dt:
+            raise ValueError("GeoShape has no associated time information.")
+        
         if inplace:
             shp = self
         else:
