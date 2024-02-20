@@ -8,18 +8,19 @@ __all__ = [
     'GeoRing', 'GeoShape'
 ]
 
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 import copy
 from datetime import datetime
-from functools import cached_property, lru_cache
+from functools import cached_property
 import math
 import re
 import statistics
-from typing import cast, Any, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import cast, Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
 from geostructures import LOGGER
+from geostructures._base import BaseShape
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
     ensure_edge_bounds,
@@ -30,12 +31,10 @@ from geostructures.calc import (
     find_line_intersection,
     do_edges_intersect
 )
-from geostructures.utils.functions import round_half_up
-from geostructures.utils.mixins import DefaultZuluMixin, WarnOnceMixin
 from geostructures.time import TimeInterval
+from geostructures.utils.functions import round_half_up
+from geostructures.utils.mixins import WarnOnceMixin
 
-
-_GEOTIME_TYPE = Union[datetime, TimeInterval]
 
 _RE_COORD_STR = r'((?:\s?\-?\d+\.?\d*\s\-?\d+\.?\d*\s?\,?)+)'
 _RE_COORD = re.compile(_RE_COORD_STR)
@@ -44,7 +43,6 @@ _RE_POINT_WKT = re.compile(r'POINT\s?\((\s?\d+\.?\d*\s\d+\.?\d*\s?)\)')
 _RE_POLYGON_WKT = re.compile(r'POLYGON\s?\(' + _RE_COORD_GROUPS_STR + r'\)')
 _RE_LINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_COORD_GROUPS_STR + r'\s?')
 
-_SHAPE_TYPE = TypeVar('_SHAPE_TYPE', bound='GeoShape')
 
 
 def _get_dt_from_geojson_props(
@@ -83,48 +81,36 @@ def _parse_wkt_coord_group(group: str) -> List[Coordinate]:
         for coord in group.split(',') if coord
     ]
 
+# TODO
+_GEOTIME_TYPE = Union[datetime, TimeInterval]
 
-class GeoShape(DefaultZuluMixin):
-
-    """Abstract base class for all geoshapes"""
+class GeoShape(BaseShape, ABC):
 
     def __init__(
-            self,
-            holes: Optional[List['GeoShape']] = None,
-            dt: Optional[_GEOTIME_TYPE] = None,
-            properties: Optional[Dict] = None
+        self,
+        holes: Optional[List['GeoShape']] = None,
+        dt: Optional[_GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
     ):
-        super().__init__()
-        if isinstance(dt, datetime):
-            # Convert to a zero-second time interval
-            dt = self._default_to_zulu(dt)
-            self.dt: Optional[TimeInterval] = TimeInterval(dt, dt)
-        else:
-            self.dt = dt
+        super().__init__(dt, properties)
 
-        self._properties = properties or {}
-        self.to_shapely = lru_cache(maxsize=1)(self._to_shapely)
         self.holes = holes or []
         if any(x.holes for x in self.holes):
             raise ValueError('Holes cannot themselves contain holes.')
 
-    def __contains__(self, point: Union[Coordinate, 'GeoPoint']):
+    def __contains__(self, shape: Union[Coordinate, 'GeoShape']):
         """Test whether a coordinate or GeoPoint is contained within this geoshape"""
-        if isinstance(point, Coordinate):
-            return self.contains_coordinate(point)
+        if isinstance(shape, Coordinate):
+            return self._contains_coordinate(shape)
 
+        if isinstance(shape, GeoPoint):
+            return self._contains_coordinate(shape.centroid)
+
+        return self._contains_shape()
         if point.dt is None or self.dt is None:
             return self.contains_coordinate(point.centroid)
 
         return self.contains_coordinate(point.centroid) and self.contains_time(point.dt)
-
-    @abstractmethod
-    def __hash__(self) -> int:
-        """Create unique hash of this object"""
-
-    @abstractmethod
-    def __repr__(self):
-        """REPL representation of this object"""
 
     @cached_property
     def area(self):
@@ -138,51 +124,6 @@ class GeoShape(DefaultZuluMixin):
         geod = Geod(ellps="WGS84")
         area, _ = geod.geometry_area_perimeter(self.to_shapely())
         return area
-
-    @property
-    @abstractmethod
-    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-        """
-        The longitude and latitude min/max bounds of the shape.
-
-        Returns:
-            ( (min_longitude, max_longitude), (min_latitude, max_latitude) )
-        """
-
-    @property
-    @abstractmethod
-    def centroid(self):
-        """
-        The center of the shape.
-
-        Returns:
-            Coordinate
-        """
-
-    @property
-    def end(self) -> datetime:
-        """The end date/datetime, if present"""
-        if not self.dt:
-            raise ValueError("GeoShape has no associated time information.")
-
-        return self.dt.end
-
-    @property
-    def properties(self):
-        props = self._properties.copy()
-        if self.dt:
-            props['datetime_start'] = self.start
-            props['datetime_end'] = self.end
-
-        return props
-
-    @property
-    def start(self) -> datetime:
-        """The start date/datetime, if present"""
-        if not self.dt:
-            raise ValueError("GeoShape has no associated time information.")
-
-        return self.dt.start
 
     @cached_property
     def volume(self) -> float:
@@ -201,100 +142,9 @@ class GeoShape(DefaultZuluMixin):
 
         return self.area * self.dt.elapsed.total_seconds()
 
-    def _dt_to_json(self) -> Dict[str, str]:
-        """Safely convert time bounds to json"""
-        if not self.dt:
-            return {}
-
-        return {
-            'datetime_start': self.start.isoformat(),
-            'datetime_end': self.end.isoformat(),
-        }
-
-    @staticmethod
-    def _linear_ring_to_wkt(ring: List[Coordinate]) -> str:
+    def _contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
         """
-        Converts a list of coordinates (a linear ring, self-closing) into
-        a wkt string.
-
-        Args:
-            ring:
-                A list of Coordinates
-
-        Returns:
-            The wkt-formatted string,
-        """
-        return f'({",".join(" ".join(coord.to_str()) for coord in ring)})'
-
-    @abstractmethod
-    def bounding_coords(self, **kwargs) -> List[Coordinate]:
-        """
-        Produces a list of coordinates that define the polygon's boundary.
-
-        Using discrete coordinates to represent a continuous curve implies some level of data
-        loss. You can minimize this loss by specifying k, which represents the number of
-        points drawn.
-
-        Does not include information about holes - see the linear rings method.
-
-        Keyword Args:
-            k: (int)
-                For shapes with smooth curves, increasing k increases the number of
-                points generated along the curve
-
-        Returns:
-            A list of coordinates, representing the boundary.
-        """
-
-    def bounding_edges(self, **kwargs) -> List[Tuple[Coordinate, Coordinate]]:
-        """
-        Returns a list of edges, defined as a 2-tuple (start and end) of coordinates, that
-        represent the polygon's boundary.
-
-        Using discrete coordinates to represent a continuous curve implies some level of data
-        loss. You can minimize this loss by specifying k, which represents the number of
-        points drawn.
-
-        Does not include information about holes - see the edges method.
-
-        Keyword Args:
-            k: (int)
-                For shapes with smooth curves, increasing k increases the number of
-                points generated along the curve
-
-        Returns:
-            A list of 2-tuples representing the edges
-        """
-        bounding_coords = self.bounding_coords(**kwargs)
-        return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
-
-    @abstractmethod
-    def circumscribing_circle(self) -> 'GeoCircle':
-        """
-        Produces a circle that entirely encompasses the shape
-
-        Returns:
-            (GeoCircle)
-        """
-
-    def circumscribing_rectangle(self) -> 'GeoBox':
-        """
-        Produces a rectangle that entirely encompasses the shape
-
-        Returns:
-            (GeoBox)
-        """
-        lon_bounds, lat_bounds = self.bounds
-        return GeoBox(
-            Coordinate(lon_bounds[0], lat_bounds[1]),
-            Coordinate(lon_bounds[1], lat_bounds[0]),
-            dt=self.dt,
-        )
-
-    def contains(self, shape: 'GeoShape', **kwargs) -> bool:
-        """
-        Tests whether this shape fully contains another one, along both
-        the spatial and time axes
+        Tests whether this shape fully contains another one. Only tests spatial axes.
 
         Args:
             shape:
@@ -308,42 +158,8 @@ class GeoShape(DefaultZuluMixin):
         Returns:
             bool
         """
-        # Make sure the times overlap, if present on both
-        if self.dt and shape.dt:
-            if not self.contains_time(shape.dt):
-                return False
-
-        return self.contains_shape(shape, **kwargs)
-
-    @abstractmethod
-    def contains_coordinate(self, coord: Coordinate) -> bool:
-        """
-        Test if a geoshape contains a coordinate.
-
-        Args:
-            coord:
-                A Coordinate
-
-        Returns:
-            bool
-        """
-
-    def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
-        """
-        Tests whether this shape fully contains another one.
-
-        Args:
-            shape:
-                A geoshape
-
-        Keyword Args:
-            k: (int)
-                For shapes with smooth curves, increasing k increases the number of
-                points generated along the curve
-
-        Returns:
-            bool
-        """
+        if isinstance(shape, GeoPoint):
+            return self._contains_coordinate(shape.centroid)
 
         s_edges = self.edges(**kwargs)
         o_edges = shape.edges(**kwargs)
@@ -358,50 +174,7 @@ class GeoShape(DefaultZuluMixin):
         # contained
         return o_edges[0][0][0] in self
 
-    def contains_time(self, dt: Union[datetime, TimeInterval]) -> bool:
-        """
-        Test if the geoshape's time dimension fully contains either a date or a datetime.
-
-        Args:
-            dt:
-                A date or a datetime.
-
-        Returns:
-            bool
-        """
-        if self.dt is None:
-            return False
-
-        return dt in self.dt
-
-    @abstractmethod
-    def copy(self: _SHAPE_TYPE) -> _SHAPE_TYPE:
-        """Produces a copy of the geoshape."""
-
-    def intersects(self, shape: 'GeoShape', **kwargs) -> bool:
-        """
-        Tests whether another shape intersects this one along both the spatial and time axes.
-
-        Args:
-            shape:
-                A geoshape
-
-        Keyword Args:
-            k: (int)
-                For shapes with smooth curves, increasing k increases the number of
-                points generated along the curve
-
-        Returns:
-            bool
-        """
-        # Make sure the times overlap, if present on both
-        if self.dt and shape.dt:
-            if not self.intersects_time(shape.dt):
-                return False
-
-        return self.intersects_shape(shape, **kwargs)
-
-    def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+    def _intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
         """
         Tests whether another shape intersects this one along its spatial axes.
 
@@ -439,151 +212,25 @@ class GeoShape(DefaultZuluMixin):
         # because the centroid may fall in a hole
         return o_edges[0][0][0] in self or s_edges[0][0][0] in shape
 
-    def intersects_time(self, dt: Union[datetime, TimeInterval]) -> bool:
+    @staticmethod
+    def _linear_ring_to_wkt(ring: List[Coordinate]) -> str:
         """
-        Test if the geoshape's time dimension intersects either a point or interval in time.
+        Converts a list of coordinates (a linear ring, self-closing) into
+        a wkt string.
 
         Args:
-            dt:
-                A date or a datetime.
+            ring:
+                A list of Coordinates
 
         Returns:
-            bool
+            The wkt-formatted string,
         """
-        if self.dt is None:
-            return False
+        return f'({",".join(" ".join(coord.to_str()) for coord in ring)})'
 
-        return self.dt.intersects(dt)
-
-    def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
+    def bounding_edges(self, **kwargs) -> List[Tuple[Coordinate, Coordinate]]:
         """
-        Produce a list of linear rings for the object, where the first ring is the outermost
-        shell and the following rings are holes.
-
-        Using discrete coordinates to represent a continuous curve implies some level of data
-        loss. You can minimize this loss by specifying k, which represents the number of
-        points drawn.
-
-        All shapes that represent a linear ring (e.g. a box or polygon) will return
-        self-closing coordinates, meaning the last coordinate is equal to the first.
-
-        Keyword Args:
-            k: (int)
-                For shapes with smooth curves, increasing k increases the number of
-                points generated along the curve
-        """
-        return [
-            self.bounding_coords(**kwargs),
-            *[list(reversed(shape.bounding_coords())) for shape in self.holes]
-        ]
-
-    def set_property(self, key: str, value: Any):
-        """
-        Sets the value of a property on this geoshape.
-
-        Args:
-            key:
-                The property name
-
-            value:
-                The property value
-
-        Returns:
-            None
-        """
-        self._properties[key] = value
-
-    def strip_dt(self: _SHAPE_TYPE) -> _SHAPE_TYPE:
-        _copy = self.copy()
-        _copy.dt = None
-        return _copy
-
-    def to_geojson(
-        self,
-        k: Optional[int] = None,
-        properties: Optional[Dict] = None,
-        **kwargs
-    ) -> Dict:
-        """
-        Convert the shape to geojson format.
-
-        Optional Args:
-            k: (int)
-                For shapes with smooth curves, defines the number of points
-                generated along the curve.
-
-            properties: (dict)
-                Any number of properties to be included in the geojson properties. These
-                values will be unioned with the shape's already defined properties (and
-                override them where keys conflict)
-
-        Returns:
-            (dict)
-        """
-        return {
-            'type': 'Feature',
-            'geometry': {
-                'type': 'Polygon',
-                'coordinates': [
-                    [list(coord.to_float()) for coord in ring]
-                    for ring in self.linear_rings(k=k)
-                ]
-            },
-            'properties': {
-                **self.properties,
-                **self._dt_to_json(),
-                **(properties or {})
-            },
-            **kwargs
-        }
-
-    @abstractmethod
-    def to_polygon(self, **kwargs) -> 'GeoPolygon':
-        """
-        Converts the shape to a GeoPolygon
-
-        Returns:
-            (GeoPolygon)
-        """
-
-    def _to_shapely(self):
-        """
-        Converts the geoshape into a Shapely shape.
-        """
-        import shapely  # pylint: disable=import-outside-toplevel
-        rings = self.linear_rings()
-        holes = []
-        if len(rings) > 1:
-            holes = rings[1:]
-
-        return shapely.geometry.Polygon(
-            [x.to_float() for x in rings[0]],
-            holes=[[x.to_float() for x in ring] for ring in holes]
-        )
-
-    def to_wkt(self, **kwargs) -> str:
-        """
-        Converts the shape to its WKT string representation
-
-        Keyword Args:
-            Arguments to be passed to the .bounding_coords() method. Reference
-            that method for a list of corresponding kwargs.
-
-        Returns:
-            str
-        """
-        bbox_str = ', '.join(
-            [self._linear_ring_to_wkt(ring) for ring in self.linear_rings(**kwargs)]
-        )
-        return f'POLYGON({bbox_str})'
-
-    def edges(self, **kwargs) -> List[List[Tuple[Coordinate, Coordinate]]]:
-        """
-        Returns lists of edges, defined as a 2-tuple (start and end) of coordinates, for the
-        outer boundary as well as holes in the polygon.
-
-        Operates similar to the `bounding_edges` method but includes information about holes
-        in the shape.
+        Returns a list of edges, defined as a 2-tuple (start and end) of coordinates, that
+        represent the polygon's boundary.
 
         Using discrete coordinates to represent a continuous curve implies some level of data
         loss. You can minimize this loss by specifying k, which represents the number of
@@ -597,14 +244,42 @@ class GeoShape(DefaultZuluMixin):
                 points generated along the curve
 
         Returns:
-            Lists of 2-tuples representing edges. The first list will always represent
-            the shape's boundary, and any following lists will represent holes.
+            A list of 2-tuples representing the edges
         """
-        rings = self.linear_rings(**kwargs)
-        return [
-            list(zip(ring, ring[1:]))
-            for ring in rings
-        ]
+        bounding_coords = self.bounding_coords(**kwargs)
+        return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
+
+    def circumscribing_rectangle(self) -> 'GeoBox':
+        lon_bounds, lat_bounds = self.bounds
+        return GeoBox(
+            Coordinate(lon_bounds[0], lat_bounds[1]),
+            Coordinate(lon_bounds[1], lat_bounds[0]),
+            dt=self.dt,
+        )
+
+    def contains(self, shape: 'GeoShape', **kwargs) -> bool:
+        """
+        Tests whether this shape fully contains another one, along both
+        the spatial and time axes
+
+        Args:
+            shape:
+                A geoshape
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+
+        Returns:
+            bool
+        """
+        # Make sure the times overlap, if present on both
+        if self.dt and shape.dt:
+            if not self.contains_time(shape.dt):
+                return False
+
+        return self.contains_shape(shape, **kwargs)
 
 
 class GeoPolygon(GeoShape, WarnOnceMixin):
@@ -1916,3 +1591,5 @@ class GeoPoint(GeoShape):
 
     def edges(self, **kwargs):
         raise NotImplementedError('Points are not bounded')
+
+
