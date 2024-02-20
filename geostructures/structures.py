@@ -267,7 +267,7 @@ class GeoShape(DefaultZuluMixin):
         """
         bounding_coords = self.bounding_coords(**kwargs)
         return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
-      
+
     def buffer_dt(
         self: _SHAPE_TYPE,
         buffer: timedelta,
@@ -291,7 +291,6 @@ class GeoShape(DefaultZuluMixin):
         shp.dt = TimeInterval(shp.dt.start-buffer, shp.dt.end+buffer)
 
         return shp
-      
 
     @abstractmethod
     def circumscribing_circle(self) -> 'GeoCircle':
