@@ -168,7 +168,7 @@ def test_geoshape_buffer_dt():
     assert point2 == GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 11), datetime(2020, 1, 3, 13)))
     
     # In place
-    point.buffer_dt(timedelta(hours=2, inplace=True))
+    point.buffer_dt(timedelta(hours=2), inplace=True)
     assert point == GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 10), datetime(2020, 1, 3, 14)))
 
 
