@@ -8,7 +8,7 @@ __all__ = [
 ]
 
 import abc
-from collections import Counter, defaultdict
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, TypedDict
 
 from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint
@@ -237,8 +237,7 @@ class HasherBase(abc.ABC):
     ) -> Dict[str, Any]:
         """
         Returns a dictionary of hashes with values equal to the output of an aggregation
-        function over the shapes that intersect each hash (by default, the number of
-        shapes).
+        function over the shapes that intersect each hash.
 
         Args:
             collection:
@@ -246,10 +245,11 @@ class HasherBase(abc.ABC):
 
         Keyword Args:
             agg_fn:
-                A function that accepts a list of geoshapes
+                A function that accepts a list of geoshapes. If not specified, the length
+                of the list.
 
         Returns:
-            dict
+            dict, with keys for each geohash and values from agg_fn output
         """
 
     @abc.abstractmethod
@@ -388,7 +388,7 @@ class H3Hasher(HasherBase):
         """
         Hash a geostructures FeatureCollection. Returns a dictionary of hashes with
         values equal to the output of an aggregation function over the shapes that
-        intersect each hash (by default, the number of shapes).
+        intersect each hash.
 
         Args:
             collection:
@@ -398,7 +398,8 @@ class H3Hasher(HasherBase):
             resolution:
                 The H3 resolution to apply
             agg_fn:
-                A function that accepts a list of geoshapes
+                A function that accepts a list of geoshapes. If not specified, this
+                will be the length of the list.
 
         Returns:
             A dictionary of H3 geohashes mapped to the result of the aggregation
@@ -411,8 +412,7 @@ class H3Hasher(HasherBase):
         agg_fn = kwargs.get('agg_fn', len)
         hash_dict: Dict[str, List[GeoShape]] = defaultdict(list)
         for shape in collection.geoshapes:
-            shape_hashes = self.hash_shape(shape, resolution=resolution)
-            for hash in shape_hashes:
+            for hash in self.hash_shape(shape, resolution=resolution):
                 hash_dict[hash].append(shape)
         return {h: agg_fn(shape_list) for h, shape_list in hash_dict.items()}
 
@@ -428,13 +428,20 @@ class H3Hasher(HasherBase):
         Keyword Args:
             resolution:
                 The H3 resolution to apply
+            agg_fn:
+                A function that accepts a list of coordinates. If not specified, this
+                will be the length of the list.
 
         Returns:
-            A dictionary of H3 geohashes mapped to their corresponding
-            counts
+            A dictionary of H3 geohashes mapped to the result of the aggregation
+            function
         """
         resolution = kwargs.get('resolution', self.resolution)
-        return dict(Counter(list(self._hash_point(x, resolution))[0] for x in coordinates))
+        agg_fn = kwargs.get('agg_fn', len)
+        hash_dict: Dict[str, List[Coordinate]] = defaultdict(list)
+        for coordinate in coordinates:
+            hash_dict[self._hash_point(coordinate, resolution=resolution)].append(coordinate)
+        return {h: agg_fn(coord_list) for h, coord_list in hash_dict.items()}
 
     def hash_shape(self, shape: GeoShape, **kwargs):
         """
@@ -596,7 +603,7 @@ class NiemeyerHasher(HasherBase):
         """
         Hash a geostructures FeatureCollection. Returns a dictionary of hashes with
         values equal to the output of an aggregation function over the shapes that
-        intersect each hash (by default, the number of shapes).
+        intersect each hash.
 
         Args:
             collection:
@@ -604,7 +611,8 @@ class NiemeyerHasher(HasherBase):
 
         Keyword Args:
             agg_fn:
-                A function that accepts a list of geoshapes
+                A function that accepts a list of geoshapes. If not specified, this
+                will be the length of the list.
 
         Returns:
             A dictionary of Niemeyer geohashes mapped to the result of the
@@ -613,8 +621,7 @@ class NiemeyerHasher(HasherBase):
         agg_fn = kwargs.get('agg_fn', len)
         hash_dict: Dict[str, List[GeoShape]] = defaultdict(list)
         for shape in collection.geoshapes:
-            shape_hashes = self.hash_shape(shape)
-            for hash in shape_hashes:
+            for hash in self.hash_shape(shape):
                 hash_dict[hash].append(shape)
         return {h: agg_fn(shape_list) for h, shape_list in hash_dict.items()}
 
@@ -627,11 +634,20 @@ class NiemeyerHasher(HasherBase):
             coordinates:
                 A collection of Coordinates, from geostructures
 
+        Keyword Args:
+            agg_fn:
+                A function that accepts a list of coordinates. If not specified, this
+                will be the length of the list.
+
         Returns:
-            A dictionary of H3 geohashes mapped to their corresponding
-            counts
+            A dictionary of Niemeyer geohashes mapped to the result of the
+            aggregation function
         """
-        return dict(Counter(list(self._hash_point(x))[0] for x in coordinates))
+        agg_fn = kwargs.get('agg_fn', len)
+        hash_dict: Dict[str, List[Coordinate]] = defaultdict(list)
+        for coordinate in coordinates:
+            hash_dict[self.hash_shape(coordinate)].append(coordinate)
+        return {h: agg_fn(coord_list) for h, coord_list in hash_dict.items()}
 
     def hash_shape(self, shape: GeoShape, **_):
         """
