@@ -625,7 +625,7 @@ class NiemeyerHasher(HasherBase):
                 hash_dict[hash].append(shape)
         return {h: agg_fn(shape_list) for h, shape_list in hash_dict.items()}
 
-    def hash_coordinates(self, coordinates: Sequence[Coordinate]):
+    def hash_coordinates(self, coordinates: Sequence[Coordinate], **kwargs):
         """
         Hashes a collection of coordinates and counts the number
         of times each hash appears.
