@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import pytest
 import shapely
 from shapely import wkt
@@ -159,6 +159,17 @@ def test_geoshape_bounding_edges():
         (Coordinate(0.0, 0.5), Coordinate(1.0, 0.0)),
         (Coordinate(1.0, 0.0), Coordinate(1.0, 0.0))
     ]
+
+
+def test_geoshape_buffer_dt():
+    # Base Case
+    point = GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 12), datetime(2020, 1, 3, 12)))
+    point2 = point.buffer_dt(timedelta(hours=1))
+    assert point2 == GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 11), datetime(2020, 1, 3, 13)))
+    
+    # In place
+    point.buffer_dt(timedelta(hours=2), inplace=True)
+    assert point == GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 10), datetime(2020, 1, 3, 14)))
 
 
 def test_geoshape_contains():
