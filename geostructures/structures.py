@@ -285,7 +285,7 @@ class GeoShape(DefaultZuluMixin):
         """
         if not self.dt:
             raise ValueError("GeoShape has no associated time information.")
-        
+
         if inplace:
             shp = self
         else:
