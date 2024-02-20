@@ -10,7 +10,7 @@ __all__ = [
 
 from abc import abstractmethod
 import copy
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import cached_property, lru_cache
 import math
 import re
@@ -267,6 +267,31 @@ class GeoShape(DefaultZuluMixin):
         """
         bounding_coords = self.bounding_coords(**kwargs)
         return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
+      
+    def buffer_dt(
+        self: _SHAPE_TYPE,
+        buffer: timedelta,
+        inplace: bool = False
+    ) -> _SHAPE_TYPE:
+        """
+        Adds a timedelta buffer to the beginning and end of dt.
+
+        Args:
+            buffer:
+                A timedelta that will expand both sides of dt
+
+        inplace:
+            Return a new object? Defaults to False.
+        """
+        if inplace:
+            shp = self
+        else:
+            shp = self.copy()
+
+        shp.dt = TimeInterval(shp.dt.start-buffer, shp.dt.end+buffer)
+
+        return shp
+      
 
     @abstractmethod
     def circumscribing_circle(self) -> 'GeoCircle':
