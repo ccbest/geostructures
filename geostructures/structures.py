@@ -280,18 +280,16 @@ class GeoShape(DefaultZuluMixin):
             buffer:
                 A timedelta that will expand both sides of dt
 
-        inplace:
-            Return a new object? Defaults to False.
+            inplace:
+                Return a new object? Defaults to False.
         """
         if not self.dt:
             raise ValueError("GeoShape has no associated time information.")
 
-        if inplace:
-            shp = self
-        else:
-            shp = self.copy()
+        dt = cast(TimeInterval, self.dt)
+        shp = self if inplace else self.copy()
 
-        shp.dt = TimeInterval(shp.dt.start-buffer, shp.dt.end+buffer)
+        shp.dt = TimeInterval(dt.start-buffer, dt.end+buffer)
 
         return shp
 
