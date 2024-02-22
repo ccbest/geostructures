@@ -358,7 +358,7 @@ class ShapeCollection(DefaultZuluMixin):
 
         return FeatureCollection(shapes)
 
-    @cachedproperty
+    @cached_property
     def geospan(self) -> float:
         """
         A summary statistic equal to the width of self.bounds in degrees
