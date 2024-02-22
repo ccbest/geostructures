@@ -358,6 +358,11 @@ class ShapeCollection(DefaultZuluMixin):
 
         return FeatureCollection(shapes)
 
+    @cachedproperty
+    def span(self) -> float:
+        bounds = self.bounds
+        return bounds[0][1] - bounds[0][0] + bounds[1][1] - bounds[1][0]
+
     def intersects(self, shape: GeoShape):
         """
         Boolean determination of whether any pings from the track exist inside the provided
