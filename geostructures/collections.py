@@ -359,7 +359,12 @@ class ShapeCollection(DefaultZuluMixin):
         return FeatureCollection(shapes)
 
     @cachedproperty
-    def span(self) -> float:
+    def geospan(self) -> float:
+        """
+        A summary statistic equal to the width of self.bounds in degrees
+        plus the height of self.bounds in degrees. Can be used as a quick
+        way to sort larger (in extent) FeatureCollections from smaller ones.
+        """
         bounds = self.bounds
         return bounds[0][1] - bounds[0][0] + bounds[1][1] - bounds[1][0]
 
