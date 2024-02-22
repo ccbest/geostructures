@@ -580,6 +580,7 @@ class NiemeyerHasher(HasherBase):
         """
         valid, checked, queue = set(), set(), set()
         start = _coord_to_niemeyer(polygon.bounding_coords()[0], self.length, self.base)
+        valid.add(start)
         queue.add(start)
 
         while queue:
