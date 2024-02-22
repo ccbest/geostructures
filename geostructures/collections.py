@@ -358,6 +358,16 @@ class ShapeCollection(DefaultZuluMixin):
 
         return FeatureCollection(shapes)
 
+    @cached_property
+    def geospan(self) -> float:
+        """
+        A summary statistic equal to the width of self.bounds in degrees
+        plus the height of self.bounds in degrees. Can be used as a quick
+        way to sort larger (in extent) FeatureCollections from smaller ones.
+        """
+        bounds = self.bounds
+        return bounds[0][1] - bounds[0][0] + bounds[1][1] - bounds[1][0]
+
     def intersects(self, shape: GeoShape):
         """
         Boolean determination of whether any pings from the track exist inside the provided
