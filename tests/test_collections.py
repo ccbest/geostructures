@@ -286,12 +286,12 @@ def test_collection_from_shapely():
     assert FeatureCollection.from_shapely(gcol) == expected
 
 
-def test_collection_span():
+def test_collection_geospan():
     col1 = FeatureCollection([
         GeoBox(Coordinate(-1.1, 0.), Coordinate(0., -5)),
         GeoBox(Coordinate(-0.5, 2.), Coordinate(2., -7)),
     ])
-    assert col1.span == 12.1
+    assert col1.geospan == 12.1
 
 
 def test_collection_to_geojson():
