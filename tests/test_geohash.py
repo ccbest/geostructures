@@ -192,3 +192,7 @@ def test_niemeyer_hash_shape():
         'c000001a', 'c000001b', 'c0000023', 'c0000025', 'c0000026', 'c0000027',
         'c0000028', 'c0000029', 'c000002a', 'c0000030'
     }
+
+    # test that small shapes still produce a single geohash
+    shape = GeoCircle(Coordinate(0.0001, 0.0001), 5)
+    assert hasher.hash_shape(shape) == {'c0000000'}
