@@ -2,7 +2,7 @@
 Representation of a specific point on earth
 """
 
-__all__ = ['Coordinate', 'Coordinatexyz']
+__all__ = ['Coordinate']
 
 from functools import cached_property
 import math

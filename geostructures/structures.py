@@ -746,7 +746,6 @@ class GeoPolygon(GeoShape, WarnOnceMixin):
         # Return average of triangle centroids, weighted by area
         return Coordinate(*np.average((poly1 + poly2) / 3, axis=0, weights=signed_areas))
 
-
     @staticmethod
     def _point_in_polygon(
             coord: Coordinate,
