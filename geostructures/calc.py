@@ -1,21 +1,83 @@
 """ Geometric calculations for Coordinates and Geostructures """
 
 __all__ = [
-    'bearing_degrees', 'ensure_edge_bounds', 'haversine_distance_meters',
-    'inverse_haversine_degrees', 'inverse_haversine_radians', 'rotate_coordinates',
-    'find_line_intersection', 'do_edges_intersect'
+    'bearing_degrees', 'dist_xyz_meters', 'circumscribing_circle_for_polygon',
+    'ensure_edge_bounds', 'haversine_distance_meters', 'inverse_haversine_degrees',
+    'inverse_haversine_radians', 'rotate_coordinates', 'find_line_intersection',
+    'do_edges_intersect'
 ]
 
 import math
+import random
 from typing import List, Optional, Set, Tuple
 
 import numpy as np
+from numpy.linalg import norm
 
 from geostructures.coordinates import Coordinate
 from geostructures.utils.functions import round_half_up
 
 
 _EARTH_RADIUS = 6_371_000  # meters - WGS84
+
+
+def _circumscribing_circle_for_triangle(
+    points: List[Coordinate]
+) -> Tuple[Coordinate, float]:
+    assert len(points) <= 3
+    if len(points) == 0:
+        return (None, None)
+    if len(points) == 1:
+        return (points[0], 0.0)
+    if len(points) == 2:
+        midp = [(v1+v2)/2 for v1, v2 in zip(points[0].xyz, points[1].xyz)]
+        midp = Coordinate._from_xyz(midp/norm(midp))
+        rad = dist_xyz_meters(midp, points[0])
+        return (midp, rad)
+    
+    if not _test_counter_clockwise(points):
+        points = [points[0], points[2], points[1]]
+
+    # Test for trivial circle
+    for i in range(3):
+        p = points[i]
+        other_p = points[:i] + points[i+1:]
+        midp = [(v1+v2)/2 for v1, v2 in zip(other_p[0].xyz, other_p[1].xyz)]
+        midp = Coordinate._from_xyz(midp/norm(midp))
+        rad = dist_xyz_meters(midp, other_p[0])
+        # If this is true, the midpoint of one side is the center
+        # (i.e. any obtuse/right triangle) and we are done
+        if rad >= dist_xyz_meters(midp, p):
+            return (midp, rad)
+
+    [a, b, c] = [p.xyz for p in points]
+    cc_num = np.cross(a, b) + np.cross(b, c) + np.cross(c, a)
+    cc_norm = norm(cc_num)
+    ctr = Coordinate._from_xyz(list(cc_num/cc_norm))
+    rad = math.acos(np.dot(a, np.cross(b, c))/cc_norm) * _EARTH_RADIUS
+    return (ctr, rad)
+
+
+def _test_counter_clockwise(bounds: List[Coordinate]) -> bool:
+        """
+        Tests a polygon to determine whether it's defined in a counterclockwise
+        (or mostly, for complex shapes) order.
+
+        Args:
+            bounds:
+                A list of Coordinates, in order
+
+        Returns:
+            bool
+        """
+        ans = sum(
+            (y.longitude - x.longitude) * (y.latitude + x.latitude)
+            for x, y in map(
+                lambda x: ensure_edge_bounds(x[0], x[1]),
+                zip(bounds, [*bounds[1:], bounds[0]])
+            )
+        )
+        return ans <= 0
 
 
 def bearing_degrees(coord1: Coordinate, coord2: Coordinate, **kwargs) -> float:
@@ -49,6 +111,37 @@ def bearing_degrees(coord1: Coordinate, coord2: Coordinate, **kwargs) -> float:
     )
     bearing = (math.degrees(math.atan2(x_val, y_val)) + 360) % 360
     return round_half_up(bearing, kwargs.get('precision', 5))
+
+
+def circumscribing_circle_for_polygon(
+    all_points: List[Coordinate],
+    known_points: List[Coordinate] = []
+) -> Tuple[Coordinate, float]:
+    print("Known Points", known_points)
+    if len(known_points) == 3:
+        return _circumscribing_circle_for_triangle(known_points)
+    if len(all_points) == 0:
+        return _circumscribing_circle_for_triangle(known_points)
+    i = random.randrange(0, len(all_points))
+    p = all_points[i]
+    other_p = all_points[:i] + all_points[i+1:]
+    print("p", p)
+    print("other_points", other_p)
+    ctr, rad = circumscribing_circle_for_polygon(
+        other_p,
+        known_points.copy()
+    )
+    if rad is not None and rad>=dist_xyz_meters(p, ctr):
+        return (ctr, rad)
+    known_points.append(p)
+    return circumscribing_circle_for_polygon(other_p, known_points.copy())
+
+
+def dist_xyz_meters(coord1: Coordinate, coord2: Coordinate) -> float:
+    '''Great circle distance formula that works with the cached .xyz
+    property. Faster than haversine_distance_meters if each Coordinate
+    is used in distance calculations more than twice on average.'''
+    return math.acos(sum([an*bn for an, bn in zip(coord1.xyz, coord2.xyz)])) * _EARTH_RADIUS
 
 
 def do_edges_intersect(

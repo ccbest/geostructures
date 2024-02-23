@@ -22,6 +22,7 @@ import numpy as np
 from geostructures import LOGGER
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
+    circumscribing_circle_for_polygon,
     ensure_edge_bounds,
     inverse_haversine_radians,
     inverse_haversine_degrees,
@@ -745,6 +746,7 @@ class GeoPolygon(GeoShape, WarnOnceMixin):
         # Return average of triangle centroids, weighted by area
         return Coordinate(*np.average((poly1 + poly2) / 3, axis=0, weights=signed_areas))
 
+
     @staticmethod
     def _point_in_polygon(
             coord: Coordinate,
@@ -819,11 +821,8 @@ class GeoPolygon(GeoShape, WarnOnceMixin):
         return self.outline
 
     def circumscribing_circle(self) -> 'GeoCircle':
-        centroid = self.centroid
-        max_dist = max(
-            haversine_distance_meters(x, centroid) for x in self.outline[:-1]
-        )
-        return GeoCircle(centroid, max_dist, dt=self.dt)
+        ctr, rad = circumscribing_circle_for_polygon(self.outline[:-1])
+        return GeoCircle(ctr, rad, dt=self.dt)
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         # First see if the point even falls inside the circumscribing rectangle
