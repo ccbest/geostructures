@@ -798,7 +798,7 @@ class GeoPolygon(GeoShape, WarnOnceMixin):
         return self.outline
 
     def circumscribing_circle(self) -> 'GeoCircle':
-        ctr, rad = circumscribing_circle_for_polygon(self.outline[:-1])
+        ctr, rad = circumscribing_circle_for_polygon(self.outline[:-1], [])
         return GeoCircle(ctr, rad, dt=self.dt)
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
