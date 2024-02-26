@@ -23,7 +23,7 @@ _EARTH_RADIUS = 6_371_000  # meters - WGS84
 
 def _circumscribing_circle_for_triangle(
     points: List[Coordinate]
-) -> Tuple[Coordinate, float]:
+) -> Tuple[Optional[Coordinate], Optional[float]]:
     """
     Supporting function for circumscribing_circle_for_polygon().
 
