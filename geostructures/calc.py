@@ -37,11 +37,11 @@ def _circumscribing_circle_for_triangle(
     Two points returns the midpoint as center and half the distance as radius.
 
     Three points checks every point pair as a possible diameter for the circle. If no
-    pair qualifies, uses the circumcenter formula from 
+    pair qualifies, uses the circumcenter formula from
     https://brsr.github.io/2021/05/02/spherical-triangle-centers.html
 
     Args:
-        points: 
+        points:
             A list of Coordinates. Will error if more than three.
 
     Returns:
@@ -58,7 +58,7 @@ def _circumscribing_circle_for_triangle(
         midp = Coordinate._from_xyz(midp/norm(midp))
         rad = dist_xyz_meters(midp, points[0])
         return (midp, rad)
-    
+
     if not _test_counter_clockwise(points):
         points = points[::-1]
 
@@ -146,7 +146,7 @@ def circumscribing_circle_for_polygon(
     for a set of points.
 
     Args:
-        points: 
+        points:
             A list of Coordinates. Will error if more than three.
 
     Returns:
@@ -163,7 +163,7 @@ def circumscribing_circle_for_polygon(
         other_p,
         known_points.copy()
     )
-    if rad is not None and rad>=dist_xyz_meters(p, ctr):
+    if rad is not None and rad >= dist_xyz_meters(p, ctr):
         return (ctr, rad)
     known_points.append(p)
     return circumscribing_circle_for_polygon(other_p, known_points.copy())
@@ -174,7 +174,7 @@ def dist_xyz_meters(coord1: Coordinate, coord2: Coordinate) -> float:
     Great circle distance formula that works with the cached .xyz
     property. Faster than haversine_distance_meters if each Coordinate
     is used in distance calculations more than twice on average.
-    
+
     Args:
         coord1:
             A coordinate
