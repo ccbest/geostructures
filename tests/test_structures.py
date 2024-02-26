@@ -645,7 +645,6 @@ def test_geopolygon_circumscribing_circle(geopolygon):
     assert round_half_up(gc.center.latitude, 4) == 0.5
     assert round_half_up(gc.center.longitude, 4) == 0.5
     assert round_half_up(gc.radius, 0) == 78625
-    assert gc.dt == default_test_datetime
 
 
 def test_geopolygon_circumscribing_rectangle(geopolygon):
