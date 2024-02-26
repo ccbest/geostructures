@@ -8,8 +8,6 @@ from functools import cached_property
 import math
 from typing import List, Tuple, Union
 
-import numpy as np
-
 from geostructures.utils.functions import round_half_up
 
 
@@ -51,7 +49,7 @@ class Coordinate:
 
     def __repr__(self):
         return f'<Coordinate({self.longitude}, {self.latitude})>'
-    
+
     @cached_property
     def xyz(self):
         """Converts lat/lon to unit coordinates [x,y,z]"""
@@ -62,7 +60,7 @@ class Coordinate:
             math.cos(r_lat) * math.sin(r_lon),
             math.sin(r_lat)
         ]
-    
+
     @classmethod
     def _from_xyz(cls, xyz: List[float]):
         assert len(xyz) == 3

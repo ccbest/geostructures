@@ -24,7 +24,6 @@ from geostructures.coordinates import Coordinate
 from geostructures.calc import (
     _test_counter_clockwise,
     circumscribing_circle_for_polygon,
-    ensure_edge_bounds,
     inverse_haversine_radians,
     inverse_haversine_degrees,
     haversine_distance_meters,
