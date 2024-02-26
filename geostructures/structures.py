@@ -22,6 +22,7 @@ import numpy as np
 from geostructures import LOGGER
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
+    _test_counter_clockwise,
     circumscribing_circle_for_polygon,
     ensure_edge_bounds,
     inverse_haversine_radians,
@@ -671,7 +672,7 @@ class GeoPolygon(GeoShape, WarnOnceMixin):
             )
             outline = [*outline, outline[0]]
 
-        if not self._test_counter_clockwise(outline) ^ _is_hole:
+        if not _test_counter_clockwise(outline) ^ _is_hole:
             self.warn_once(
                 'Polygon violates the right hand rule. Inverting coordinate '
                 'order; this warning will not repeat.'
@@ -793,28 +794,6 @@ class GeoPolygon(GeoShape, WarnOnceMixin):
                 _intersections += 1
 
         return _intersections > 0 and _intersections % 2 != 0
-
-    @staticmethod
-    def _test_counter_clockwise(bounds: List[Coordinate]) -> bool:
-        """
-        Tests a polygon to determine whether it's defined in a counterclockwise
-        (or mostly, for complex shapes) order.
-
-        Args:
-            bounds:
-                A list of Coordinates, in order
-
-        Returns:
-            bool
-        """
-        ans = sum(
-            (y.longitude - x.longitude) * (y.latitude + x.latitude)
-            for x, y in map(
-                lambda x: ensure_edge_bounds(x[0], x[1]),
-                zip(bounds, [*bounds[1:], bounds[0]])
-            )
-        )
-        return ans <= 0
 
     def bounding_coords(self, **kwargs) -> List[Coordinate]:
         return self.outline

@@ -24,6 +24,30 @@ _EARTH_RADIUS = 6_371_000  # meters - WGS84
 def _circumscribing_circle_for_triangle(
     points: List[Coordinate]
 ) -> Tuple[Coordinate, float]:
+    """
+    Supporting function for circumscribing_circle_for_polygon().
+
+    Can be called with up to three points to return the center and radius of the
+    circumscribing circle.
+
+    Zero points returns None center and radius (will fail check in calling function).
+
+    One point returns itself as center and zero radius (will also fail check).
+
+    Two points returns the midpoint as center and half the distance as radius.
+
+    Three points checks every point pair as a possible diameter for the circle. If no
+    pair qualifies, uses the circumcenter formula from 
+    https://brsr.github.io/2021/05/02/spherical-triangle-centers.html
+
+    Args:
+        points: 
+            A list of Coordinates. Will error if more than three.
+
+    Returns:
+        (Coordinate, float) tuple of (Circumcenter, Radius in meters)
+
+    """
     assert len(points) <= 3
     if len(points) == 0:
         return (None, None)
@@ -36,7 +60,7 @@ def _circumscribing_circle_for_triangle(
         return (midp, rad)
     
     if not _test_counter_clockwise(points):
-        points = [points[0], points[2], points[1]]
+        points = points[::-1]
 
     # Test for trivial circle
     for i in range(3):
@@ -59,25 +83,25 @@ def _circumscribing_circle_for_triangle(
 
 
 def _test_counter_clockwise(bounds: List[Coordinate]) -> bool:
-        """
-        Tests a polygon to determine whether it's defined in a counterclockwise
-        (or mostly, for complex shapes) order.
+    """
+    Tests a polygon to determine whether it's defined in a counterclockwise
+    (or mostly, for complex shapes) order.
 
-        Args:
-            bounds:
-                A list of Coordinates, in order
+    Args:
+        bounds:
+            A list of Coordinates, in order
 
-        Returns:
-            bool
-        """
-        ans = sum(
-            (y.longitude - x.longitude) * (y.latitude + x.latitude)
-            for x, y in map(
-                lambda x: ensure_edge_bounds(x[0], x[1]),
-                zip(bounds, [*bounds[1:], bounds[0]])
-            )
+    Returns:
+        bool
+    """
+    ans = sum(
+        (y.longitude - x.longitude) * (y.latitude + x.latitude)
+        for x, y in map(
+            lambda x: ensure_edge_bounds(x[0], x[1]),
+            zip(bounds, [*bounds[1:], bounds[0]])
         )
-        return ans <= 0
+    )
+    return ans <= 0
 
 
 def bearing_degrees(coord1: Coordinate, coord2: Coordinate, **kwargs) -> float:
@@ -117,7 +141,17 @@ def circumscribing_circle_for_polygon(
     all_points: List[Coordinate],
     known_points: List[Coordinate] = []
 ) -> Tuple[Coordinate, float]:
-    print("Known Points", known_points)
+    """
+    Implements Welzl's algorithm to determine the circumscribing circle
+    for a set of points.
+
+    Args:
+        points: 
+            A list of Coordinates. Will error if more than three.
+
+    Returns:
+        (Coordinate, float) tuple of (Circumcenter, Radius in meters)
+    """
     if len(known_points) == 3:
         return _circumscribing_circle_for_triangle(known_points)
     if len(all_points) == 0:
@@ -125,8 +159,6 @@ def circumscribing_circle_for_polygon(
     i = random.randrange(0, len(all_points))
     p = all_points[i]
     other_p = all_points[:i] + all_points[i+1:]
-    print("p", p)
-    print("other_points", other_p)
     ctr, rad = circumscribing_circle_for_polygon(
         other_p,
         known_points.copy()
@@ -138,9 +170,21 @@ def circumscribing_circle_for_polygon(
 
 
 def dist_xyz_meters(coord1: Coordinate, coord2: Coordinate) -> float:
-    '''Great circle distance formula that works with the cached .xyz
+    """
+    Great circle distance formula that works with the cached .xyz
     property. Faster than haversine_distance_meters if each Coordinate
-    is used in distance calculations more than twice on average.'''
+    is used in distance calculations more than twice on average.
+    
+    Args:
+        coord1:
+            A coordinate
+
+        coord2:
+            A second coordinate
+
+    Returns:
+        (float) the distance in meters
+    """
     return math.acos(sum([an*bn for an, bn in zip(coord1.xyz, coord2.xyz)])) * _EARTH_RADIUS
 
 

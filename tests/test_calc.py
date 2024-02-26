@@ -9,6 +9,31 @@ def test_bearing_degrees():
     assert bearing_degrees(Coordinate(0.0, 0.0), Coordinate(0.001, 0.001)) == 45.
     assert bearing_degrees(Coordinate(0.0, 0.0), Coordinate(0.001, 0.001), precision=9) == 44.999999996
 
+def test_circumscribing_circle_for_polygon():
+    points =[
+        Coordinate(0,5),
+        Coordinate(0,0),
+        Coordinate(2,1),
+        Coordinate(4,3)
+    ]
+    assert circumscribing_circle_for_polygon(points) == (
+        Coordinate(1.2483834996499361, 2.499407357982672), 310640.2931704429
+        )
+
+def test_dist_xyz_meters():
+    # Sourced from haversine package
+    actual_dist_meters = 157.25359
+    calc_dist = dist_xyz_meters(Coordinate(0.0, 0.0), Coordinate(0.001, 0.001))
+    assert round(actual_dist_meters) == round(calc_dist)
+
+    actual_dist_meters = 157_249.59847
+    calc_dist = dist_xyz_meters(Coordinate(0.0, 0.0), Coordinate(1.0, 1.0))
+    assert abs(round(actual_dist_meters) - round(calc_dist)) < 2
+
+    # Antimeridian test
+    actual_dist_meters = 222390
+    calc_dist = dist_xyz_meters(Coordinate(179., 0.), Coordinate(-179., 0.))
+    assert round(calc_dist) == actual_dist_meters
 
 def test_do_edges_intersect():
     edge_a = [
