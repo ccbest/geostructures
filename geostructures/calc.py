@@ -170,6 +170,7 @@ def circumscribing_circle_for_polygon(
     )
     if ctr is not None:
         ctr = cast(Coordinate, ctr)
+        rad = cast(float, rad)
         if rad >= dist_xyz_meters(p, ctr):
             return (ctr, rad)
     known_points.append(p)
