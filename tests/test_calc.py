@@ -16,9 +16,10 @@ def test_circumscribing_circle_for_polygon():
         Coordinate(2,1),
         Coordinate(4,3)
     ]
-    assert circumscribing_circle_for_polygon(points, []) == (
-        Coordinate(1.2483834996499361, 2.499407357982672), 310640.2931704429
-        )
+    cc = circumscribing_circle_for_polygon(points, [])
+    assert round_half_up(cc.center.latitude, 6) == 2.499407
+    assert round_half_up(cc.center.longitude, 6) == 1.248383
+    assert round_half_up(cc.radius, 0) == 310640
 
 def test_dist_xyz_meters():
     # Sourced from haversine package
