@@ -55,9 +55,10 @@ def _circumscribing_circle_for_triangle(
         return (points[0], 0.0)
     if len(points) == 2:
         midp = [(v1+v2)/2 for v1, v2 in zip(points[0].xyz, points[1].xyz)]
-        midp = Coordinate._from_xyz(midp/norm(midp))
-        rad = dist_xyz_meters(midp, points[0])
-        return (midp, rad)
+        midp_norm = norm(midp)
+        midp_coord = Coordinate._from_xyz([i/midp_norm for i in midp])
+        rad = dist_xyz_meters(midp_coord, points[0])
+        return (midp_coord, rad)
 
     if not _test_counter_clockwise(points):
         points = points[::-1]
@@ -67,17 +68,18 @@ def _circumscribing_circle_for_triangle(
         p = points[i]
         other_p = points[:i] + points[i+1:]
         midp = [(v1+v2)/2 for v1, v2 in zip(other_p[0].xyz, other_p[1].xyz)]
-        midp = Coordinate._from_xyz(midp/norm(midp))
-        rad = dist_xyz_meters(midp, other_p[0])
+        midp_norm = norm(midp)
+        midp_coord = Coordinate._from_xyz([i/midp_norm for i in midp])
+        rad = dist_xyz_meters(midp_coord, other_p[0])
         # If this is true, the midpoint of one side is the center
         # (i.e. any obtuse/right triangle) and we are done
-        if rad >= dist_xyz_meters(midp, p):
-            return (midp, rad)
+        if rad >= dist_xyz_meters(midp_coord, p):
+            return (midp_coord, rad)
 
     [a, b, c] = [p.xyz for p in points]
     cc_num = np.cross(a, b) + np.cross(b, c) + np.cross(c, a)
     cc_norm = norm(cc_num)
-    ctr = Coordinate._from_xyz(list(cc_num/cc_norm))
+    ctr = Coordinate._from_xyz([i/cc_norm for i in cc_num])
     rad = math.acos(np.dot(a, np.cross(b, c))/cc_norm) * _EARTH_RADIUS
     return (ctr, rad)
 
