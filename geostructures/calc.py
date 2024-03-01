@@ -9,7 +9,7 @@ __all__ = [
 
 import math
 import random
-from typing import List, Optional, Set, Tuple
+from typing import cast, List, Optional, Set, Tuple
 
 import numpy as np
 from numpy.linalg import norm
@@ -168,8 +168,10 @@ def circumscribing_circle_for_polygon(
         other_p,
         known_points.copy()
     )
-    if rad is not None and rad >= dist_xyz_meters(p, ctr):
-        return (ctr, rad)
+    if ctr is not None:
+        ctr = cast(Coordinate, ctr)
+        if rad >= dist_xyz_meters(p, ctr):
+            return (ctr, rad)
     known_points.append(p)
     return circumscribing_circle_for_polygon(other_p, known_points.copy())
 
