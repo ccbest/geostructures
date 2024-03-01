@@ -799,7 +799,7 @@ class GeoPolygon(GeoShape, WarnOnceMixin):
 
     def circumscribing_circle(self) -> 'GeoCircle':
         ctr, rad = circumscribing_circle_for_polygon(self.outline[:-1], [])
-        return GeoCircle(ctr, rad, dt=self.dt)
+        return GeoCircle(cast(Coordinate, ctr), cast(float, rad), dt=self.dt)
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         # First see if the point even falls inside the circumscribing rectangle
