@@ -142,7 +142,7 @@ def bearing_degrees(coord1: Coordinate, coord2: Coordinate, **kwargs) -> float:
 def circumscribing_circle_for_polygon(
     all_points: List[Coordinate],
     known_points: List[Coordinate]
-) -> Tuple[Coordinate, float]:
+) -> Tuple[Optional[Coordinate], Optional[float]]:
     """
     Implements Welzl's algorithm to determine the circumscribing circle
     for a set of points.
