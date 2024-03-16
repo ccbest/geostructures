@@ -1,6 +1,7 @@
 
 import sys
 
+from geostructures._version import __version__
 from geostructures.utils.logging import LOGGER
 from geostructures.coordinates import Coordinate
 from geostructures.structures import (
