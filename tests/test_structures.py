@@ -1634,6 +1634,9 @@ def test_geopoint_from_wkt():
     wkt_str = 'POINT(1.0 1.0)'
     assert GeoPoint.from_wkt(wkt_str) == GeoPoint(Coordinate(1.0, 1.0))
 
+    wkt_str = 'POINT(-1.0 -1.0)'
+    assert GeoPoint.from_wkt(wkt_str) == GeoPoint(Coordinate(-1.0, -1.0))
+
     with pytest.raises(ValueError):
         _ = GeoPoint.from_wkt('NOT WKT')
 
