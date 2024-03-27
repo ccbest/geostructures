@@ -1078,7 +1078,7 @@ def test_geoellipse_circumscribing_rectangle(geoellipse):
 def test_geoellipse_circumscribing_circle(geoellipse):
     assert geoellipse.circumscribing_circle() == GeoCircle(
         geoellipse.center,
-        geoellipse.major_axis,
+        geoellipse.semi_major,
         dt=default_test_datetime
     )
 
