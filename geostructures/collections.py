@@ -231,19 +231,19 @@ class ShapeCollection(DefaultZuluMixin):
         for record in df.to_dict('records'):
             dt = _get_dt(record)
             props = {k: v for k, v in record.items() if k in prop_fields}
-            if record['geometry'].startswith('POINT'):
-                shapes.append(GeoPoint.from_wkt(record['geometry'], dt, props))
+            if record['geometry'].geom_type == 'Point':
+                shapes.append(GeoPoint.from_wkt(record['geometry'].wkt, dt, props))
                 continue
 
-            if record['geometry'].startswith('LINESTRING'):
+            if record['geometry'].geom_type == 'LineString':
                 shapes.append(
-                    GeoLineString.from_wkt(record['geometry'], dt, props)
+                    GeoLineString.from_wkt(record['geometry'].wkt, dt, props)
                 )
                 continue
 
-            if record['geometry'].startswith('POLYGON'):
+            if record['geometry'].geom_type == 'Polygon':
                 shapes.append(
-                    GeoPolygon.from_wkt(record['geometry'], dt, props)
+                    GeoPolygon.from_wkt(record['geometry'].wkt, dt, props)
                 )
                 continue
 
@@ -358,6 +358,16 @@ class ShapeCollection(DefaultZuluMixin):
 
         return FeatureCollection(shapes)
 
+    @cached_property
+    def geospan(self) -> float:
+        """
+        A summary statistic equal to the width of self.bounds in degrees
+        plus the height of self.bounds in degrees. Can be used as a quick
+        way to sort larger (in extent) FeatureCollections from smaller ones.
+        """
+        bounds = self.bounds
+        return bounds[0][1] - bounds[0][0] + bounds[1][1] - bounds[1][0]
+
     def intersects(self, shape: GeoShape):
         """
         Boolean determination of whether any pings from the track exist inside the provided
@@ -395,6 +405,7 @@ class ShapeCollection(DefaultZuluMixin):
     def to_geopandas(self, include_properties: Optional[List[str]] = None):
         """
         """
+        import pandas as pd
         import geopandas as gpd
 
         keys = include_properties or set(
@@ -403,12 +414,14 @@ class ShapeCollection(DefaultZuluMixin):
         )
 
         return gpd.GeoDataFrame(
-            [
-                {
-                    'geometry': x.to_wkt(),
-                    **{key: x.properties.get(key) for key in keys},
-                } for x in self.geoshapes
-            ]
+            data=pd.DataFrame(
+                [
+                    {
+                       key: x.properties.get(key) for key in keys
+                    } for x in self.geoshapes
+                ]
+            ),
+            geometry=gpd.GeoSeries.from_wkt([x.to_wkt() for x in self.geoshapes])
         )
 
     def to_shapefile(
