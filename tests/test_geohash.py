@@ -1,5 +1,6 @@
 
 import pytest
+from datetime import datetime
 
 from geostructures import Coordinate, GeoBox, GeoCircle, GeoLineString, GeoPoint
 from geostructures.collections import FeatureCollection
@@ -7,6 +8,8 @@ from geostructures.geohash import (
     _coord_to_niemeyer, _get_niemeyer_subhashes, niemeyer_to_geobox,
     H3Hasher, NiemeyerHasher
 )
+from geostructures.time import TimeInterval
+from geostructures.utils.agg_functions import *
 
 
 def test_coord_to_niemeyer():
@@ -120,6 +123,54 @@ def test_hash_collection():
         hasher = H3Hasher()
         hasher.hash_collection(fcol)
 
+
+def test_hash_collection_with_total_time():
+    shape = GeoCircle(Coordinate(0.0, 0.0), 600, 
+                      dt=TimeInterval(datetime(2024,1,1), datetime(2024,1,1,1)))
+    shape2 = GeoCircle(Coordinate(0.0, 0.0), 300,
+                      dt=TimeInterval(datetime(2024,1,1), datetime(2024,1,1,2)))
+    fcol = FeatureCollection([shape, shape2])
+    hasher = H3Hasher(resolution=9)
+
+    assert hasher.hash_collection(fcol, agg_fn=total_time) == {
+        '89754e64d2fffff': 10800.0,
+        '89754e64d2bffff': 3600.0,
+        '89754e64983ffff': 3600.0,
+        '89754e64987ffff': 3600.0,
+        '89754e64993ffff': 10800.0,
+        '89754e64997ffff': 10800.0,
+        '89754e64d27ffff': 3600.0,
+        '89754e64d67ffff': 3600.0,
+        '89754a9324bffff': 3600.0,
+        '89754e64d23ffff': 3600.0,
+        '89754a9325bffff': 3600.0,
+        '89754e6499bffff': 3600.0
+    }
+
+def test_hash_collection_with_unique_entities():
+    shape = GeoCircle(Coordinate(0.0, 0.0), 600, 
+                      properties={'entity': 1})
+    shape2 = GeoCircle(Coordinate(0.0, 0.0), 300,
+                      properties={'entity': 2})
+    shape3 = GeoCircle(Coordinate(0.0, 0.0), 450,
+                      properties={'entity': 1})
+    fcol = FeatureCollection([shape, shape2, shape3])
+    hasher = H3Hasher(resolution=9)
+
+    assert hasher.hash_collection(fcol, agg_fn=unique_entities) == {
+        '89754e64d2fffff': 2,
+        '89754e64d2bffff': 1,
+        '89754e64983ffff': 1,
+        '89754e64987ffff': 1,
+        '89754e64993ffff': 2,
+        '89754e64997ffff': 2,
+        '89754e64d27ffff': 1,
+        '89754e64d67ffff': 1,
+        '89754a9324bffff': 1,
+        '89754e64d23ffff': 1,
+        '89754a9325bffff': 1,
+        '89754e6499bffff': 1
+    }
 
 def test_niemeyer_hash_collection():
     hasher = NiemeyerHasher(8, 16)
