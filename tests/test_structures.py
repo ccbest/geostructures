@@ -1077,7 +1077,7 @@ def test_geoellipse_circumscribing_rectangle(geoellipse):
 
 def test_geoellipse_circumscribing_circle(geoellipse):
     assert geoellipse.circumscribing_circle() == GeoCircle(
-        geoellipse.center,
+        geoellipse.centroid,
         geoellipse.semi_major,
         dt=default_test_datetime
     )
@@ -1199,10 +1199,10 @@ def test_georing_to_geojson(georing):
 
 def test_georing_circumscribing_rectangle(georing, geowedge):
 
-    max_lon, _ = inverse_haversine_degrees(georing.center, 90, 1000).to_float()
-    min_lon, _ = inverse_haversine_degrees(georing.center, -90, 1000).to_float()
-    _, max_lat = inverse_haversine_degrees(georing.center, 0, 1000).to_float()
-    _, min_lat = inverse_haversine_degrees(georing.center, 180, 1000).to_float()
+    max_lon, _ = inverse_haversine_degrees(georing.centroid, 90, 1000).to_float()
+    min_lon, _ = inverse_haversine_degrees(georing.centroid, -90, 1000).to_float()
+    _, max_lat = inverse_haversine_degrees(georing.centroid, 0, 1000).to_float()
+    _, min_lat = inverse_haversine_degrees(georing.centroid, 180, 1000).to_float()
 
     assert georing.circumscribing_rectangle() == GeoBox(
         Coordinate(min_lon, max_lat),
