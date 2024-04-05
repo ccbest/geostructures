@@ -163,19 +163,34 @@ class ShapeCollection(DefaultZuluMixin):
             geom_type = feature.get('geometry', {}).get('type')
             if geom_type == 'Point':
                 shapes.append(
-                    GeoPoint.from_geojson(feature, time_start_property, time_end_property)
+                    GeoPoint.from_geojson(
+                        feature,
+                        time_start_property,
+                        time_end_property,
+                        time_format=time_format
+                    )
                 )
                 continue
 
             if geom_type == 'LineString':
                 shapes.append(
-                    GeoLineString.from_geojson(feature, time_start_property, time_end_property)
+                    GeoLineString.from_geojson(
+                        feature,
+                        time_start_property,
+                        time_end_property,
+                        time_format=time_format
+                    )
                 )
                 continue
 
             if geom_type == 'Polygon':
                 shapes.append(
-                    GeoPolygon.from_geojson(feature, time_start_property, time_end_property)
+                    GeoPolygon.from_geojson(
+                        feature,
+                        time_start_property,
+                        time_end_property,
+                        time_format=time_format
+                    )
                 )
 
         return cls(shapes)
