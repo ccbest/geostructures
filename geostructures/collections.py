@@ -769,7 +769,7 @@ class Track(ShapeCollection, DefaultZuluMixin):
                 new_pings.append(ping_group[0])
                 continue
 
-            _lons, _lats = list(zip(*[x.center.to_float() for x in ping_group]))
+            _lons, _lats = list(zip(*[x.centroid.to_float() for x in ping_group]))
             new_pings.append(
                 GeoPoint(
                     Coordinate(sum(_lons)/len(_lons), sum(_lats)/len(_lats)),
