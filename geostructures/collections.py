@@ -16,7 +16,8 @@ from zipfile import ZipFile
 import numpy as np
 
 from geostructures import Coordinate, LOGGER
-from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon, GeoShape
+from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
+from geostructures._base import BaseShape
 from geostructures.time import TimeInterval
 from geostructures.calc import haversine_distance_meters
 from geostructures.utils.mixins import DefaultZuluMixin
@@ -27,7 +28,7 @@ _COL_TYPE = TypeVar('_COL_TYPE', bound='ShapeCollection')
 
 class ShapeCollection(DefaultZuluMixin):
 
-    def __init__(self, geoshapes: List[GeoShape]):
+    def __init__(self, geoshapes: List[BaseShape]):
         super().__init__()
         self.geoshapes = geoshapes
 
@@ -113,7 +114,7 @@ class ShapeCollection(DefaultZuluMixin):
 
         raise ValueError(f"Unexpected dt object: {dt}")
 
-    def filter_by_intersection(self: _COL_TYPE, shape: GeoShape) -> _COL_TYPE:
+    def filter_by_intersection(self: _COL_TYPE, shape: BaseShape) -> _COL_TYPE:
         """
         Filter the shape collection using an intersecting geoshape, which is optionally
         time-bounded.
@@ -158,7 +159,7 @@ class ShapeCollection(DefaultZuluMixin):
         if gjson.get('type') != 'FeatureCollection':
             raise ValueError('Malformed GeoJSON; expected FeatureCollection')
 
-        shapes: List[GeoShape] = []
+        shapes: List[BaseShape] = []
         for feature in gjson.get('features', []):
             geom_type = feature.get('geometry', {}).get('type')
             if geom_type == 'Point':
@@ -242,7 +243,7 @@ class ShapeCollection(DefaultZuluMixin):
         prop_fields = [
             x for x in df.columns if x not in (time_start_field, time_end_field, 'geometry')
         ]
-        shapes: List[GeoShape] = []
+        shapes: List[BaseShape] = []
         for record in df.to_dict('records'):
             dt = _get_dt(record)
             props = {k: v for k, v in record.items() if k in prop_fields}
@@ -383,7 +384,7 @@ class ShapeCollection(DefaultZuluMixin):
         bounds = self.bounds
         return bounds[0][1] - bounds[0][0] + bounds[1][1] - bounds[1][0]
 
-    def intersects(self, shape: GeoShape):
+    def intersects(self, shape: BaseShape):
         """
         Boolean determination of whether any pings from the track exist inside the provided
         geostructure.
@@ -469,9 +470,9 @@ class ShapeCollection(DefaultZuluMixin):
                 return val.isoformat()
             return val
 
-        points: List[GeoShape] = []
-        lines: List[GeoShape] = []
-        shapes: List[GeoShape] = []
+        points: List[BaseShape] = []
+        lines: List[BaseShape] = []
+        shapes: List[BaseShape] = []
         for shape in self.geoshapes:
             if not isinstance(shape, (GeoPoint, GeoLineString)):
                 shapes.append(shape)
@@ -613,7 +614,7 @@ class Track(ShapeCollection, DefaultZuluMixin):
     A sequence of chronologically-ordered (by start time) GeoShapes
     """
 
-    def __init__(self, geoshapes: List[GeoShape]):
+    def __init__(self, geoshapes: List[BaseShape]):
         if not all(x.dt for x in geoshapes):
             raise ValueError('All track geoshapes must have an associated time value.')
 

@@ -96,3 +96,6 @@ class TimeInterval(DefaultZuluMixin):
     def union(self, other: TimeInterval) -> TimeInterval:
         """Returns a TimeInterval that spans both time intervals"""
         return TimeInterval(min(self.start, other.start), max(self.end, other.end))
+
+
+_GEOTIME_TYPE = Union[datetime, TimeInterval]

@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 from plotly.graph_objects import Figure
 
 from geostructures import Coordinate, GeoLineString, GeoPoint, GeoPolygon
-from geostructures.structures import GeoShape
+from geostructures._base import GeoShape
 from geostructures.collections import FeatureCollection, ShapeCollection
 from geostructures.geohash import H3Hasher
 

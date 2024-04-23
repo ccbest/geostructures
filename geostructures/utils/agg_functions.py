@@ -3,10 +3,10 @@
 __all__ = ['total_time', 'unique_entities']
 
 from typing import List
-from geostructures.structures import GeoShape
+from geostructures._base import BaseShape
 
 
-def total_time(shapes: List[GeoShape]) -> float:
+def total_time(shapes: List[BaseShape]) -> float:
     """
     The total number of seconds elapsed over a list of shapes. Shapes with no time
     bound are not counted.
@@ -23,7 +23,7 @@ def total_time(shapes: List[GeoShape]) -> float:
     )
 
 
-def unique_entities(shapes: List[GeoShape]) -> float:
+def unique_entities(shapes: List[BaseShape]) -> float:
     """
     The number of distinct entities present in a list of shapes, as represented by the
     'entity' property. Shapes without an entity property will not be counted.
