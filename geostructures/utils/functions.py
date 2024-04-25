@@ -1,6 +1,8 @@
 """Module for miscellaneous multi-use functions"""
 
-__all__ = ['float_to_str', 'round_half_up']
+__all__ = [
+    'float_to_str', 'round_half_up',
+]
 
 import decimal
 

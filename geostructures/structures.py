@@ -10,17 +10,18 @@ __all__ = [
 
 from abc import ABC, abstractmethod
 import copy
-from datetime import datetime
-from functools import cached_property, lru_cache
+from functools import cached_property
 import math
-import re
 import statistics
-from typing import cast, Any, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import cast, Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
 from geostructures import LOGGER
-from geostructures._base import BaseShape, _SHAPE_TYPE, _GEOTIME_TYPE
+from geostructures._base import (
+    BaseShape, _GEOTIME_TYPE, get_dt_from_geojson_props, parse_wkt_linear_ring,
+    _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT, _RE_LINESTRING_WKT
+)
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
     do_edges_intersect,
@@ -33,54 +34,6 @@ from geostructures.calc import (
 )
 from geostructures.utils.functions import round_half_up
 from geostructures.utils.mixins import WarnOnceMixin
-from geostructures.time import TimeInterval
-
-
-
-_RE_COORD_STR = r'((?:\s?\-?\d+\.?\d*\s\-?\d+\.?\d*\s?\,?)+)'
-_RE_COORD = re.compile(_RE_COORD_STR)
-_RE_COORD_GROUPS_STR = r'(?:\(' + _RE_COORD_STR + r'\)\,?\s?)+'
-_RE_POINT_WKT = re.compile(r'POINT\s?\((\s?-?\d{1,3}\.?\d*\s-?\d{1,3}\.?\d*\s?)\)')
-_RE_POLYGON_WKT = re.compile(r'POLYGON\s?\(' + _RE_COORD_GROUPS_STR + r'\)')
-_RE_LINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_COORD_GROUPS_STR + r'\s?')
-
-
-
-def _get_dt_from_geojson_props(
-    rec: Dict[str, Any],
-    time_start_field: str = 'datetime_start',
-    time_end_field: str = 'datetime_end',
-    time_format: Optional[str] = None
-) -> Union[datetime, TimeInterval, None]:
-    """Grabs datetime data and returns appropriate struct"""
-    def _convert(dt: Optional[str], _format: Optional[str] = None):
-        if not dt:
-            return
-
-        if _format:
-            return datetime.strptime(dt, _format)
-
-        return datetime.fromisoformat(dt)
-
-    # Pop the field so it doesn't remain in properties
-    dt_start = _convert(rec.pop(time_start_field, None), time_format)
-    dt_end = _convert(rec.pop(time_end_field, None), time_format)
-
-    if dt_start is None and dt_end is None:
-        return None
-
-    if not (dt_start and dt_end) or dt_start == dt_end:
-        return dt_start or dt_end
-
-    return TimeInterval(dt_start, dt_end)
-
-
-def _parse_wkt_coord_group(group: str) -> List[Coordinate]:
-    """Parse wkt coordinate list into Coordinate objects"""
-    return [
-        Coordinate(*coord.strip().split(' '))  # type: ignore
-        for coord in group.split(',') if coord
-    ]
 
 
 class BaseGeoShape(BaseShape, ABC):
@@ -583,7 +536,7 @@ class GeoPolygon(BaseGeoShape, WarnOnceMixin):
             holes = [GeoPolygon(ring) for ring in rings[1:]]
 
         properties = gjson.get('properties', {})
-        dt = _get_dt_from_geojson_props(
+        dt = get_dt_from_geojson_props(
             properties,
             time_start_property,
             time_end_property,
@@ -607,7 +560,6 @@ class GeoPolygon(BaseGeoShape, WarnOnceMixin):
         Returns:
             GeoPolygon
         """
-
         return cls.from_wkt(polygon.wkt)
 
     @classmethod
@@ -621,12 +573,12 @@ class GeoPolygon(BaseGeoShape, WarnOnceMixin):
         if not _RE_POLYGON_WKT.match(wkt_str):
             raise ValueError(f'Invalid WKT Polygon: {wkt_str}')
 
-        coord_groups = _RE_COORD.findall(wkt_str)
-        outline = _parse_wkt_coord_group(coord_groups[0])
+        coord_groups = _RE_LINEAR_RING.findall(wkt_str)
+        outline = parse_wkt_linear_ring(coord_groups[0])
         holes: List[BaseGeoShape] = []
         if len(coord_groups) > 1:
             holes = [
-                GeoPolygon(_parse_wkt_coord_group(coord_group))
+                GeoPolygon(parse_wkt_linear_ring(coord_group))
                 for coord_group in coord_groups[1:]
             ]
 
@@ -1363,7 +1315,7 @@ class GeoLineString(BaseGeoShape):
 
         coords = [Coordinate(x, y) for x, y in geom.get('coordinates', [])]
         properties = gjson.get('properties', {})
-        dt = _get_dt_from_geojson_props(
+        dt = get_dt_from_geojson_props(
             properties,
             time_start_property,
             time_end_property,
@@ -1395,12 +1347,12 @@ class GeoLineString(BaseGeoShape):
         if not _RE_LINESTRING_WKT.match(wkt_str):
             raise ValueError(f'Invalid WKT LineString: {wkt_str}')
 
-        coord_groups = _RE_COORD.findall(wkt_str)
+        coord_groups = _RE_LINEAR_RING.findall(wkt_str)
         if not len(coord_groups) == 1:
             raise ValueError(f'Invalid WKT LineString: {wkt_str}')
 
         return GeoLineString(
-            _parse_wkt_coord_group(coord_groups[0]),
+            parse_wkt_linear_ring(coord_groups[0]),
             dt=dt,
             properties=properties
         )
@@ -1557,7 +1509,7 @@ class GeoPoint(BaseGeoShape):
         coordinates = geom['coordinates']
         coord = Coordinate(coordinates[0], coordinates[1])
         properties = gjson.get('properties', {})
-        dt = _get_dt_from_geojson_props(
+        dt = get_dt_from_geojson_props(
             properties,
             time_start_property,
             time_end_property,
@@ -1591,8 +1543,10 @@ class GeoPoint(BaseGeoShape):
         if not _match:
             raise ValueError(f'Invalid WKT Point: {wkt_str}')
 
+        coords = _RE_COORD.findall(wkt_str)[0]
+
         return GeoPoint(
-            Coordinate(*_match.groups()[0].split(' ')),
+            Coordinate(*coords.split(' ')),
             dt=dt,
             properties=properties
         )

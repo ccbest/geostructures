@@ -1,14 +1,20 @@
 
+
+__all__ = ['MultiGeoPolygon']
+
 import copy
 from functools import cached_property
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from geostructures._base import _GEOTIME_TYPE, _SHAPE_TYPE
+from geostructures._base import (
+    _GEOTIME_TYPE, _RE_MULTIPOLYGON_WKT, _RE_LINEAR_RING, _RE_LINEAR_RINGS, _SHAPE_TYPE,
+    BaseShape, get_dt_from_geojson_props, parse_wkt_linear_ring
+)
 from geostructures.calc import haversine_distance_meters
 from geostructures.coordinates import Coordinate
-from geostructures.structures import BaseShape, GeoCircle, GeoLineString, GeoPoint, GeoPolygon
+from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon
 
 
 class BaseMultiGeoShape(BaseShape):
@@ -31,7 +37,8 @@ class MultiGeoPolygon(BaseMultiGeoShape):
         return hash(tuple(hash(x) for x in self.geoshapes))
 
     def __repr__(self):
-        return f'<MultiGeoPolygon of {len(self.geoshapes)} shapes>'
+        pl = "s" if len(self.geoshapes) != 1 else ""
+        return f'<MultiGeoPolygon of {len(self.geoshapes)} polygon{pl}>'
 
     def area(self) -> float:
         return sum(x.area for x in self.geoshapes)
@@ -94,8 +101,80 @@ class MultiGeoPolygon(BaseMultiGeoShape):
         time_end_property: str = 'datetime_end',
         time_format: Optional[str] = None,
     ):
-        # TODO
-        pass
+        geom = gjson.get('geometry', {})
+        if not geom.get('type') == 'MultiPolygon':
+            raise ValueError(
+                f'Geometry represents a {geom.get("type")}; expected MultiPolygon.'
+            )
+
+        shapes = []
+        for shape in geom.get('coordinates', []):
+            rings = [[Coordinate(x, y) for x, y in ring] for ring in shape]
+            shell, holes = rings[0], []
+            if len(rings) > 1:
+                holes = [GeoPolygon(list(reversed(ring))) for ring in rings[1:]]
+
+            shapes.append(GeoPolygon(shell, holes=holes))
+
+        properties = gjson.get('properties', {})
+        dt = get_dt_from_geojson_props(
+            properties,
+            time_start_property,
+            time_end_property,
+            time_format
+        )
+        return MultiGeoPolygon(
+            shapes,
+            dt=dt,
+            properties=properties
+        )
+
+    @classmethod
+    def from_shapely(
+        cls,
+        multipolygon
+    ):
+        """
+        Creates a GeoPolygon from a shapely polygon
+
+        Args:
+            multipolygon:
+                A shapely multipolygon
+
+        Returns:
+            GeoPolygon
+        """
+        return cls.from_wkt(multipolygon.wkt)
+
+    @classmethod
+    def from_wkt(
+        cls,
+        wkt_str: str,
+        dt: Optional[_GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ) -> 'MultiGeoPolygon':
+        """Create a GeoPolygon from a wkt string"""
+        if not _RE_MULTIPOLYGON_WKT.match(wkt_str):
+            raise ValueError(f'Invalid WKT Polygon: {wkt_str}')
+
+        shapes = []
+        for shape in _RE_LINEAR_RINGS.findall(wkt_str):
+            coord_groups = _RE_LINEAR_RING.findall(shape)
+            shell, holes = parse_wkt_linear_ring(coord_groups[0]), []
+
+            if len(coord_groups) > 1:
+                holes = [
+                    GeoPolygon(list(reversed(parse_wkt_linear_ring(coord_group))))
+                    for coord_group in coord_groups[1:]
+                ]
+
+            shapes.append(GeoPolygon(shell, holes=holes))
+
+        return MultiGeoPolygon(
+            shapes,
+            dt=dt,
+            properties=properties
+        )
 
     def linear_rings(self, **kwargs) -> List[List[List[Coordinate]]]:
         """
@@ -143,6 +222,26 @@ class MultiGeoPolygon(BaseMultiGeoShape):
         Returns:
             (dict)
         """
+        return {
+            'type': 'Feature',
+            'geometry': {
+                'type': 'MultiPolygon',
+                'coordinates': [
+                    [
+                        [
+                            list(coord.to_float()) for coord in ring
+                        ] for ring in shape
+                    ]
+                    for shape in self.linear_rings(k=k)
+                ]
+            },
+            'properties': {
+                **self.properties,
+                **self._dt_to_json(),
+                **(properties or {})
+            },
+            **kwargs
+        }
 
     def _to_shapely(self, **kwargs):
         """
@@ -161,9 +260,28 @@ class MultiGeoPolygon(BaseMultiGeoShape):
                     tuple(coord.to_float() for coord in shell),
                     [
                         tuple(coord.to_float() for coord in ring)
-                        for ring in holes[1:]
+                        for ring in holes
                     ]
                 )
             )
 
         return shapely.geometry.MultiPolygon(converted)
+
+    def to_wkt(self, **kwargs) -> str:
+        """
+        Converts the shape to its WKT string representation
+
+        Keyword Args:
+            Arguments to be passed to the .bounding_coords() method. Reference
+            that method for a list of corresponding kwargs.
+
+        Returns:
+            str
+        """
+        bbox_strs = []
+        for shape in self.linear_rings(**kwargs):
+            bbox_strs.append('(' + ', '.join(
+                [self._linear_ring_to_wkt(ring) for ring in shape]
+            ) + ')')
+
+        return f'MULTIPOLYGON({", ".join(bbox_strs)})'

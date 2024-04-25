@@ -1,3 +1,4 @@
+import re
 from abc import abstractmethod
 from datetime import datetime, timedelta
 from functools import lru_cache, cached_property
@@ -9,11 +10,30 @@ from geostructures.utils.mixins import DefaultZuluMixin
 
 
 if TYPE_CHECKING:
-    from geostructures import GeoCircle, GeoBox
-
+    from geostructures import GeoCircle, GeoBox, Coordinate
 
 _SHAPE_TYPE = TypeVar('_SHAPE_TYPE', bound='BaseShape')
 _GEOTIME_TYPE = Union[datetime, TimeInterval]
+
+# A wkt coordinate, e.g. '-1.0 2.0'
+_RE_COORD_STR = r'-?\d{1,3}\.?\d*\s-?\d{1,3}\.?\d*'
+_RE_COORD = re.compile(_RE_COORD_STR)
+
+# A single linear ring, e.g. '(0.0 0.0, 1.0 1.0, ... )'
+_RE_LINEAR_RING_STR = r'\((?:\s?' + _RE_COORD_STR + r'\s?\,?)+\)'
+_RE_LINEAR_RING = re.compile(_RE_LINEAR_RING_STR)
+
+# A group of linear rings (shell and holes), e.g. '((0.0 0.0, 1.0 1.0, ... ), ( ... ))'
+_RE_LINEAR_RINGS_STR = r'(\((?:' + _RE_LINEAR_RING_STR + r'\,?\s?)+\))'
+_RE_LINEAR_RINGS = re.compile(_RE_LINEAR_RINGS_STR)
+
+_RE_POINT_WKT = re.compile(r'POINT\s?\(\s?' + _RE_COORD_STR + r'\s?\)')
+_RE_POLYGON_WKT = re.compile(r'POLYGON\s?' + _RE_LINEAR_RINGS_STR)
+_RE_LINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_LINEAR_RING_STR)
+
+_RE_MULTIPOINT_WKT = re.compile(r'POINT\s?\((\s?-?\d{1,3}\.?\d*\s-?\d{1,3}\.?\d*\s?)\)')
+_RE_MULTIPOLYGON_WKT = re.compile(r'MULTIPOLYGON\s?\((' + _RE_LINEAR_RINGS_STR + r'\,?\s?)+\)')
+_RE_MULTILINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_LINEAR_RINGS_STR + r'\s?')
 
 
 class BaseShape(DefaultZuluMixin):
@@ -79,7 +99,7 @@ class BaseShape(DefaultZuluMixin):
 
     @property
     def end(self) -> datetime:
-        """The end date/datetime, if present"""
+        """The end datetime, if present"""
         if not self.dt:
             raise ValueError("GeoShape has no associated time information.")
 
@@ -401,3 +421,40 @@ class BaseShape(DefaultZuluMixin):
     @abstractmethod
     def edges(self, **kwargs) -> Any:
         pass
+
+
+def get_dt_from_geojson_props(
+    rec: Dict[str, Any],
+    time_start_field: str = 'datetime_start',
+    time_end_field: str = 'datetime_end',
+    time_format: Optional[str] = None
+) -> Union[datetime, TimeInterval, None]:
+    """Grabs datetime data and returns appropriate struct"""
+    def _convert(dt: Optional[str], _format: Optional[str] = None):
+        if not dt:
+            return
+
+        if _format:
+            return datetime.strptime(dt, _format)
+
+        return datetime.fromisoformat(dt)
+
+    # Pop the field so it doesn't remain in properties
+    dt_start = _convert(rec.pop(time_start_field, None), time_format)
+    dt_end = _convert(rec.pop(time_end_field, None), time_format)
+
+    if dt_start is None and dt_end is None:
+        return None
+
+    if not (dt_start and dt_end) or dt_start == dt_end:
+        return dt_start or dt_end
+
+    return TimeInterval(dt_start, dt_end)
+
+
+def parse_wkt_linear_ring(group: str) -> List[Coordinate]:
+    """Parse wkt coordinate list into Coordinate objects"""
+    return [
+        Coordinate(*coord.strip().split(' '))  # type: ignore
+        for coord in group.strip('()').split(',') if coord
+    ]
