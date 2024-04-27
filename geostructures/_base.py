@@ -31,7 +31,7 @@ _RE_POINT_WKT = re.compile(r'POINT\s?\(\s?' + _RE_COORD_STR + r'\s?\)')
 _RE_POLYGON_WKT = re.compile(r'POLYGON\s?' + _RE_LINEAR_RINGS_STR)
 _RE_LINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_LINEAR_RING_STR)
 
-_RE_MULTIPOINT_WKT = re.compile(r'POINT\s?\((\s?-?\d{1,3}\.?\d*\s-?\d{1,3}\.?\d*\s?)\)')
+_RE_MULTIPOINT_WKT = re.compile(r'MULTIPOINT\s?' + _RE_LINEAR_RING_STR)
 _RE_MULTIPOLYGON_WKT = re.compile(r'MULTIPOLYGON\s?\((' + _RE_LINEAR_RINGS_STR + r'\,?\s?)+\)')
 _RE_MULTILINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_LINEAR_RINGS_STR + r'\s?')
 
@@ -298,7 +298,6 @@ class BaseShape(DefaultZuluMixin):
     def copy(self: _SHAPE_TYPE) -> _SHAPE_TYPE:
         """Produces a copy of the geoshape."""
 
-    @abstractmethod
     def intersects(self, shape: 'BaseShape', **kwargs) -> bool:
         """
         Tests whether another shape intersects this one along both the spatial and time axes.
@@ -315,6 +314,12 @@ class BaseShape(DefaultZuluMixin):
         Returns:
             bool
         """
+        # Make sure the times overlap, if present on both
+        if self.dt and shape.dt:
+            if not self.intersects_time(shape.dt):
+                return False
+
+        return self.intersects_shape(shape, **kwargs)
 
     @abstractmethod
     def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:

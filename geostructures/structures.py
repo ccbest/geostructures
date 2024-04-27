@@ -40,7 +40,7 @@ class BaseGeoShape(BaseShape, ABC):
 
     def __init__(
             self,
-            holes: Optional[List['GeoShape']] = None,
+            holes: Optional[List['BaseGeoShape']] = None,
             dt: Optional[_GEOTIME_TYPE] = None,
             properties: Optional[Dict] = None
     ):
@@ -50,16 +50,15 @@ class BaseGeoShape(BaseShape, ABC):
         if any(x.holes for x in self.holes):
             raise ValueError('Holes cannot themselves contain holes.')
 
-    def __contains__(self, other: Union['BaseGeoShape', Coordinate]):
-        """Test whether a coordinate or GeoPoint is contained within this geoshape"""
+    def __contains__(self, other: Union[BaseShape, Coordinate]):
+        """Test whether a coordinate or GeoShape is contained within this geoshape"""
         if isinstance(other, Coordinate):
             return self.contains_coordinate(other)
 
         if other.dt is None or self.dt is None:
             return self.contains_coordinate(other.centroid)
 
-        # TODO: contains shapes
-        return self.contains_coordinate(other.centroid) and self.contains_time(other.dt)
+        return self.contains_shape(other.centroid) and self.contains_time(other.dt)
 
     @cached_property
     def area(self):
@@ -155,17 +154,9 @@ class BaseGeoShape(BaseShape, ABC):
         """
         rings = self.linear_rings(**kwargs)
         return [
-            list(zip(ring, ring[1:]))
+            list(zip(ring, [*ring[1:], ring[0]]))
             for ring in rings
         ]
-
-    def intersects(self, shape: 'BaseShape', **kwargs) -> bool:
-        # Make sure the times overlap, if present on both
-        if self.dt and shape.dt:
-            if not self.intersects_time(shape.dt):
-                return False
-
-        return self.intersects_shape(shape, **kwargs)
 
     def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
         # Make sure the times overlap, if present on both
