@@ -1,16 +1,17 @@
 import re
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from datetime import datetime, timedelta
 from functools import lru_cache, cached_property
 from typing import Optional, List, Dict, Union, Tuple, cast, Any, TYPE_CHECKING, TypeVar
 
+from geostructures.calc import do_edges_intersect
 from geostructures.coordinates import Coordinate
 from geostructures.time import TimeInterval
 from geostructures.utils.mixins import DefaultZuluMixin
 
 
 if TYPE_CHECKING:
-    from geostructures import GeoCircle, GeoBox, Coordinate
+    from geostructures import GeoCircle, GeoBox, Coordinate, GeoPoint, GeoPolygon
 
 _SHAPE_TYPE = TypeVar('_SHAPE_TYPE', bound='BaseShape')
 _GEOTIME_TYPE = Union[datetime, TimeInterval]
@@ -32,8 +33,8 @@ _RE_POLYGON_WKT = re.compile(r'POLYGON\s?' + _RE_LINEAR_RINGS_STR)
 _RE_LINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_LINEAR_RING_STR)
 
 _RE_MULTIPOINT_WKT = re.compile(r'MULTIPOINT\s?' + _RE_LINEAR_RING_STR)
-_RE_MULTIPOLYGON_WKT = re.compile(r'MULTIPOLYGON\s?\((' + _RE_LINEAR_RINGS_STR + r'\,?\s?)+\)')
-_RE_MULTILINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_LINEAR_RINGS_STR + r'\s?')
+_RE_MULTIPOLYGON_WKT = re.compile(r'MULTIPOLYGON\s?\((' + _RE_LINEAR_RINGS_STR + r',?\s?)+\)')
+_RE_MULTILINESTRING_WKT = re.compile(r'MULTILINESTRING\s?' + _RE_LINEAR_RINGS_STR)
 
 
 class BaseShape(DefaultZuluMixin):
@@ -426,6 +427,255 @@ class BaseShape(DefaultZuluMixin):
     @abstractmethod
     def edges(self, **kwargs) -> Any:
         pass
+
+
+
+class BaseGeoShape(BaseShape, ABC):
+
+    def __init__(
+            self,
+            holes: Optional[List['BaseGeoShape']] = None,
+            dt: Optional[_GEOTIME_TYPE] = None,
+            properties: Optional[Dict] = None
+    ):
+        super().__init__(dt, properties)
+
+        self.holes = holes or []
+        if any(x.holes for x in self.holes):
+            raise ValueError('Holes cannot themselves contain holes.')
+
+    def __contains__(self, other: Union[BaseShape, Coordinate]):
+        """Test whether a coordinate or GeoShape is contained within this geoshape"""
+        if isinstance(other, Coordinate):
+            return self.contains_coordinate(other)
+
+        if other.dt is None or self.dt is None:
+            return self.contains_coordinate(other.centroid)
+
+        return self.contains_shape(other.centroid) and self.contains_time(other.dt)
+
+    @cached_property
+    def area(self):
+        """
+        The area of the shape, in meters squared.
+
+        Returns:
+            float
+        """
+        from pyproj import Geod
+        geod = Geod(ellps="WGS84")
+        area, _ = geod.geometry_area_perimeter(self.to_shapely())
+        return area
+
+    @abstractmethod
+    def bounding_coords(self, **kwargs) -> List[Coordinate]:
+        """
+        Produces a list of coordinates that define the polygon's boundary.
+
+        Using discrete coordinates to represent a continuous curve implies some level of data
+        loss. You can minimize this loss by specifying k, which represents the number of
+        points drawn.
+
+        Does not include information about holes - see the linear rings method.
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+
+        Returns:
+            A list of coordinates, representing the boundary.
+        """
+
+    def bounding_edges(self, **kwargs) -> List[Tuple[Coordinate, Coordinate]]:
+        """
+        Returns a list of edges, defined as a 2-tuple (start and end) of coordinates, that
+        represent the polygon's boundary.
+
+        Using discrete coordinates to represent a continuous curve implies some level of data
+        loss. You can minimize this loss by specifying k, which represents the number of
+        points drawn.
+
+        Does not include information about holes - see the edges method.
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+
+        Returns:
+            A list of 2-tuples representing the edges
+        """
+        bounding_coords = self.bounding_coords(**kwargs)
+        return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
+
+    def contains_shape(self, shape: 'BaseShape', **kwargs) -> bool:
+        if isinstance(shape, BaseMultiGeoShape):
+            for subshape in shape.geoshapes:
+                if not self.contains_shape(subshape):
+                    return False
+            return True
+
+        if isinstance(shape, GeoPoint):
+            return self.contains_coordinate(shape.centroid)
+
+        s_edges = self.edges(**kwargs)
+        o_edges = shape.edges(**kwargs)
+        if do_edges_intersect(
+            [x for edge_ring in s_edges for x in edge_ring],
+            [x for edge_ring in o_edges for x in edge_ring]
+        ):
+            # At least one edge pair intersects - cannot be contained
+            return False
+
+        # No edges intersect, so make sure one point along the boundary is
+        # contained
+        return o_edges[0][0][0] in self
+
+    def edges(self, **kwargs) -> List[List[Tuple[Coordinate, Coordinate]]]:
+        """
+        Returns lists of edges, defined as a 2-tuple (start and end) of coordinates, for the
+        outer boundary as well as holes in the polygon.
+
+        Operates similar to the `bounding_edges` method but includes information about holes
+        in the shape.
+
+        Using discrete coordinates to represent a continuous curve implies some level of data
+        loss. You can minimize this loss by specifying k, which represents the number of
+        points drawn.
+
+        Does not include information about holes - see the edges method.
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+
+        Returns:
+            Lists of 2-tuples representing edges. The first list will always represent
+            the shape's boundary, and any following lists will represent holes.
+        """
+        rings = self.linear_rings(**kwargs)
+        return [
+            list(zip(ring, [*ring[1:], ring[0]]))
+            for ring in rings
+        ]
+
+    def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
+        from geostructures.multistructures import BaseMultiGeoShape
+
+        if isinstance(shape, BaseMultiGeoShape):
+            for subshape in shape.geoshapes:
+                if self.intersects_shape(subshape, **kwargs):
+                    return True
+
+            return False
+
+        if isinstance(shape, GeoPoint):
+            return shape in self
+
+        s_edges = self.edges(**kwargs)
+        o_edges = shape.edges(**kwargs)
+        if do_edges_intersect(
+            [x for edge_ring in s_edges for x in edge_ring],
+            [x for edge_ring in o_edges for x in edge_ring]
+        ):
+            # At least one edge pair intersects
+            return True
+
+        # If no edges intersect, one shape could still contain the other
+        # which counts as intersection. Have to use a point from the boundary
+        # because the centroid may fall in a hole
+        return o_edges[0][0][0] in self or s_edges[0][0][0] in shape
+
+    def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
+        """
+        Produce a list of linear rings for the object, where the first ring is the outermost
+        shell and the following rings are holes.
+
+        Using discrete coordinates to represent a continuous curve implies some level of data
+        loss. You can minimize this loss by specifying k, which represents the number of
+        points drawn.
+
+        All shapes that represent a linear ring (e.g. a box or polygon) will return
+        self-closing coordinates, meaning the last coordinate is equal to the first.
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+        """
+        return [
+            self.bounding_coords(**kwargs),
+            *[list(reversed(shape.bounding_coords())) for shape in self.holes]
+        ]
+
+    def to_geojson(
+        self,
+        k: Optional[int] = None,
+        properties: Optional[Dict] = None,
+        **kwargs
+    ) -> Dict:
+        return {
+            'type': 'Feature',
+            'geometry': {
+                'type': 'Polygon',
+                'coordinates': [
+                    [list(coord.to_float()) for coord in ring]
+                    for ring in self.linear_rings(k=k)
+                ]
+            },
+            'properties': {
+                **self.properties,
+                **self._dt_to_json(),
+                **(properties or {})
+            },
+            **kwargs
+        }
+
+    @abstractmethod
+    def to_polygon(self, **kwargs) -> 'GeoPolygon':
+        """
+        Converts the shape to a GeoPolygon
+
+        Returns:
+            (GeoPolygon)
+        """
+
+    def _to_shapely(self):
+        """
+        Converts the geoshape into a Shapely shape.
+        """
+        import shapely  # pylint: disable=import-outside-toplevel
+        rings = self.linear_rings()
+        holes = []
+        if len(rings) > 1:
+            holes = rings[1:]
+
+        return shapely.geometry.Polygon(
+            [x.to_float() for x in rings[0]],
+            holes=[[x.to_float() for x in ring] for ring in holes]
+        )
+
+    def to_wkt(self, **kwargs) -> str:
+        """
+        Converts the shape to its WKT string representation
+
+        Keyword Args:
+            Arguments to be passed to the .bounding_coords() method. Reference
+            that method for a list of corresponding kwargs.
+
+        Returns:
+            str
+        """
+        bbox_str = ', '.join(
+            [self._linear_ring_to_wkt(ring) for ring in self.linear_rings(**kwargs)]
+        )
+        return f'POLYGON({bbox_str})'
+
+
+class BaseMultiGeoShape(BaseShape, ABC):
+    geoshapes: List[BaseGeoShape]
 
 
 def get_dt_from_geojson_props(

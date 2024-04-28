@@ -5,6 +5,7 @@ __all__ = [
 ]
 
 import decimal
+from typing import List
 
 
 def float_to_str(f: float) -> str:
@@ -50,3 +51,27 @@ def round_half_up(value: float, precision) -> float:
             rounding=decimal.ROUND_HALF_UP if value >= 0 else decimal.ROUND_HALF_DOWN
         )
     )
+
+
+def test_sub_list(list_a: List, list_b: List) -> bool:
+    """
+    Test whether A is a sublist of B.
+
+    Args:
+        list_a: (List)
+            A list with elements of Any type
+
+        list_b: (List)
+            A second list with elements of Any type
+
+    Returns:
+        bool
+    """
+    if len(list_a) > len(list_b):
+        return False
+
+    for i in range(0, len(list_b) - len(list_a) + 1):
+        if list_b[i:i+len(list_a)] == list_a:
+            return True
+
+    return False

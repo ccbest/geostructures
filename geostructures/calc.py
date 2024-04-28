@@ -355,6 +355,17 @@ def inverse_haversine_radians(
     return Coordinate(final_lon, final_lat)
 
 
+def is_point_in_line(point: Coordinate, line: Tuple[Coordinate, Coordinate], **kwargs) -> bool:
+    epsilon = kwargs.get('epsilon', 0.00001)
+    cross_product = (
+        (point.latitude - line[0].latitude) * (line[1].longitude - line[0].longitude) -
+        (point.longitude - line[0].longitude) * (line[1].latitude - line[0].latitude)
+    )
+    if abs(cross_product) > epsilon:
+        return False
+
+
+
 def rotate_coordinates(
         coords: List[Coordinate],
         origin: Coordinate,
