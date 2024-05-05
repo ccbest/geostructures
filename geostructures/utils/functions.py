@@ -1,6 +1,40 @@
 """Module for miscellaneous multi-use functions"""
 
-__all__ = ['round_half_up']
+__all__ = ['get_dt_from_geojson_props', 'round_half_up', 'is_sub_list']
+
+from datetime import datetime
+from typing import Dict, Any, Optional, Union, List
+
+from geostructures.time import TimeInterval
+
+
+def get_dt_from_geojson_props(
+    rec: Dict[str, Any],
+    time_start_field: str = 'datetime_start',
+    time_end_field: str = 'datetime_end',
+    time_format: Optional[str] = None
+) -> Union[datetime, TimeInterval, None]:
+    """Grabs datetime data and returns appropriate struct"""
+    def _convert(dt: Optional[str], _format: Optional[str] = None):
+        if not dt:
+            return
+
+        if _format:
+            return datetime.strptime(dt, _format)
+
+        return datetime.fromisoformat(dt)
+
+    # Pop the field so it doesn't remain in properties
+    dt_start = _convert(rec.pop(time_start_field, None), time_format)
+    dt_end = _convert(rec.pop(time_end_field, None), time_format)
+
+    if dt_start is None and dt_end is None:
+        return None
+
+    if not (dt_start and dt_end) or dt_start == dt_end:
+        return dt_start or dt_end
+
+    return TimeInterval(dt_start, dt_end)
 
 
 def round_half_up(value: float, precision) -> float:
@@ -20,7 +54,7 @@ def round_half_up(value: float, precision) -> float:
     return round(mod, precision)
 
 
-def test_sub_list(list_a: List, list_b: List) -> bool:
+def is_sub_list(list_a: List, list_b: List) -> bool:
     """
     Test whether A is a sublist of B.
 

@@ -84,7 +84,7 @@ class ShapeCollection(DefaultZuluMixin):
 
         points = []
         points += [y.to_float() for x in _shapes for y in x.bounding_coords()]
-        points += [y.to_float() for x in _lines for y in x.coords]
+        points += [y.to_float() for x in _lines for y in x.vertices]
         points += [x.centroid.to_float() for x in _points]
         hull = spatial.ConvexHull(points)
         return GeoPolygon([Coordinate(*points[x]) for x in [*hull.vertices, hull.vertices[0]]])
@@ -299,7 +299,7 @@ class ShapeCollection(DefaultZuluMixin):
         def _create_polygon(shape, dt, props):
             """
             Create a polygon out of a pyshyp polygon. Note that "points" are continuous across
-            the bounding coords and holes, so if multiple "parts" are present we need to segment
+            the bounding vertices and holes, so if multiple "parts" are present we need to segment
             the list of points. "parts" will only provide the indices for segmentation.
             """
             parts = list(shape.parts)

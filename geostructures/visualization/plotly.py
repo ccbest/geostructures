@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 from plotly.graph_objects import Figure
 
 from geostructures import Coordinate, GeoLineString, GeoPoint, GeoPolygon
-from geostructures._base import GeoShape
+from geostructures._base import BaseGeoShape
 from geostructures.collections import FeatureCollection, ShapeCollection
 from geostructures.geohash import H3Hasher
 
@@ -113,7 +113,7 @@ def _draw_lines(
 
 
 def _draw_shapes(
-    shapes: List[GeoShape],
+    shapes: List[BaseGeoShape],
     color: str,
     hover_data: Optional[List] = None,
     opacity: Optional[float] = None,

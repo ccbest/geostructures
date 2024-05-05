@@ -533,7 +533,7 @@ class NiemeyerHasher(HasherBase):
             A set of geohashes
         """
         valid, checked, queue = set(), set(), set()
-        start = _coord_to_niemeyer(linestring.coords[0], self.length, self.base)
+        start = _coord_to_niemeyer(linestring.vertices[0], self.length, self.base)
         queue.add(start)
 
         while queue:

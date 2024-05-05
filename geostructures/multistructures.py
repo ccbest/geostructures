@@ -1,6 +1,6 @@
 
 
-__all__ = ['MultiGeoPolygon']
+__all__ = ['MultiGeoPolygon', 'MultiGeoLineString', 'MultiGeoPoint']
 
 
 from abc import ABC
@@ -13,15 +13,15 @@ import numpy as np
 from geostructures._base import (
     _GEOTIME_TYPE, _RE_COORD, _RE_MULTIPOLYGON_WKT, _RE_MULTIPOINT_WKT,
     _RE_MULTILINESTRING_WKT, _RE_LINEAR_RING, _RE_LINEAR_RINGS, _SHAPE_TYPE,
-    BaseShape, get_dt_from_geojson_props, parse_wkt_linear_ring, BaseGeoShape, BaseMultiGeoShape
+    BaseShape, MultiShapeMixin, parse_wkt_linear_ring
 )
 from geostructures.calc import do_edges_intersect, haversine_distance_meters
 from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon
-from geostructures.utils.functions import test_sub_list
+from geostructures.utils.functions import is_sub_list, get_dt_from_geojson_props
 
 
-class MultiGeoLineString(BaseMultiGeoShape):
+class MultiGeoLineString(BaseShape, MultiShapeMixin):
 
     def __init__(
         self,
@@ -30,7 +30,7 @@ class MultiGeoLineString(BaseMultiGeoShape):
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt, properties)
-        self.geoshapes = linestrings
+        self.geoshapes: List[GeoLineString] = linestrings
 
     def __contains__(self, other: Union[BaseShape, Coordinate]):
         """Test whether a coordinate or GeoShape is contained within this geoshape"""
@@ -40,10 +40,10 @@ class MultiGeoLineString(BaseMultiGeoShape):
         if other.dt is None or self.dt is None:
             return self.contains_coordinate(other.centroid)
 
-        return self.contains_shape(other.centroid) and self.contains_time(other.dt)
+        return self.contains_time(other.dt) and self.contains_shape(other.centroid)
 
     def __hash__(self) -> int:
-        return hash(tuple(hash(x) for x in self.geoshapes))
+        return hash((tuple(hash(x) for x in self.geoshapes), self.dt))
 
     def __repr__(self):
         pl = "s" if len(self.geoshapes) != 1 else ""
@@ -61,42 +61,39 @@ class MultiGeoLineString(BaseMultiGeoShape):
     @cached_property
     def centroid(self):
         # TODO: weighted by line length
-        return Coordinate(*np.average(
-            np.array([point.centroid.to_float() for point in self.geoshapes])
-        ))
+        lon, lat = np.mean(
+            np.array([coord.to_float() for shape in self.geoshapes for coord in shape.vertices]),
+            axis=0
+        )
+        return Coordinate(lon, lat)
 
     def circumscribing_circle(self) -> 'GeoCircle':
         centroid = self.centroid
         max_dist = max(
-            haversine_distance_meters(point.centroid, centroid)
-            for point in self.geoshapes
+            haversine_distance_meters(coord, centroid)
+            for shape in self.geoshapes
+            for coord in shape.vertices
         )
         return GeoCircle(centroid, max_dist, dt=self.dt)
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
-        for point in self.geoshapes:
-            if point.centroid == coord:
+        for shape in self.geoshapes:
+            if coord in shape.vertices:
                 return True
 
         return False
 
     def contains_shape(self, shape: 'BaseShape', **kwargs) -> bool:
-        if isinstance(shape, BaseMultiGeoShape):
-            for subshape in shape.geoshapes:
-                if self.contains_shape(subshape, **kwargs):
-                    return True
+        if isinstance(shape, MultiShapeMixin):
+            if all(self.contains_shape(subshape, **kwargs) for subshape in shape.geoshapes):
+                return True
             return False
 
-        if isinstance(shape, GeoLineString):
-            for self_shape in self.geoshapes:
-                if test_sub_list(shape.coords, self_shape.coords):
-                    return True
-            return False
+        for self_shape in self.geoshapes:
+            if not self_shape.contains_shape(shape):
+                return False
 
-        if isinstance(shape, GeoPoint):
-            for self_shape in self.geoshapes:
-                if shape in self_shape:
-                    return True
+            return True
 
         return False
 
@@ -178,23 +175,17 @@ class MultiGeoLineString(BaseMultiGeoShape):
         )
 
     def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
-        if isinstance(shape, BaseMultiGeoShape):
+        if isinstance(shape, MultiShapeMixin):
             for subshape in shape.geoshapes:
                 if self.intersects_shape(subshape, **kwargs):
                     return True
             return False
 
-        if isinstance(shape, GeoLineString):
-            for self_shape in self.geoshapes:
-                # TODO: types
-                if do_edges_intersect(shape.edges, self_shape.edges):
-                    return True
-            return False
+        for self_shape in self.geoshapes:
+            if self_shape.intersects_shape(shape):
+                return True
 
-        if isinstance(shape, GeoPoint):
-            for self_shape in self.geoshapes:
-                if shape in self_shape:
-                    return True
+            return False
 
         return False
 
@@ -226,10 +217,12 @@ class MultiGeoLineString(BaseMultiGeoShape):
         return {
             'type': 'Feature',
             'geometry': {
-                'type': 'MultiPoint',
+                'type': 'MultiLineString',
                 'coordinates': [
-                    list(point.centroid.to_float())
-                    for point in self.geoshapes
+                    [
+                        coord.to_float() for coord in line.vertices
+                    ]
+                    for line in self.geoshapes
                 ]
             },
             'properties': {
@@ -261,11 +254,11 @@ class MultiGeoLineString(BaseMultiGeoShape):
         Returns:
             str
         """
-        points = [' '.join(x.centroid.to_str()) for x in self.geoshapes]
-        return f'MULTIPOINT({", ".join(points)})'
+        lines = [self._linear_ring_to_wkt(shape.vertices) for shape in self.geoshapes]
+        return f'MULTILINESTRING({", ".join(lines)})'
 
 
-class MultiGeoPoint(BaseMultiGeoShape):
+class MultiGeoPoint(BaseShape, MultiShapeMixin):
 
     def __init__(
         self,
@@ -478,7 +471,7 @@ class MultiGeoPoint(BaseMultiGeoShape):
         return f'MULTIPOINT({", ".join(points)})'
 
 
-class MultiGeoPolygon(BaseMultiGeoShape):
+class MultiGeoPolygon(BaseShape, MultiShapeMixin):
 
     def __init__(
         self,

@@ -387,11 +387,11 @@ def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
 
     assert geopolygon == p2
 
-    # Same coords, but rotated or reversed
+    # Same vertices, but rotated or reversed
     assert geopolygon == geopolygon_cycle
     assert geopolygon == geopolygon_reverse
 
-    # Different coords - different lengths
+    # Different vertices - different lengths
     p2 = GeoPolygon(
         [
             Coordinate(1.0, 1.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
@@ -402,7 +402,7 @@ def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
     assert geopolygon != p2
 
 
-    # Different coords - same lengths
+    # Different vertices - same lengths
     p2 = GeoPolygon(
         [
             Coordinate(1.0, 1.0), Coordinate(0.0, 1.0),
@@ -771,7 +771,7 @@ def test_geobox_eq(geobox):
     b2 = GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0), dt=default_test_datetime)
     assert b2 == geobox
 
-    # Different coords
+    # Different vertices
     b2 = GeoBox(Coordinate(1.0, 1.0), Coordinate(1.0, 0.0), dt=default_test_datetime)
     assert b2 != geobox
 
@@ -1404,11 +1404,6 @@ def test_geolinestring_intersects_shape():
     assert ls.intersects_shape(circle)
 
 
-def test_geolinestring_linear_rings(geolinestring):
-    with pytest.raises(NotImplementedError):
-        _ = geolinestring.linear_rings()
-
-
 def test_geolinestring_to_geojson(geolinestring):
 
     assert geolinestring.to_geojson(properties={'test_prop': 2}, test_kwarg=1) == {
@@ -1482,7 +1477,7 @@ def test_geolinestring_to_polygon(geolinestring):
 
 
 def test_geopoint_contains_dunder(geopoint):
-    assert geopoint not in geopoint
+    assert geopoint in geopoint
 
 
 def test_geopoint_eq(geopoint):
@@ -1516,16 +1511,6 @@ def test_geopoint_bounds():
     assert point.bounds == ((0., 0.), (0., 0.))
 
 
-def test_geopoint_bounding_coords(geopoint):
-    with pytest.raises(NotImplementedError):
-        _ = geopoint.bounding_coords()
-
-
-def test_geopoint_bounding_edges():
-    with pytest.raises(NotImplementedError):
-        _ = GeoPoint(Coordinate(0., 0.)).bounding_edges()
-
-
 def test_geopoint_copy():
     point = GeoPoint(Coordinate(0., 1.))
     point_copy = point.copy()
@@ -1536,11 +1521,13 @@ def test_geopoint_copy():
 
 
 def test_geopoint_contains():
-    assert not GeoPoint(Coordinate(0., 0.)).contains(GeoPoint(Coordinate(0., 0.)))
+    assert GeoPoint(Coordinate(0., 0.)).contains(GeoPoint(Coordinate(0., 0.)))
+    assert not GeoPoint(Coordinate(0., 0.)).contains(GeoPoint(Coordinate(1., 1.)))
 
 
 def test_geopoint_contains_coordinate():
-    assert not GeoPoint(Coordinate(0., 0.)).contains_coordinate(Coordinate(0., 0.))
+    assert GeoPoint(Coordinate(0., 0.)).contains_coordinate(Coordinate(0., 0.))
+    assert not GeoPoint(Coordinate(0., 0.)).contains_coordinate(Coordinate(1., 0.))
 
 
 def test_geopoint_from_geojson():
@@ -1608,23 +1595,8 @@ def test_geopoint_to_shapely(geopoint):
     assert geopoint.to_shapely() == shapely.Point(0.0, 0.0)
 
 
-def test_geopoint_circumscribing_circle(geopoint):
-    with pytest.raises(NotImplementedError):
-        geopoint.circumscribing_circle()
-
-
-def test_geopoint_circumscribing_rectangle(geopoint):
-    with pytest.raises(NotImplementedError):
-        geopoint.circumscribing_rectangle()
-
-
 def test_geopoint_centroid(geopoint):
     assert geopoint.centroid == geopoint.center
-
-
-def test_geopoint_linear_rings(geopoint):
-    with pytest.raises(NotImplementedError):
-        _ = geopoint.linear_rings()
 
 
 def test_geopoint_from_wkt():
@@ -1644,12 +1616,3 @@ def test_geopoint_from_wkt():
 def test_geopoint_to_wkt(geopoint):
     assert geopoint.to_wkt() == 'POINT(0.0 0.0)'
 
-
-def test_geopoint_to_polygon(geopoint):
-    with pytest.raises(NotImplementedError):
-        geopoint.to_polygon()
-
-
-def test_geopoint_edges():
-    with pytest.raises(NotImplementedError):
-        _ = GeoPoint(Coordinate(0., 0.)).edges()

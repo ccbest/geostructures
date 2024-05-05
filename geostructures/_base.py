@@ -17,7 +17,7 @@ _SHAPE_TYPE = TypeVar('_SHAPE_TYPE', bound='BaseShape')
 _GEOTIME_TYPE = Union[datetime, TimeInterval]
 
 # A wkt coordinate, e.g. '-1.0 2.0'
-_RE_COORD_STR = r'-?\d{1,3}\.?\d*\s-?\d{1,3}\.?\d*'
+_RE_COORD_STR = r'-?\d{1,3}(?:\.?\d*)?\s-?\d{1,3}(?:\.?\d*)?'
 _RE_COORD = re.compile(_RE_COORD_STR)
 
 # A single linear ring, e.g. '(0.0 0.0, 1.0 1.0, ... )'
@@ -37,7 +37,7 @@ _RE_MULTIPOLYGON_WKT = re.compile(r'MULTIPOLYGON\s?\((' + _RE_LINEAR_RINGS_STR +
 _RE_MULTILINESTRING_WKT = re.compile(r'MULTILINESTRING\s?' + _RE_LINEAR_RINGS_STR)
 
 
-class BaseShape(DefaultZuluMixin):
+class BaseShape(DefaultZuluMixin, ABC):
 
     """Abstract base class for all geoshapes"""
 
@@ -57,9 +57,8 @@ class BaseShape(DefaultZuluMixin):
         self._properties = properties or {}
         self.to_shapely = lru_cache(maxsize=1)(self._to_shapely)
 
-    @abstractmethod
     def __contains__(self, other: Union['BaseShape', Coordinate]):
-        """Test whether a coordinate or GeoPoint is contained within this geoshape"""
+        return self.contains(other)
 
     @abstractmethod
     def __hash__(self) -> int:
@@ -68,15 +67,6 @@ class BaseShape(DefaultZuluMixin):
     @abstractmethod
     def __repr__(self):
         """REPL representation of this object"""
-
-    @abstractmethod
-    def area(self) -> float:
-        """
-        The area of the shape, in meters squared.
-
-        Returns:
-            float
-        """
 
     @property
     @abstractmethod
@@ -165,14 +155,6 @@ class BaseShape(DefaultZuluMixin):
         """
         return f'({",".join(" ".join(coord.to_str()) for coord in ring)})'
 
-    @abstractmethod
-    def bounding_coords(self, **kwargs) -> Any:
-        pass
-
-    @abstractmethod
-    def bounding_edges(self, **kwargs) -> List[Tuple[Coordinate, Coordinate]]:
-        pass
-
     def buffer_dt(
         self: _SHAPE_TYPE,
         buffer: timedelta,
@@ -198,55 +180,16 @@ class BaseShape(DefaultZuluMixin):
 
         return shp
 
-    @abstractmethod
-    def circumscribing_circle(self) -> 'GeoCircle':
-        """
-        Produces a circle that entirely encompasses the shape
+    def contains(self, shape: Union['BaseShape', Coordinate], **kwargs) -> bool:
+        """Test whether a coordinate or GeoShape is contained within this geoshape"""
+        if isinstance(shape, Coordinate):
+            return self.contains_coordinate(shape)
 
-        Returns:
-            (GeoCircle)
-        """
-
-    def circumscribing_rectangle(self) -> 'GeoBox':
-        """
-        Produces a rectangle that entirely encompasses the shape
-
-        Returns:
-            (GeoBox)
-        """
-        from geostructures.structures import GeoBox
-
-        lon_bounds, lat_bounds = self.bounds
-        return GeoBox(
-            Coordinate(lon_bounds[0], lat_bounds[1]),
-            Coordinate(lon_bounds[1], lat_bounds[0]),
-            dt=self.dt,
-        )
-
-    def contains(self, shape: 'BaseShape', **kwargs) -> bool:
-        """
-        Tests whether this shape fully contains another one, along both
-        the spatial and time axes
-
-        Args:
-            shape:
-                A geoshape
-
-        Keyword Args:
-            k: (int)
-                For shapes with smooth curves, increasing k increases the number of
-                points generated along the curve
-
-        Returns:
-            bool
-        """
-        # TODO: multi shapes
-        # Make sure the times overlap, if present on both
         if self.dt and shape.dt:
             if not self.contains_time(shape.dt):
                 return False
 
-        return self.contains_shape(shape, **kwargs)
+        return self.contains_shape(shape)
 
     @abstractmethod
     def contains_coordinate(self, coord: Coordinate) -> bool:
@@ -356,10 +299,6 @@ class BaseShape(DefaultZuluMixin):
 
         return self.dt.intersects(dt)
 
-    @abstractmethod
-    def linear_rings(self, **kwargs) -> Any:
-        pass
-
     def set_property(self, key: str, value: Any):
         """
         Sets the value of a property on this geoshape.
@@ -424,17 +363,24 @@ class BaseShape(DefaultZuluMixin):
             str
         """
 
-    @abstractmethod
-    def edges(self, **kwargs) -> Any:
-        pass
+
+class MultiShapeMixin(ABC):
+    geoshapes: List[BaseShape]
+
+    def __iter__(self):
+        return self.geoshapes.__iter__()
 
 
+class ShapeLike(BaseShape, ABC):
 
-class BaseGeoShape(BaseShape, ABC):
+    """
+    Mixin for shapes, singular or multi, that is enclosed by a line, e.g.
+    boxes, ellipses, etc.
+    """
 
     def __init__(
             self,
-            holes: Optional[List['BaseGeoShape']] = None,
+            holes: Optional[List['BaseShape']] = None,
             dt: Optional[_GEOTIME_TYPE] = None,
             properties: Optional[Dict] = None
     ):
@@ -444,15 +390,6 @@ class BaseGeoShape(BaseShape, ABC):
         if any(x.holes for x in self.holes):
             raise ValueError('Holes cannot themselves contain holes.')
 
-    def __contains__(self, other: Union[BaseShape, Coordinate]):
-        """Test whether a coordinate or GeoShape is contained within this geoshape"""
-        if isinstance(other, Coordinate):
-            return self.contains_coordinate(other)
-
-        if other.dt is None or self.dt is None:
-            return self.contains_coordinate(other.centroid)
-
-        return self.contains_shape(other.centroid) and self.contains_time(other.dt)
 
     @cached_property
     def area(self):
@@ -509,14 +446,39 @@ class BaseGeoShape(BaseShape, ABC):
         bounding_coords = self.bounding_coords(**kwargs)
         return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
 
+    @abstractmethod
+    def circumscribing_circle(self) -> 'GeoCircle':
+        """
+        Produces a circle that entirely encompasses the shape
+
+        Returns:
+            (GeoCircle)
+        """
+
+    def circumscribing_rectangle(self) -> 'GeoBox':
+        """
+        Produces a rectangle that entirely encompasses the shape
+
+        Returns:
+            (GeoBox)
+        """
+        from geostructures.structures import GeoBox
+
+        lon_bounds, lat_bounds = self.bounds
+        return GeoBox(
+            Coordinate(lon_bounds[0], lat_bounds[1]),
+            Coordinate(lon_bounds[1], lat_bounds[0]),
+            dt=self.dt,
+        )
+
     def contains_shape(self, shape: 'BaseShape', **kwargs) -> bool:
-        if isinstance(shape, BaseMultiGeoShape):
+        if isinstance(shape, MultiShapeMixin):
             for subshape in shape.geoshapes:
                 if not self.contains_shape(subshape):
                     return False
             return True
 
-        if isinstance(shape, GeoPoint):
+        if isinstance(shape, PointLike):
             return self.contains_coordinate(shape.centroid)
 
         s_edges = self.edges(**kwargs)
@@ -562,16 +524,14 @@ class BaseGeoShape(BaseShape, ABC):
         ]
 
     def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
-        from geostructures.multistructures import BaseMultiGeoShape
-
-        if isinstance(shape, BaseMultiGeoShape):
+        if isinstance(shape, MultiShapeMixin):
             for subshape in shape.geoshapes:
                 if self.intersects_shape(subshape, **kwargs):
                     return True
 
             return False
 
-        if isinstance(shape, GeoPoint):
+        if isinstance(shape, PointLike):
             return shape in self
 
         s_edges = self.edges(**kwargs)
@@ -610,6 +570,21 @@ class BaseGeoShape(BaseShape, ABC):
             *[list(reversed(shape.bounding_coords())) for shape in self.holes]
         ]
 
+    def _to_shapely(self):
+        """
+        Converts the geoshape into a Shapely shape.
+        """
+        import shapely  # pylint: disable=import-outside-toplevel
+        rings = self.linear_rings()
+        holes = []
+        if len(rings) > 1:
+            holes = rings[1:]
+
+        return shapely.geometry.Polygon(
+            [x.to_float() for x in rings[0]],
+            holes=[[x.to_float() for x in ring] for ring in holes]
+        )
+
     def to_geojson(
         self,
         k: Optional[int] = None,
@@ -642,21 +617,6 @@ class BaseGeoShape(BaseShape, ABC):
             (GeoPolygon)
         """
 
-    def _to_shapely(self):
-        """
-        Converts the geoshape into a Shapely shape.
-        """
-        import shapely  # pylint: disable=import-outside-toplevel
-        rings = self.linear_rings()
-        holes = []
-        if len(rings) > 1:
-            holes = rings[1:]
-
-        return shapely.geometry.Polygon(
-            [x.to_float() for x in rings[0]],
-            holes=[[x.to_float() for x in ring] for ring in holes]
-        )
-
     def to_wkt(self, **kwargs) -> str:
         """
         Converts the shape to its WKT string representation
@@ -674,37 +634,61 @@ class BaseGeoShape(BaseShape, ABC):
         return f'POLYGON({bbox_str})'
 
 
-class BaseMultiGeoShape(BaseShape, ABC):
-    geoshapes: List[BaseGeoShape]
+class LineLike(BaseShape, ABC):
+
+    @abstractmethod
+    def circumscribing_circle(self) -> 'GeoCircle':
+        """
+        Produces a circle that entirely encompasses the shape
+
+        Returns:
+            (GeoCircle)
+        """
+
+    def circumscribing_rectangle(self) -> 'GeoBox':
+        """
+        Produces a rectangle that entirely encompasses the shape
+
+        Returns:
+            (GeoBox)
+        """
+        from geostructures.structures import GeoBox
+
+        lon_bounds, lat_bounds = self.bounds
+        return GeoBox(
+            Coordinate(lon_bounds[0], lat_bounds[1]),
+            Coordinate(lon_bounds[1], lat_bounds[0]),
+            dt=self.dt,
+        )
+
+    def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
+        if isinstance(shape, MultiShapeMixin):
+            for subshape in shape.geoshapes:
+                if self.intersects_shape(subshape, **kwargs):
+                    return True
+
+            return False
+
+        if isinstance(shape, PointLike):
+            return shape in self
+
+        s_edges = self.edges(**kwargs)
+        o_edges = shape.edges(**kwargs)
+        if do_edges_intersect(
+            [x for edge_ring in s_edges for x in edge_ring],
+            [x for edge_ring in o_edges for x in edge_ring]
+        ):
+            # At least one edge pair intersects
+            return True
+
+        # If no edges intersect, one shape could still contain the other
+        # which counts as intersection. Have to use a point from the boundary
+        # because the centroid may fall in a hole
+        return o_edges[0][0][0] in self or s_edges[0][0][0] in shape
 
 
-def get_dt_from_geojson_props(
-    rec: Dict[str, Any],
-    time_start_field: str = 'datetime_start',
-    time_end_field: str = 'datetime_end',
-    time_format: Optional[str] = None
-) -> Union[datetime, TimeInterval, None]:
-    """Grabs datetime data and returns appropriate struct"""
-    def _convert(dt: Optional[str], _format: Optional[str] = None):
-        if not dt:
-            return
-
-        if _format:
-            return datetime.strptime(dt, _format)
-
-        return datetime.fromisoformat(dt)
-
-    # Pop the field so it doesn't remain in properties
-    dt_start = _convert(rec.pop(time_start_field, None), time_format)
-    dt_end = _convert(rec.pop(time_end_field, None), time_format)
-
-    if dt_start is None and dt_end is None:
-        return None
-
-    if not (dt_start and dt_end) or dt_start == dt_end:
-        return dt_start or dt_end
-
-    return TimeInterval(dt_start, dt_end)
+class PointLike(BaseShape, ABC):
+    pass
 
 
 def parse_wkt_linear_ring(group: str) -> List[Coordinate]:
