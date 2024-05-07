@@ -39,12 +39,6 @@ class MultiGeoLineString(MultiShapeType):
     def area(self) -> float:
         return 0.
 
-    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-        min_lons, max_lons, min_lats, max_lats = list(
-            zip(*[[x for pair in shape.bounds for x in pair] for shape in self.geoshapes])
-        )
-        return (min(min_lons), max(max_lons)), (min(min_lats), max(max_lats))
-
     @cached_property
     def centroid(self):
         # TODO: weighted by line length
@@ -223,12 +217,6 @@ class MultiGeoPoint(MultiShapeType):
     def area(self) -> float:
         return 0.
 
-    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-        min_lons, max_lons, min_lats, max_lats = list(
-            zip(*[[x for pair in shape.bounds for x in pair] for shape in self.geoshapes])
-        )
-        return (min(min_lons), max(max_lons)), (min(min_lats), max(max_lats))
-
     @cached_property
     def centroid(self):
         return Coordinate(*np.average(
@@ -392,13 +380,6 @@ class MultiGeoShape(MultiShapeType):
     @property
     def area(self) -> float:
         return sum(x.area for x in self.geoshapes)
-
-    @property
-    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-        min_lons, max_lons, min_lats, max_lats = list(
-            zip(*[[x for pair in shape.bounds for x in pair] for shape in self.geoshapes])
-        )
-        return (min(min_lons), max(max_lons)), (min(min_lats), max(max_lats))
 
     @cached_property
     def centroid(self):

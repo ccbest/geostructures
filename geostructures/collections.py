@@ -17,7 +17,7 @@ import numpy as np
 
 from geostructures import Coordinate, LOGGER
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
-from geostructures._base import BaseShape
+from geostructures._base import BaseShape, LineLike, PointLike, ShapeLike
 from geostructures.time import TimeInterval
 from geostructures.calc import haversine_distance_meters
 from geostructures.utils.mixins import DefaultZuluMixin
@@ -474,11 +474,11 @@ class ShapeCollection(DefaultZuluMixin):
         lines: List[BaseShape] = []
         shapes: List[BaseShape] = []
         for shape in self.geoshapes:
-            if not isinstance(shape, (GeoPoint, GeoLineString)):
+            if not isinstance(shape, ShapeLike):
                 shapes.append(shape)
                 continue
 
-            if isinstance(shape, GeoPoint):
+            if isinstance(shape, PointLike):
                 points.append(shape)
                 continue
 
@@ -532,7 +532,7 @@ class ShapeCollection(DefaultZuluMixin):
                         writer.point(*shape.centroid.to_float())
 
                     elif isinstance(shape, GeoLineString):
-                        writer.line([[list(x.to_float()) for x in shape.bounding_coords()]])
+                        writer.line([[list(x.to_float()) for x in shape.vertices]])
 
                     else:
                         writer.poly(

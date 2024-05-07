@@ -394,7 +394,6 @@ def test_collection_to_from_shapefile(caplog):
             shapecol.to_shapefile(zfile)
 
         new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
-        print(new_shapecol.geoshapes[2].holes) # == shapecol.geoshapes[2].to_polygon())
         assert set(new_shapecol.geoshapes) == set(x.to_polygon() for x in shapecol.geoshapes)
 
     # Test writing/reading properties

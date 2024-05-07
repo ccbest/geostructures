@@ -952,12 +952,12 @@ class GeoLineString(LineLike):
 
     def __init__(
             self,
-            coords: List[Coordinate],
+            vertices: List[Coordinate],
             dt: Optional[_GEOTIME_TYPE] = None,
             properties: Optional[Dict] = None
     ):
         super().__init__(dt=dt, properties=properties)
-        self.vertices = coords
+        self.vertices = vertices
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, GeoLineString):
@@ -987,12 +987,6 @@ class GeoLineString(LineLike):
         ]
         return Coordinate(lon, lat)
 
-    def bounding_coords(self, **_) -> List[Coordinate]:
-        return self.vertices
-
-    def bounding_edges(self, **_) -> List[Tuple[Coordinate, Coordinate]]:
-        return list(zip(self.bounding_coords(), self.bounding_coords()[1:]))
-
     def circumscribing_circle(self) -> GeoCircle:
         centroid = self.centroid
         max_dist = max(haversine_distance_meters(x, centroid) for x in self.vertices)
@@ -1018,7 +1012,7 @@ class GeoLineString(LineLike):
         if isinstance(shape, PointLike):
             return self.contains_coordinate(shape.centroid)
 
-        return is_sub_list(shape.vertices, self.vertices)
+        return is_sub_list(cast(LineLike, shape).vertices, self.vertices)
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         # For now, just check for exact match. Will need update if buffering
@@ -1111,7 +1105,6 @@ class GeoLineString(LineLike):
 
     def to_geojson(
             self,
-            k: Optional[int] = None,
             properties: Optional[Dict] = None,
             **kwargs
     ) -> Dict:
@@ -1119,7 +1112,7 @@ class GeoLineString(LineLike):
             'type': 'Feature',
             'geometry': {
                 'type': 'LineString',
-                'coordinates': [list(x.to_float()) for x in self.bounding_coords(k=k)],
+                'coordinates': [list(x.to_float()) for x in self.vertices],
             },
             'properties': {
                 **self.properties,
@@ -1127,9 +1120,10 @@ class GeoLineString(LineLike):
                 **(properties or {})
             },
             **kwargs
+
         }
 
-    def to_polygon(self, **kwargs):
+    def to_polygon(self, **_):
         return GeoPolygon(
             [*self.vertices, self.vertices[0]],
             properties=copy.deepcopy(self._properties),
@@ -1141,11 +1135,8 @@ class GeoLineString(LineLike):
         return shapely.LineString([x.to_float() for x in self.vertices])
 
     def to_wkt(self, **kwargs) -> str:
-        bbox_str = self._linear_ring_to_wkt(self.bounding_coords(**kwargs))
+        bbox_str = self._linear_ring_to_wkt(self.vertices)
         return f'LINESTRING{bbox_str}'
-
-    def edges(self, **_) -> List[List[Tuple[Coordinate, Coordinate]]]:
-        return [self.bounding_edges()]
 
 
 class GeoPoint(PointLike):
@@ -1304,7 +1295,6 @@ class GeoPoint(PointLike):
 
     def to_geojson(
             self,
-            k: Optional[int] = None,
             properties: Optional[Dict] = None,
             **kwargs
     ) -> Dict:

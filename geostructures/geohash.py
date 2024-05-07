@@ -333,11 +333,11 @@ class H3Hasher(HasherBase):
         import h3
 
         _hexes = set()
-        for edge in zip(linestring.bounding_coords(), linestring.bounding_coords()[1:]):
+        for segment in linestring.segments():
             # Get h3's straight line hexes
             line_hashes = h3.h3_line(
-                h3.geo_to_h3(edge[0].latitude, edge[0].longitude, resolution),
-                h3.geo_to_h3(edge[1].latitude, edge[1].longitude, resolution)
+                h3.geo_to_h3(segment[0].latitude, segment[0].longitude, resolution),
+                h3.geo_to_h3(segment[1].latitude, segment[1].longitude, resolution)
             )
             # Add single ring buffer
             all_hexes = set(
@@ -349,7 +349,7 @@ class H3Hasher(HasherBase):
             for _hex in all_hexes:
                 bounds = [Coordinate(y, x) for x, y in h3.h3_to_geo_boundary(_hex)]
                 for hex_edge in zip(bounds, [*bounds[1:], bounds[0]]):
-                    if find_line_intersection(edge, hex_edge):
+                    if find_line_intersection(segment, hex_edge):
                         _hexes.add(_hex)
                         break
 

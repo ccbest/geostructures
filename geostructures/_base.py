@@ -15,7 +15,7 @@ from geostructures.time import TimeInterval
 from geostructures.utils.mixins import DefaultZuluMixin
 
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from geostructures import GeoCircle, GeoBox, Coordinate, GeoPolygon
 
 _SHAPE_TYPE = TypeVar('_SHAPE_TYPE', bound='BaseShape')
@@ -335,15 +335,18 @@ class BaseShape(DefaultZuluMixin, ABC):
         """
         Convert the shape to geojson format.
 
-        Optional Args:
-            k: (int)
-                For shapes with smooth curves, defines the number of points
-                generated along the curve.
+        Args:
+
 
             properties: (dict)
                 Any number of properties to be included in the geojson properties. These
                 values will be unioned with the shape's already defined properties (and
                 override them where keys conflict)
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, defines the number of points
+                generated along the curve.
 
         Returns:
             (dict)
@@ -386,7 +389,6 @@ class ShapeLike(BaseShape, ABC):
         self.holes = holes or []
         if any(x.holes for x in self.holes):
             raise ValueError('Holes cannot themselves contain holes.')
-
 
     @cached_property
     def area(self):
@@ -479,7 +481,7 @@ class ShapeLike(BaseShape, ABC):
             return self.contains_coordinate(shape.centroid)
 
         s_edges = self.edges(**kwargs)
-        o_edges = shape.edges(**kwargs)
+        o_edges = shape.edges(**kwargs) if isinstance(shape, ShapeLike) else [cast(LineLike, shape).segments()]
         if do_edges_intersect(
             [x for edge_ring in s_edges for x in edge_ring],
             [x for edge_ring in o_edges for x in edge_ring]
@@ -532,7 +534,7 @@ class ShapeLike(BaseShape, ABC):
             return shape in self
 
         s_edges = self.edges(**kwargs)
-        o_edges = shape.edges(**kwargs)
+        o_edges = shape.edges(**kwargs) if isinstance(shape, ShapeLike) else [cast(LineLike, shape).segments()]
         if do_edges_intersect(
             [x for edge_ring in s_edges for x in edge_ring],
             [x for edge_ring in o_edges for x in edge_ring]
@@ -584,10 +586,10 @@ class ShapeLike(BaseShape, ABC):
 
     def to_geojson(
         self,
-        k: Optional[int] = None,
         properties: Optional[Dict] = None,
         **kwargs
     ) -> Dict:
+        k = kwargs.pop('k', None)
         return {
             'type': 'Feature',
             'geometry': {
@@ -633,6 +635,8 @@ class ShapeLike(BaseShape, ABC):
 
 class LineLike(BaseShape, ABC):
 
+    vertices: List[Coordinate]
+
     @abstractmethod
     def circumscribing_circle(self) -> 'GeoCircle':
         """
@@ -669,8 +673,8 @@ class LineLike(BaseShape, ABC):
         if isinstance(shape, PointLike):
             return shape in self
 
-        s_edges = self.edges(**kwargs)
-        o_edges = shape.edges(**kwargs)
+        s_edges = [self.segments()]
+        o_edges = shape.edges(**kwargs) if isinstance(shape, ShapeLike) else [cast(LineLike, shape).segments()]
         if do_edges_intersect(
             [x for edge_ring in s_edges for x in edge_ring],
             [x for edge_ring in o_edges for x in edge_ring]
@@ -683,6 +687,9 @@ class LineLike(BaseShape, ABC):
         # which counts as intersection. Have to use a point from the boundary
         # because the centroid may fall in a hole
         return o_edges[0][0][0] in self or s_edges[0][0][0] in shape
+
+    def segments(self, **_) -> List[Tuple[Coordinate, Coordinate]]:
+        return list(zip(self.vertices, self.vertices[1:]))
 
 
 class PointLike(BaseShape, ABC):
@@ -700,6 +707,13 @@ class MultiShapeType(BaseShape, ABC):
 
     def __iter__(self):
         return self.geoshapes.__iter__()
+
+    @property
+    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        min_lons, max_lons, min_lats, max_lats = list(
+            zip(*[[x for pair in shape.bounds for x in pair] for shape in self.geoshapes])
+        )
+        return (min(min_lons), max(max_lons)), (min(min_lats), max(max_lats))
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         for shape in self.geoshapes:

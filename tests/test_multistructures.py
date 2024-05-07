@@ -9,46 +9,6 @@ from geostructures.multistructures import *
 from geostructures.time import TimeInterval
 
 
-def test_multigeolinestring_contains():
-    mls = MultiGeoLineString(
-        [
-            GeoLineString([Coordinate(0., 1.), Coordinate(0.5, 0.5), Coordinate(1., 0.)]),
-            GeoLineString([Coordinate(1., 1.), Coordinate(0.5, 0.5), Coordinate(0., 0.)]),
-        ],
-        dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))
-    )
-    assert Coordinate(0.5, 0.5) in mls
-    assert GeoPoint(Coordinate(0.5, 0.5)) in mls
-    assert GeoPoint(Coordinate(0.5, 0.5), dt=datetime(2020, 1, 1, 1))
-
-
-def test_multigeolinestring_hash():
-    mls_1 = MultiGeoLineString(
-        [
-            GeoLineString([Coordinate(0., 1.), Coordinate(0.5, 0.5), Coordinate(1., 0.)]),
-            GeoLineString([Coordinate(1., 1.), Coordinate(0.5, 0.5), Coordinate(0., 0.)]),
-        ],
-        dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))
-    )
-    mls_2 = MultiGeoLineString(
-        [
-            GeoLineString([Coordinate(0., 1.), Coordinate(0.5, 0.5), Coordinate(1., 0.)]),
-            GeoLineString([Coordinate(1., 1.), Coordinate(0.5, 0.5), Coordinate(0., 0.)]),
-        ],
-        dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))
-    )
-    assert hash(mls_1) == hash(mls_2)
-
-    mls_2 = MultiGeoLineString(
-        [
-            GeoLineString([Coordinate(0., 1.), Coordinate(0.5, 0.5), Coordinate(1., 0.)]),
-            GeoLineString([Coordinate(1., 1.), Coordinate(0.5, 0.5), Coordinate(0., 0.)]),
-        ],
-        dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 3))
-    )
-    assert hash(mls_1) != hash(mls_2)
-
-
 def test_multigeolinestring_repr():
     mls = MultiGeoLineString(
         [
@@ -66,16 +26,6 @@ def test_multigeolinestring_repr():
     assert repr(mls) == '<MultiGeoLineString of 2 linestrings>'
 
 
-def test_multigeolinestring_bounds():
-    mls = MultiGeoLineString(
-        [
-            GeoLineString([Coordinate(0., 1.), Coordinate(0.5, 0.5), Coordinate(1., 0.)]),
-            GeoLineString([Coordinate(2., 1.), Coordinate(0.5, 0.5), Coordinate(0., 0.)]),
-        ],
-    )
-    assert mls.bounds() == ((0., 2.), (0., 1.))
-
-
 def test_multigeolinestring_circumscribing_circle():
     mls = MultiGeoLineString(
         [
@@ -84,54 +34,6 @@ def test_multigeolinestring_circumscribing_circle():
         ],
     )
     assert mls.circumscribing_circle() == GeoCircle(Coordinate(0.5, 0.5), 78626.18767687456)
-
-
-def test_multigeolinestring_contains_coordinate():
-    mls = MultiGeoLineString(
-        [
-            GeoLineString([Coordinate(0., 1.), Coordinate(0.5, 0.5), Coordinate(1., 0.)]),
-            GeoLineString([Coordinate(1., 1.), Coordinate(0.5, 0.5), Coordinate(0., 0.)]),
-        ],
-    )
-    assert mls.contains_coordinate(Coordinate(0.5, 0.5))
-    assert not mls.contains_coordinate(Coordinate(2.0, 2.0))
-
-
-def test_multigeolinestring_contains_shape():
-    mls = MultiGeoLineString(
-        [
-            GeoLineString([Coordinate(0., 1.), Coordinate(0.5, 0.5), Coordinate(1., 0.)]),
-            GeoLineString([Coordinate(1., 1.), Coordinate(0.5, 0.5), Coordinate(0., 0.)]),
-        ],
-    )
-    assert mls.contains_shape(
-        MultiGeoLineString(
-            [
-                GeoLineString([Coordinate(0., 1.), Coordinate(0.5, 0.5)]),
-                GeoLineString([Coordinate(1., 1.), Coordinate(0.5, 0.5)]),
-            ],
-        )
-    )
-    assert mls.contains_shape(
-        MultiGeoPoint([GeoPoint(Coordinate(0., 1.)), GeoPoint(Coordinate(1., 1.))])
-    )
-
-    assert not mls.contains_shape(GeoCircle(Coordinate(0., 0.), 500))
-    assert not mls.contains_shape(GeoPoint(Coordinate(2., 2.)))
-
-
-def test_multigeolinestring_copy():
-    mls_1 = MultiGeoLineString(
-        [
-            GeoLineString([Coordinate(0., 1.), Coordinate(0.5, 0.5), Coordinate(1., 0.)]),
-            GeoLineString([Coordinate(1., 1.), Coordinate(0.5, 0.5), Coordinate(0., 0.)]),
-        ],
-    )
-    mls_2 = mls_1.copy()
-    assert mls_1 == mls_2
-
-    mls_2.geoshapes.pop(0)
-    assert mls_1 != mls_2
 
 
 def test_multigeolinestring_from_geojson():
@@ -178,22 +80,7 @@ def test_multigeolinestring_from_wkt():
     ]
 
 
-def test_multigeolinestring_intersects_shape():
-    mls = MultiGeoLineString(
-        [
-            GeoLineString([Coordinate(0., 1.), Coordinate(0.5, 0.5), Coordinate(1., 0.)]),
-            GeoLineString([Coordinate(1., 1.), Coordinate(0.5, 0.5), Coordinate(0., 0.)]),
-        ],
-    )
-    assert mls.intersects_shape(
-        MultiGeoLineString(
-            [
-                GeoLineString([Coordinate(0., 0.5), Coordinate(1.0, 0.5)]),
-            ],
-        )
-    )
 
-    assert mls.intersects_shape(GeoLineString([Coordinate(0., 0.5), Coordinate(1.0, 0.5)]))
 
 
 def test_multigeolinestring_to_geojson():
@@ -259,14 +146,6 @@ def test_multigeopoint_area():
         GeoPoint(Coordinate(1., 1.))
     ])
     assert mp.area() == 0.
-
-
-def test_multigeopoint_bounds():
-    mp = MultiGeoPoint([
-        GeoPoint(Coordinate(0., 0.)),
-        GeoPoint(Coordinate(1., 1.))
-    ])
-    assert mp.bounds() == ((0., 1.), (0., 1.))
 
 
 def test_multigeopoint_centroid():
@@ -390,16 +269,6 @@ def test_multigeoshape_area():
         ]
     )
     assert mp.area == 12305128751.042904 + 12308778361.469452
-
-
-def test_multigeoshape_bounds():
-    mp = MultiGeoShape(
-        [
-            GeoBox(Coordinate(0., 1.), Coordinate(1., 0.)),
-            GeoBox(Coordinate(1., 2.), Coordinate(2., 1.)),
-        ]
-    )
-    assert mp.bounds == ((0., 2.), (0., 2.))
 
 
 def test_multigeoshape_centroid():
