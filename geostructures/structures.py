@@ -19,7 +19,7 @@ import numpy as np
 from geostructures import LOGGER
 from geostructures._base import (
     _GEOTIME_TYPE, _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT,
-    _RE_LINESTRING_WKT, BaseShape, ShapeLike, LineLike, MultiShapeMixin,
+    _RE_LINESTRING_WKT, BaseShape, ShapeLike, LineLike, MultiShapeType,
     PointLike, parse_wkt_linear_ring
 )
 from geostructures.coordinates import Coordinate
@@ -1192,13 +1192,13 @@ class GeoPoint(PointLike):
         return self.center
 
     def contains(self, shape: BaseShape, **kwargs) -> bool:
-        if isinstance(shape, MultiShapeMixin):
+        if isinstance(shape, MultiShapeType):
             return all(self.contains_shape(subshape) for subshape in shape)
 
         return self.contains_shape(shape)
 
     def contains_shape(self, shape: BaseShape, **kwargs) -> bool:
-        if isinstance(shape, MultiShapeMixin):
+        if isinstance(shape, MultiShapeType):
             for subshape in shape.geoshapes:
                 if not self.contains_shape(subshape):
                     return False
@@ -1302,9 +1302,6 @@ class GeoPoint(PointLike):
             properties=properties
         )
 
-    def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
-        raise NotImplementedError("Points are not comprised of linear rings.")
-
     def to_geojson(
             self,
             k: Optional[int] = None,
@@ -1325,15 +1322,9 @@ class GeoPoint(PointLike):
             **kwargs
         }
 
-    def to_polygon(self, **kwargs):
-        raise NotImplementedError('Points cannot be converted to polygons')
-
     def _to_shapely(self):
         import shapely
         return shapely.Point(self.centroid.longitude, self.centroid.latitude)
 
     def to_wkt(self, **_) -> str:
         return f'POINT({" ".join(self.center.to_str())})'
-
-    def edges(self, **kwargs):
-        raise NotImplementedError('Points are not bounded')

@@ -1,6 +1,6 @@
 
 
-__all__ = ['MultiGeoPolygon', 'MultiGeoLineString', 'MultiGeoPoint']
+__all__ = ['MultiGeoShape', 'MultiGeoLineString', 'MultiGeoPoint']
 
 
 from abc import ABC
@@ -13,7 +13,7 @@ import numpy as np
 from geostructures._base import (
     _GEOTIME_TYPE, _RE_COORD, _RE_MULTIPOLYGON_WKT, _RE_MULTIPOINT_WKT,
     _RE_MULTILINESTRING_WKT, _RE_LINEAR_RING, _RE_LINEAR_RINGS, _SHAPE_TYPE,
-    BaseShape, MultiShapeMixin, parse_wkt_linear_ring
+    BaseShape, ShapeLike, MultiShapeType, parse_wkt_linear_ring
 )
 from geostructures.calc import do_edges_intersect, haversine_distance_meters
 from geostructures.coordinates import Coordinate
@@ -21,7 +21,7 @@ from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPoly
 from geostructures.utils.functions import is_sub_list, get_dt_from_geojson_props
 
 
-class MultiGeoLineString(BaseShape, MultiShapeMixin):
+class MultiGeoLineString(MultiShapeType):
 
     def __init__(
         self,
@@ -31,19 +31,6 @@ class MultiGeoLineString(BaseShape, MultiShapeMixin):
     ):
         super().__init__(dt, properties)
         self.geoshapes: List[GeoLineString] = linestrings
-
-    def __contains__(self, other: Union[BaseShape, Coordinate]):
-        """Test whether a coordinate or GeoShape is contained within this geoshape"""
-        if isinstance(other, Coordinate):
-            return self.contains_coordinate(other)
-
-        if other.dt is None or self.dt is None:
-            return self.contains_coordinate(other.centroid)
-
-        return self.contains_time(other.dt) and self.contains_shape(other.centroid)
-
-    def __hash__(self) -> int:
-        return hash((tuple(hash(x) for x in self.geoshapes), self.dt))
 
     def __repr__(self):
         pl = "s" if len(self.geoshapes) != 1 else ""
@@ -75,34 +62,6 @@ class MultiGeoLineString(BaseShape, MultiShapeMixin):
             for coord in shape.vertices
         )
         return GeoCircle(centroid, max_dist, dt=self.dt)
-
-    def contains_coordinate(self, coord: Coordinate) -> bool:
-        for shape in self.geoshapes:
-            if coord in shape.vertices:
-                return True
-
-        return False
-
-    def contains_shape(self, shape: 'BaseShape', **kwargs) -> bool:
-        if isinstance(shape, MultiShapeMixin):
-            if all(self.contains_shape(subshape, **kwargs) for subshape in shape.geoshapes):
-                return True
-            return False
-
-        for self_shape in self.geoshapes:
-            if not self_shape.contains_shape(shape):
-                return False
-
-            return True
-
-        return False
-
-    def copy(self: _SHAPE_TYPE) -> _SHAPE_TYPE:
-        return MultiGeoLineString(
-            [x.copy() for x in self.geoshapes],
-            dt=self.dt,
-            properties=copy.deepcopy(self._properties)
-        )
 
     @classmethod
     def from_geojson(
@@ -138,19 +97,19 @@ class MultiGeoLineString(BaseShape, MultiShapeMixin):
     @classmethod
     def from_shapely(
         cls,
-        multilinestring
+        shape
     ):
         """
-        Creates a GeoPolygon from a shapely polygon
+        Creates a corresponding multi shape from a shapely object
 
         Args:
-            multipoint:
-                A shapely multipoint
+            shape:
+                A shapely object
 
         Returns:
-            GeoPolygon
+            MultiGeoLineString
         """
-        return cls.from_wkt(multilinestring.wkt)
+        return cls.from_wkt(shape.wkt)
 
     @classmethod
     def from_wkt(
@@ -159,7 +118,7 @@ class MultiGeoLineString(BaseShape, MultiShapeMixin):
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
     ) -> 'MultiGeoLineString':
-        """Create a GeoPolygon from a wkt string"""
+        """Create a GeoMultiLineString from a wkt string"""
         if not _RE_MULTILINESTRING_WKT.match(wkt_str):
             raise ValueError(f'Invalid WKT MultiLineString: {wkt_str}')
 
@@ -173,24 +132,6 @@ class MultiGeoLineString(BaseShape, MultiShapeMixin):
             dt=dt,
             properties=properties
         )
-
-    def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
-        if isinstance(shape, MultiShapeMixin):
-            for subshape in shape.geoshapes:
-                if self.intersects_shape(subshape, **kwargs):
-                    return True
-            return False
-
-        for self_shape in self.geoshapes:
-            if self_shape.intersects_shape(shape):
-                return True
-
-            return False
-
-        return False
-
-    def linear_rings(self, **kwargs) -> List[List[List[Coordinate]]]:
-        raise NotImplementedError("Points are not comprised of linear rings.")
 
     def to_geojson(
         self,
@@ -220,9 +161,9 @@ class MultiGeoLineString(BaseShape, MultiShapeMixin):
                 'type': 'MultiLineString',
                 'coordinates': [
                     [
-                        coord.to_float() for coord in line.vertices
+                        list(vertex.to_float()) for vertex in shape.vertices
                     ]
-                    for line in self.geoshapes
+                    for shape in self.geoshapes
                 ]
             },
             'properties': {
@@ -239,9 +180,12 @@ class MultiGeoLineString(BaseShape, MultiShapeMixin):
         """
         import shapely  # pylint: disable=import-outside-toplevel
 
-        points = [x.centroid.to_float() for x in self.geoshapes]
+        lines = [
+            [x.to_float() for x in shape.vertices]
+            for shape in self.geoshapes
+        ]
 
-        return shapely.geometry.MultiPoint(points)
+        return shapely.geometry.MultiLineString(lines)
 
     def to_wkt(self, **_) -> str:
         """
@@ -258,7 +202,7 @@ class MultiGeoLineString(BaseShape, MultiShapeMixin):
         return f'MULTILINESTRING({", ".join(lines)})'
 
 
-class MultiGeoPoint(BaseShape, MultiShapeMixin):
+class MultiGeoPoint(MultiShapeType):
 
     def __init__(
         self,
@@ -269,22 +213,12 @@ class MultiGeoPoint(BaseShape, MultiShapeMixin):
         super().__init__(dt, properties)
         self.geoshapes = points
 
-    def __contains__(self, other: Union[BaseShape, Coordinate]):
-        """Test whether a coordinate or GeoShape is contained within this geoshape"""
-        if isinstance(other, Coordinate):
-            return self.contains_coordinate(other)
-
-        if other.dt is None or self.dt is None:
-            return self.contains_coordinate(other.centroid)
-
-        return self.contains_shape(other.centroid) and self.contains_time(other.dt)
-
     def __hash__(self) -> int:
         return hash(tuple(hash(x) for x in self.geoshapes))
 
     def __repr__(self):
         pl = "s" if len(self.geoshapes) != 1 else ""
-        return f'<MultiGeoPolygon of {len(self.geoshapes)} polygon{pl}>'
+        return f'<MultiGeoPoint of {len(self.geoshapes)} point{pl}>'
 
     def area(self) -> float:
         return 0.
@@ -298,14 +232,9 @@ class MultiGeoPoint(BaseShape, MultiShapeMixin):
     @cached_property
     def centroid(self):
         return Coordinate(*np.average(
-            np.array([point.centroid.to_float() for point in self.geoshapes])
+            np.array([point.centroid.to_float() for point in self.geoshapes]),
+            axis=0
         ))
-
-    def bounding_coords(self, **kwargs) -> List[List[Coordinate]]:
-        raise NotImplementedError('Points are not bounded')
-
-    def bounding_edges(self, **kwargs) -> List[List[Tuple[Coordinate, Coordinate]]]:
-        raise NotImplementedError('Points are not bounded')
 
     def circumscribing_circle(self) -> 'GeoCircle':
         centroid = self.centroid
@@ -314,23 +243,6 @@ class MultiGeoPoint(BaseShape, MultiShapeMixin):
             for point in self.geoshapes
         )
         return GeoCircle(centroid, max_dist, dt=self.dt)
-
-    def contains_coordinate(self, coord: Coordinate) -> bool:
-        for point in self.geoshapes:
-            if point.centroid == coord:
-                return True
-
-        return False
-
-    def contains_shape(self, shape: 'BaseShape', **kwargs) -> bool:
-        return False
-
-    def copy(self: _SHAPE_TYPE) -> _SHAPE_TYPE:
-        return MultiGeoPoint(
-            [x.copy() for x in self.geoshapes],
-            dt=self.dt,
-            properties=copy.deepcopy(self._properties)
-        )
 
     @classmethod
     def from_geojson(
@@ -343,7 +255,7 @@ class MultiGeoPoint(BaseShape, MultiShapeMixin):
         geom = gjson.get('geometry', {})
         if not geom.get('type') == 'MultiPoint':
             raise ValueError(
-                f'Geometry represents a {geom.get("type")}; expected MultiPolygon.'
+                f'Geometry represents a {geom.get("type")}; expected MultiPoint.'
             )
 
         points = [GeoPoint(Coordinate(*coord)) for coord in geom.get('coordinates', [])]
@@ -397,15 +309,6 @@ class MultiGeoPoint(BaseShape, MultiShapeMixin):
             dt=dt,
             properties=properties
         )
-
-    def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
-        if any(x.intersects_shape(shape) for x in self.geoshapes):
-            return True
-
-        return False
-
-    def linear_rings(self, **kwargs) -> List[List[List[Coordinate]]]:
-        raise NotImplementedError("Points are not comprised of linear rings.")
 
     def to_geojson(
         self,
@@ -471,37 +374,26 @@ class MultiGeoPoint(BaseShape, MultiShapeMixin):
         return f'MULTIPOINT({", ".join(points)})'
 
 
-class MultiGeoPolygon(BaseShape, MultiShapeMixin):
+class MultiGeoShape(MultiShapeType):
 
     def __init__(
         self,
-        polygons: List[GeoPolygon],
+        geoshapes: List[ShapeLike],
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt, properties)
-        self.geoshapes = polygons
-
-    def __contains__(self, other: Union[BaseShape, Coordinate]):
-        """Test whether a coordinate or GeoShape is contained within this geoshape"""
-        if isinstance(other, Coordinate):
-            return self.contains_coordinate(other)
-
-        if other.dt is None or self.dt is None:
-            return self.contains_coordinate(other.centroid)
-
-        return self.contains_shape(other.centroid) and self.contains_time(other.dt)
-
-    def __hash__(self) -> int:
-        return hash(tuple(hash(x) for x in self.geoshapes))
+        self.geoshapes = geoshapes
 
     def __repr__(self):
         pl = "s" if len(self.geoshapes) != 1 else ""
-        return f'<MultiGeoPolygon of {len(self.geoshapes)} polygon{pl}>'
+        return f'<MultiGeoShape of {len(self.geoshapes)} shape{pl}>'
 
+    @property
     def area(self) -> float:
         return sum(x.area for x in self.geoshapes)
 
+    @property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         min_lons, max_lons, min_lats, max_lats = list(
             zip(*[[x for pair in shape.bounds for x in pair] for shape in self.geoshapes])
@@ -533,27 +425,6 @@ class MultiGeoPolygon(BaseShape, MultiShapeMixin):
         )
         return GeoCircle(centroid, max_dist, dt=self.dt)
 
-    def contains_coordinate(self, coord: Coordinate) -> bool:
-        for poly in self.geoshapes:
-            if poly.contains_coordinate(coord):
-                return True
-
-        return False
-
-    def contains_shape(self, shape: 'BaseShape', **kwargs) -> bool:
-        for poly in self.geoshapes:
-            if poly.contains_shape(shape):
-                return True
-
-        return False
-
-    def copy(self: _SHAPE_TYPE) -> _SHAPE_TYPE:
-        return MultiGeoPolygon(
-            [x.copy() for x in self.geoshapes],
-            dt=self.dt,
-            properties=copy.deepcopy(self._properties)
-        )
-
     def edges(self, **kwargs) -> List[List[List[Tuple[Coordinate, Coordinate]]]]:
         """
         Returns lists of edges, defined as a 2-tuple (start and end) of coordinates, for the
@@ -577,13 +448,7 @@ class MultiGeoPolygon(BaseShape, MultiShapeMixin):
             Lists of 2-tuples representing edges. The first list will always represent
             the shape's boundary, and any following lists will represent holes.
         """
-        return [
-            [
-                list(zip(ring, [*ring[1:], ring[0]]))
-                for ring in shape
-            ]
-            for shape in self.linear_rings(**kwargs)
-        ]
+        return [shape.edges(**kwargs) for shape in self]
 
     @classmethod
     def from_geojson(
@@ -615,7 +480,7 @@ class MultiGeoPolygon(BaseShape, MultiShapeMixin):
             time_end_property,
             time_format
         )
-        return MultiGeoPolygon(
+        return MultiGeoShape(
             shapes,
             dt=dt,
             properties=properties
@@ -644,10 +509,10 @@ class MultiGeoPolygon(BaseShape, MultiShapeMixin):
         wkt_str: str,
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
-    ) -> 'MultiGeoPolygon':
+    ) -> 'MultiGeoShape':
         """Create a GeoPolygon from a wkt string"""
         if not _RE_MULTIPOLYGON_WKT.match(wkt_str):
-            raise ValueError(f'Invalid WKT Polygon: {wkt_str}')
+            raise ValueError(f'Invalid WKT MultiPolygon: {wkt_str}')
 
         shapes = []
         for shape in _RE_LINEAR_RINGS.findall(wkt_str):
@@ -662,17 +527,11 @@ class MultiGeoPolygon(BaseShape, MultiShapeMixin):
 
             shapes.append(GeoPolygon(shell, holes=holes))
 
-        return MultiGeoPolygon(
+        return MultiGeoShape(
             shapes,
             dt=dt,
             properties=properties
         )
-
-    def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
-        if any(x.intersects_shape(shape) for x in self.geoshapes):
-            return True
-
-        return False
 
     def linear_rings(self, **kwargs) -> List[List[List[Coordinate]]]:
         """
@@ -692,10 +551,7 @@ class MultiGeoPolygon(BaseShape, MultiShapeMixin):
                 points generated along the curve
         """
         return [
-            [
-                poly.bounding_coords(**kwargs),
-                *[list(reversed(hole.bounding_coords())) for hole in poly.holes]
-            ] for poly in self.geoshapes
+            poly.linear_rings(**kwargs) for poly in self.geoshapes
         ]
 
     def to_geojson(

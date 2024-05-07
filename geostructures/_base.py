@@ -1,3 +1,8 @@
+"""
+Base class declarations for geostructures
+"""
+
+import copy
 import re
 from abc import abstractmethod, ABC
 from datetime import datetime, timedelta
@@ -11,7 +16,7 @@ from geostructures.utils.mixins import DefaultZuluMixin
 
 
 if TYPE_CHECKING:
-    from geostructures import GeoCircle, GeoBox, Coordinate, GeoPoint, GeoPolygon
+    from geostructures import GeoCircle, GeoBox, Coordinate, GeoPolygon
 
 _SHAPE_TYPE = TypeVar('_SHAPE_TYPE', bound='BaseShape')
 _GEOTIME_TYPE = Union[datetime, TimeInterval]
@@ -363,14 +368,6 @@ class BaseShape(DefaultZuluMixin, ABC):
             str
         """
 
-
-class MultiShapeMixin(ABC):
-    geoshapes: List[BaseShape]
-
-    def __iter__(self):
-        return self.geoshapes.__iter__()
-
-
 class ShapeLike(BaseShape, ABC):
 
     """
@@ -472,7 +469,7 @@ class ShapeLike(BaseShape, ABC):
         )
 
     def contains_shape(self, shape: 'BaseShape', **kwargs) -> bool:
-        if isinstance(shape, MultiShapeMixin):
+        if isinstance(shape, MultiShapeType):
             for subshape in shape.geoshapes:
                 if not self.contains_shape(subshape):
                     return False
@@ -519,12 +516,12 @@ class ShapeLike(BaseShape, ABC):
         """
         rings = self.linear_rings(**kwargs)
         return [
-            list(zip(ring, [*ring[1:], ring[0]]))
+            list(zip(ring, ring[1:]))
             for ring in rings
         ]
 
     def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
-        if isinstance(shape, MultiShapeMixin):
+        if isinstance(shape, MultiShapeType):
             for subshape in shape.geoshapes:
                 if self.intersects_shape(subshape, **kwargs):
                     return True
@@ -662,7 +659,7 @@ class LineLike(BaseShape, ABC):
         )
 
     def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
-        if isinstance(shape, MultiShapeMixin):
+        if isinstance(shape, MultiShapeType):
             for subshape in shape.geoshapes:
                 if self.intersects_shape(subshape, **kwargs):
                     return True
@@ -679,6 +676,7 @@ class LineLike(BaseShape, ABC):
             [x for edge_ring in o_edges for x in edge_ring]
         ):
             # At least one edge pair intersects
+            print('edge pair intersects')
             return True
 
         # If no edges intersect, one shape could still contain the other
@@ -689,6 +687,60 @@ class LineLike(BaseShape, ABC):
 
 class PointLike(BaseShape, ABC):
     pass
+
+
+class MultiShapeType(BaseShape, ABC):
+    geoshapes: List[Union[ShapeLike, LineLike, PointLike]]
+
+    def __eq__(self, other: 'MultiShapeType'):
+        return set(self.geoshapes) == set(other.geoshapes) and self.dt == other.dt
+
+    def __hash__(self) -> int:
+        return hash((tuple(hash(x) for x in self.geoshapes), self.dt))
+
+    def __iter__(self):
+        return self.geoshapes.__iter__()
+
+    def contains_coordinate(self, coord: Coordinate) -> bool:
+        for shape in self.geoshapes:
+            if shape.contains_coordinate(coord):
+                return True
+
+        return False
+
+    def contains_shape(self, shape: 'BaseShape', **kwargs) -> bool:
+        if isinstance(shape, MultiShapeType):
+            if all(self.contains_shape(subshape, **kwargs) for subshape in shape.geoshapes):
+                return True
+            return False
+
+        for self_shape in self.geoshapes:
+            if self_shape.contains_shape(shape):
+                return True
+
+        return False
+
+    def copy(self: _SHAPE_TYPE) -> _SHAPE_TYPE:
+        return type(self)(
+            [x.copy() for x in self.geoshapes],
+            dt=self.dt,
+            properties=copy.deepcopy(self._properties)
+        )
+
+    def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
+        if isinstance(shape, MultiShapeType):
+            for subshape in shape.geoshapes:
+                if self.intersects_shape(subshape, **kwargs):
+                    return True
+            return False
+
+        for self_shape in self.geoshapes:
+            if self_shape.intersects_shape(shape):
+                return True
+
+            return False
+
+        return False
 
 
 def parse_wkt_linear_ring(group: str) -> List[Coordinate]:
