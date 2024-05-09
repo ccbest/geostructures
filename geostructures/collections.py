@@ -163,19 +163,34 @@ class ShapeCollection(DefaultZuluMixin):
             geom_type = feature.get('geometry', {}).get('type')
             if geom_type == 'Point':
                 shapes.append(
-                    GeoPoint.from_geojson(feature, time_start_property, time_end_property)
+                    GeoPoint.from_geojson(
+                        feature,
+                        time_start_property,
+                        time_end_property,
+                        time_format=time_format
+                    )
                 )
                 continue
 
             if geom_type == 'LineString':
                 shapes.append(
-                    GeoLineString.from_geojson(feature, time_start_property, time_end_property)
+                    GeoLineString.from_geojson(
+                        feature,
+                        time_start_property,
+                        time_end_property,
+                        time_format=time_format
+                    )
                 )
                 continue
 
             if geom_type == 'Polygon':
                 shapes.append(
-                    GeoPolygon.from_geojson(feature, time_start_property, time_end_property)
+                    GeoPolygon.from_geojson(
+                        feature,
+                        time_start_property,
+                        time_end_property,
+                        time_format=time_format
+                    )
                 )
 
         return cls(shapes)
@@ -754,7 +769,7 @@ class Track(ShapeCollection, DefaultZuluMixin):
                 new_pings.append(ping_group[0])
                 continue
 
-            _lons, _lats = list(zip(*[x.center.to_float() for x in ping_group]))
+            _lons, _lats = list(zip(*[x.centroid.to_float() for x in ping_group]))
             new_pings.append(
                 GeoPoint(
                     Coordinate(sum(_lons)/len(_lons), sum(_lats)/len(_lats)),

@@ -41,7 +41,7 @@ _GEOTIME_TYPE = Union[datetime, TimeInterval]
 _RE_COORD_STR = r'((?:\s?\-?\d+\.?\d*\s\-?\d+\.?\d*\s?\,?)+)'
 _RE_COORD = re.compile(_RE_COORD_STR)
 _RE_COORD_GROUPS_STR = r'(?:\(' + _RE_COORD_STR + r'\)\,?\s?)+'
-_RE_POINT_WKT = re.compile(r'POINT\s?\((\s?\d+\.?\d*\s\d+\.?\d*\s?)\)')
+_RE_POINT_WKT = re.compile(r'POINT\s?\((\s?-?\d{1,3}\.?\d*\s-?\d{1,3}\.?\d*\s?)\)')
 _RE_POLYGON_WKT = re.compile(r'POLYGON\s?\(' + _RE_COORD_GROUPS_STR + r'\)')
 _RE_LINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_COORD_GROUPS_STR + r'\s?')
 
@@ -371,8 +371,20 @@ class GeoShape(DefaultZuluMixin):
             bool
         """
 
+        bbox_tested = False
+        if kwargs.get('k', 0) > 4:
+            if self.contains_shape(shape.circumscribing_rectangle()):
+                return True
+            else:
+                bbox_tested = True
+
         s_edges = self.edges(**kwargs)
         o_edges = shape.edges(**kwargs)
+
+        if not bbox_tested and len(o_edges) > 4:
+            if self.contains_shape(shape.circumscribing_rectangle()):
+                return True
+
         if do_edges_intersect(
             [x for edge_ring in s_edges for x in edge_ring],
             [x for edge_ring in o_edges for x in edge_ring]
@@ -1142,18 +1154,18 @@ class GeoEllipse(GeoShape):
     """
     An ellipsoid shape (or oval), represented by:
         * a Coordinate center
-        * a major axis (the radius at its greatest value)
-        * a minor axis (the radius at its least value)
+        * a semi major axis (the radius at its greatest value)
+        * a semi minor axis (the radius at its least value)
         * rotation (the major axis's degree offset from North)
 
     Args:
         center: (Coordinate)
             The centroid of the ellipse
 
-        major_axis: (float)
+        semi_major: (float)
             The maximum radius value
 
-        minor_axis: (float)
+        semi_minor: (float)
             The minimum radius value
 
         rotation: (float)
@@ -1164,8 +1176,8 @@ class GeoEllipse(GeoShape):
     def __init__(  # pylint: disable=R0913
         self,
         center: Coordinate,
-        major_axis: float,
-        minor_axis: float,
+        semi_major: float,
+        semi_minor: float,
         rotation: float,
         holes: Optional[List[GeoShape]] = None,
         dt: Optional[_GEOTIME_TYPE] = None,
@@ -1174,8 +1186,8 @@ class GeoEllipse(GeoShape):
         super().__init__(holes=holes, dt=dt, properties=properties)
 
         self.center = center
-        self.major_axis = major_axis
-        self.minor_axis = minor_axis
+        self.semi_major = semi_major
+        self.semi_minor = semi_minor
         self.rotation = rotation
 
     def __eq__(self, other) -> bool:
@@ -1184,21 +1196,21 @@ class GeoEllipse(GeoShape):
 
         return (
             self.center == other.center
-            and self.major_axis == other.major_axis
-            and self.minor_axis == other.minor_axis
+            and self.semi_major == other.semi_major
+            and self.semi_minor == other.semi_minor
             and self.rotation == other.rotation
             and self.dt == other.dt
         )
 
     def __hash__(self) -> int:
         return hash(
-            (self.centroid, self.minor_axis, self.major_axis, self.rotation, self.dt)
+            (self.centroid, self.semi_minor, self.semi_major, self.rotation, self.dt)
         )
 
     def __repr__(self) -> str:
         return (
             f'<GeoEllipse at {self.center.to_float()}; '
-            f'radius {self.major_axis}/{self.minor_axis}; '
+            f'radius {self.semi_major}/{self.semi_minor}; '
             f'rotation {self.rotation}>'
         )
 
@@ -1207,8 +1219,8 @@ class GeoEllipse(GeoShape):
         rot_rad = math.radians(self.rotation)
         cos_rot_sq = math.cos(rot_rad)**2
         sin_rot_sq = math.sin(rot_rad)**2
-        semi_major_sq = (self.major_axis)**2
-        semi_minor_sq = (self.minor_axis)**2
+        semi_major_sq = (self.semi_major)**2
+        semi_minor_sq = (self.semi_minor)**2
 
         dx = math.sqrt(semi_major_sq * sin_rot_sq + semi_minor_sq * cos_rot_sq)
         dy = math.sqrt(semi_major_sq * cos_rot_sq + semi_minor_sq * sin_rot_sq)
@@ -1236,16 +1248,16 @@ class GeoEllipse(GeoShape):
             float
         """
         return (
-            self.major_axis
-            * self.minor_axis
+            self.semi_major
+            * self.semi_minor
             / math.sqrt(
-                (self.major_axis**2) * (math.sin(angle) ** 2)
-                + (self.minor_axis**2) * (math.cos(angle) ** 2)
+                (self.semi_major**2) * (math.sin(angle) ** 2)
+                + (self.semi_minor**2) * (math.cos(angle) ** 2)
             )
         )
 
     def bounding_coords(self, **kwargs) -> List[Coordinate]:
-        k = kwargs.get('k') or math.ceil(36 * self.major_axis / self.minor_axis)
+        k = kwargs.get('k') or math.ceil(36 * self.semi_major / self.semi_minor)
         coords = []
         rotation = math.radians(self.rotation)
 
@@ -1260,7 +1272,7 @@ class GeoEllipse(GeoShape):
         return coords
 
     def circumscribing_circle(self) -> GeoCircle:
-        return GeoCircle(self.center, self.major_axis, dt=self.dt)
+        return GeoCircle(self.center, self.semi_major, dt=self.dt)
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         bearing = bearing_degrees(self.center, coord)
@@ -1277,8 +1289,8 @@ class GeoEllipse(GeoShape):
     def copy(self) -> 'GeoEllipse':
         return GeoEllipse(
             self.center,
-            self.major_axis,
-            self.minor_axis,
+            self.semi_major,
+            self.semi_minor,
             self.rotation,
             holes=self.holes.copy(),
             dt=self.dt.copy() if self.dt else None,
