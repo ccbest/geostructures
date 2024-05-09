@@ -7,8 +7,11 @@ __all__ = ['FeatureCollection', 'ShapeCollection', 'Track']
 from collections import defaultdict, Counter
 from datetime import date, datetime, time, timedelta
 from functools import cached_property
+import os
 from pathlib import Path
+import tempfile
 from typing import cast, Any, List, Dict, Optional, Union, Tuple, TypeVar
+from zipfile import ZipFile
 
 import numpy as np
 
@@ -42,7 +45,7 @@ class ShapeCollection(DefaultZuluMixin):
         """The track length"""
         return self.geoshapes.__len__()
 
-    @property
+    @cached_property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         all_bounds = [x.bounds for x in self.geoshapes]
         return (
@@ -83,7 +86,7 @@ class ShapeCollection(DefaultZuluMixin):
         points += [y.to_float() for x in _lines for y in x.coords]
         points += [x.centroid.to_float() for x in _points]
         hull = spatial.ConvexHull(points)
-        return GeoPolygon([Coordinate(*points[x]) for x in hull.vertices])
+        return GeoPolygon([Coordinate(*points[x]) for x in [*hull.vertices, hull.vertices[0]]])
 
     def filter_by_dt(self: _COL_TYPE, dt: Union[datetime, TimeInterval]) -> _COL_TYPE:
         """
@@ -160,19 +163,34 @@ class ShapeCollection(DefaultZuluMixin):
             geom_type = feature.get('geometry', {}).get('type')
             if geom_type == 'Point':
                 shapes.append(
-                    GeoPoint.from_geojson(feature, time_start_property, time_end_property)
+                    GeoPoint.from_geojson(
+                        feature,
+                        time_start_property,
+                        time_end_property,
+                        time_format=time_format
+                    )
                 )
                 continue
 
             if geom_type == 'LineString':
                 shapes.append(
-                    GeoLineString.from_geojson(feature, time_start_property, time_end_property)
+                    GeoLineString.from_geojson(
+                        feature,
+                        time_start_property,
+                        time_end_property,
+                        time_format=time_format
+                    )
                 )
                 continue
 
             if geom_type == 'Polygon':
                 shapes.append(
-                    GeoPolygon.from_geojson(feature, time_start_property, time_end_property)
+                    GeoPolygon.from_geojson(
+                        feature,
+                        time_start_property,
+                        time_end_property,
+                        time_format=time_format
+                    )
                 )
 
         return cls(shapes)
@@ -228,19 +246,19 @@ class ShapeCollection(DefaultZuluMixin):
         for record in df.to_dict('records'):
             dt = _get_dt(record)
             props = {k: v for k, v in record.items() if k in prop_fields}
-            if record['geometry'].startswith('POINT'):
-                shapes.append(GeoPoint.from_wkt(record['geometry'], dt, props))
+            if record['geometry'].geom_type == 'Point':
+                shapes.append(GeoPoint.from_wkt(record['geometry'].wkt, dt, props))
                 continue
 
-            if record['geometry'].startswith('LINESTRING'):
+            if record['geometry'].geom_type == 'LineString':
                 shapes.append(
-                    GeoLineString.from_wkt(record['geometry'], dt, props)
+                    GeoLineString.from_wkt(record['geometry'].wkt, dt, props)
                 )
                 continue
 
-            if record['geometry'].startswith('POLYGON'):
+            if record['geometry'].geom_type == 'Polygon':
                 shapes.append(
-                    GeoPolygon.from_wkt(record['geometry'], dt, props)
+                    GeoPolygon.from_wkt(record['geometry'].wkt, dt, props)
                 )
                 continue
 
@@ -249,11 +267,10 @@ class ShapeCollection(DefaultZuluMixin):
     @classmethod
     def from_shapefile(
         cls,
-        fpath: Union[str, Path],
+        zip_fpath: Union[str, Path],
         time_start_field: str = 'datetime_s',
         time_end_field: str = 'datetime_e',
     ):
-
         import shapefile
 
         def _get_dt(rec):
@@ -279,30 +296,51 @@ class ShapeCollection(DefaultZuluMixin):
             return GeoPoint(Coordinate(*shape.points[0]), dt=dt, properties=props)
 
         def _create_polygon(shape, dt, props):
-            return GeoPolygon([Coordinate(*x) for x in shape.points], dt=dt, properties=props)
+            """
+            Create a polygon out of a pyshyp polygon. Note that "points" are continuous across
+            the bounding coords and holes, so if multiple "parts" are present we need to segment
+            the list of points. "parts" will only provide the indices for segmentation.
+            """
+            parts = list(shape.parts)
+            if parts == [0]:
+                return GeoPolygon([Coordinate(*x) for x in shape.points], dt=dt, properties=props)
+
+            rings = [
+                [Coordinate(*x) for x in shape.points[start: stop if stop > 0 else None]]
+                for start, stop in zip(shape.parts, [*shape.parts[1:], -1])
+            ]
+            holes = [GeoPolygon(x[::-1]) for x in rings[1:]]
+            return GeoPolygon(rings[0], holes=holes, dt=dt, properties=props)
 
         def _create_linestring(shape, dt, props):
             return GeoLineString([Coordinate(*x) for x in shape.points], dt=dt, properties=props)
 
-        reader = shapefile.Reader(fpath)
-
-        type_map = {
-            'POLYLINE': _create_linestring,
-            'POINT': _create_point,
-            'POLYGON': _create_polygon,
-        }
-        shape_fn = type_map.get(reader.shapeTypeName)
-        if not shape_fn:  # pragma: no cover
-            raise ValueError(
-                f'Shapefile contains unsupported shape type: {reader.shapeTypeName}'
-            )
-
         shapes = []
-        for shape, record in zip(reader.shapes(), reader.records()):
-            props = record.as_dict()
-            dt = _get_dt(props)
-            props = {k: v for k, v in props.items() if k not in (time_start_field, time_end_field)}
-            shapes.append(shape_fn(shape, dt=dt, props=props))
+        with ZipFile(zip_fpath, 'r') as z:
+            files_in_zip = z.namelist()
+
+        for file_name in files_in_zip:
+            if not file_name.endswith('.shp'):
+                continue
+
+            reader = shapefile.Reader(Path(zip_fpath) / file_name)
+
+            type_map = {
+                'POLYLINE': _create_linestring,
+                'POINT': _create_point,
+                'POLYGON': _create_polygon,
+            }
+            shape_fn = type_map.get(reader.shapeTypeName)
+            if not shape_fn:  # pragma: no cover
+                raise ValueError(
+                    f'Shapefile contains unsupported shape type: {reader.shapeTypeName}'
+                )
+
+            for shape, record in zip(reader.shapes(), reader.records()):
+                props = record.as_dict()
+                dt = _get_dt(props)
+                props = {k: v for k, v in props.items() if k not in (time_start_field, time_end_field)}
+                shapes.append(shape_fn(shape, dt=dt, props=props))
 
         return cls(shapes)
 
@@ -334,6 +372,16 @@ class ShapeCollection(DefaultZuluMixin):
                 shapes.append(GeoLineString.from_shapely(shape))
 
         return FeatureCollection(shapes)
+
+    @cached_property
+    def geospan(self) -> float:
+        """
+        A summary statistic equal to the width of self.bounds in degrees
+        plus the height of self.bounds in degrees. Can be used as a quick
+        way to sort larger (in extent) FeatureCollections from smaller ones.
+        """
+        bounds = self.bounds
+        return bounds[0][1] - bounds[0][0] + bounds[1][1] - bounds[1][0]
 
     def intersects(self, shape: GeoShape):
         """
@@ -372,6 +420,7 @@ class ShapeCollection(DefaultZuluMixin):
     def to_geopandas(self, include_properties: Optional[List[str]] = None):
         """
         """
+        import pandas as pd
         import geopandas as gpd
 
         keys = include_properties or set(
@@ -380,17 +429,19 @@ class ShapeCollection(DefaultZuluMixin):
         )
 
         return gpd.GeoDataFrame(
-            [
-                {
-                    'geometry': x.to_wkt(),
-                    **{key: x.properties.get(key) for key in keys},
-                } for x in self.geoshapes
-            ]
+            data=pd.DataFrame(
+                [
+                    {
+                       key: x.properties.get(key) for key in keys
+                    } for x in self.geoshapes
+                ]
+            ),
+            geometry=gpd.GeoSeries.from_wkt([x.to_wkt() for x in self.geoshapes])
         )
 
     def to_shapefile(
         self,
-        filepath: Union[str, Path],
+        zip_file: ZipFile,
         include_properties: Optional[List[str]] = None,
     ) -> None:
         """
@@ -401,8 +452,8 @@ class ShapeCollection(DefaultZuluMixin):
         Requires the pyshp library (canonically imported as 'shapefile').
 
         Args:
-            filepath:
-                The **directory** to save files to.
+            zip_file:
+                The zipfile to write shape files to.
 
             include_properties: (Default None)
                 A list of properties to include. If None, all properties will be included.
@@ -412,84 +463,98 @@ class ShapeCollection(DefaultZuluMixin):
         """
         import shapefile
 
-        def _convert(val: Any):
+        def _convert_dt(val: Any):
             """Convert date/datetime values to string"""
             if isinstance(val, (datetime, date)):
                 return val.isoformat()
             return val
 
-        if not (
-            all(isinstance(shape, GeoPoint) for shape in self.geoshapes) or
-            all(isinstance(shape, GeoLineString) for shape in self.geoshapes) or
-            all(not isinstance(shape, (GeoPoint, GeoLineString)) for shape in self.geoshapes)
-        ):
-            raise ValueError(
-                'ESRI shapefiles may only contain one geometry type '
-                '(points, polygons, or linestrings).'
-            )
-
-        path: Path = Path(filepath)
-        if not path.parent.exists():
-            raise ValueError(f'Directory {path.parent} not found.')
-
-        # 2-Tuples of properties and their datatypes
-        _types = set(
-            (_key, type(_val)) for x in self.geoshapes
-            for _key, _val in x.properties.items()
-            if (not include_properties) or _key in include_properties
-        )
-
-        if _types:
-            # Check to make sure data types are consistent
-            c = Counter(x[0] for x in _types)
-            if c.most_common(1)[0][1] > 1:
-                # Just log a warning - still want to try to write the file
-                LOGGER.warning(
-                    'Conflicting data types found in properties; '
-                    'your shapefile may not get written correctly'
-                )
-
-        typemap = dict(_types)
-        writer = shapefile.Writer(str(path))
-
-        # Declare fields
-        for field, _type in typemap.items():
-            if issubclass(_type, bool):
-                # bools are subclasses of int (WAT) - have to check first
-                writer.field(field, 'L')
-            elif issubclass(_type, (float, int)) and not issubclass(_type, datetime):
-                # datetimes are subclasses of ints too
-                writer.field(field, 'N')
-            else:
-                writer.field(field, 'C')
-
-        writer.field('ID', 'N')
-
-        for idx, shape in enumerate(self.geoshapes):
-            # Write out properties
-            props = shape.properties
-            writer.record(*[_convert(props.get(k)) for k in typemap], idx)
+        points: List[GeoShape] = []
+        lines: List[GeoShape] = []
+        shapes: List[GeoShape] = []
+        for shape in self.geoshapes:
+            if not isinstance(shape, (GeoPoint, GeoLineString)):
+                shapes.append(shape)
+                continue
 
             if isinstance(shape, GeoPoint):
-                writer.point(*shape.centroid.to_float())
+                points.append(shape)
+                continue
 
-            elif isinstance(shape, GeoLineString):
-                writer.line([[list(x.to_float()) for x in shape.bounding_coords()]])
+            lines.append(shape)
 
-            else:
-                writer.poly(
-                    [
-                        [list(coord.to_float()) for coord in ring]
-                        for ring in shape.linear_rings()
-                    ]
+        with tempfile.TemporaryDirectory() as tempdir:
+            for shapetype, shape_group in (('points', points), ('lines', lines), ('shapes', shapes)):
+                if not shape_group:
+                    continue
+
+                writer = shapefile.Writer(os.path.join(tempdir, shapetype))
+
+                # 2-Tuples of properties and their datatypes
+                _types = set(
+                    (_key, type(_val)) for x in shape_group
+                    for _key, _val in x.properties.items()
+                    if (not include_properties) or _key in include_properties
                 )
+                typemap = dict(_types)
 
-        with open(str(path / f'{path.name}.prj'), 'w+') as f:
-            f.write(
-                'GEOGCS["GCS_WGS_1984",'
-                'DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],'
-                'PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]'
-            )
+                # Declare fields
+                for field, _type in typemap.items():
+                    if issubclass(_type, bool):
+                        # bools are subclasses of int (WAT) - have to check first
+                        writer.field(field, 'L')
+                    elif issubclass(_type, (float, int)) and not issubclass(_type, datetime):
+                        # datetimes are subclasses of ints too
+                        writer.field(field, 'N')
+                    else:
+                        writer.field(field, 'C')
+
+                writer.field('ID', 'N')
+
+                if _types:
+                    # Check to make sure data types are consistent
+                    c = Counter(x[0] for x in _types)
+                    if c.most_common(1)[0][1] > 1:
+                        # Just log a warning - still want to try to write the file
+                        LOGGER.warning(
+                            'Conflicting data types found in properties; '
+                            'your shapefile may not get written correctly'
+                        )
+
+                # Write shapes to file
+                for idx, shape in enumerate(shape_group):
+                    # Write out properties
+                    props = shape.properties
+                    writer.record(*[_convert_dt(props.get(k)) for k in typemap], idx)
+
+                    if isinstance(shape, GeoPoint):
+                        writer.point(*shape.centroid.to_float())
+
+                    elif isinstance(shape, GeoLineString):
+                        writer.line([[list(x.to_float()) for x in shape.bounding_coords()]])
+
+                    else:
+                        writer.poly(
+                            [
+                                [list(coord.to_float()) for coord in ring]
+                                for ring in shape.linear_rings()
+                            ]
+                        )
+
+                writer.close()
+                zip_file.write(writer.shx.name, writer.shx.name.split(os.sep)[-1])
+                zip_file.write(writer.shp.name, writer.shp.name.split(os.sep)[-1])
+                zip_file.write(writer.dbf.name, writer.dbf.name.split(os.sep)[-1])
+
+                with open(os.path.join(tempdir, f'{shapetype}.prj'), 'w+') as f:
+                    # Taken from pyshp's readme
+                    wkt = 'GEOGCS["WGS 84",'
+                    wkt += 'DATUM["WGS_1984",'
+                    wkt += 'SPHEROID["WGS 84",6378137,298.257223563]]'
+                    wkt += ',PRIMEM["Greenwich",0],'
+                    wkt += 'UNIT["degree",0.0174532925199433]]'
+                    f.write(wkt)
+                    zip_file.write(f.name, f.name.split(os.sep)[-1])
 
         return
 
@@ -671,7 +736,7 @@ class Track(ShapeCollection, DefaultZuluMixin):
 
         return self.geoshapes[0].start
 
-    @property
+    @cached_property
     def time_start_diffs(self):
         """Provides an array of the time differences between chronologically-ordered
         pings. The length of the returned array will always be len(self) - 1"""
@@ -704,7 +769,7 @@ class Track(ShapeCollection, DefaultZuluMixin):
                 new_pings.append(ping_group[0])
                 continue
 
-            _lons, _lats = list(zip(*[x.center.to_float() for x in ping_group]))
+            _lons, _lats = list(zip(*[x.centroid.to_float() for x in ping_group]))
             new_pings.append(
                 GeoPoint(
                     Coordinate(sum(_lons)/len(_lons), sum(_lats)/len(_lats)),

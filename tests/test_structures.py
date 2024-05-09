@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import datetime, timedelta, timezone
 import pytest
 import shapely
 from shapely import wkt
@@ -151,14 +151,25 @@ def test_geoshape_contains_dunder():
     assert GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 1)) in GeoCircle(Coordinate('0.0', '0.0'), 500, dt=None)
 
 
-def test_geoshape_bounding_vertices():
+def test_geoshape_bounding_edges():
     poly = GeoPolygon([Coordinate(1.0, 0.0), Coordinate(1.0, 1.0), Coordinate(0.0, 0.5), Coordinate(1.0, 0.0)])
-    assert poly.bounding_vertices() == [
+    assert poly.bounding_edges() == [
         (Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)),
         (Coordinate(1.0, 1.0), Coordinate(0.0, 0.5)),
         (Coordinate(0.0, 0.5), Coordinate(1.0, 0.0)),
         (Coordinate(1.0, 0.0), Coordinate(1.0, 0.0))
     ]
+
+
+def test_geoshape_buffer_dt():
+    # Base Case
+    point = GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 12), datetime(2020, 1, 3, 12)))
+    point2 = point.buffer_dt(timedelta(hours=1))
+    assert point2 == GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 11), datetime(2020, 1, 3, 13)))
+    
+    # In place
+    point.buffer_dt(timedelta(hours=2), inplace=True)
+    assert point == GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 10), datetime(2020, 1, 3, 14)))
 
 
 def test_geoshape_contains():
@@ -338,7 +349,7 @@ def test_geoshape_strip_dt():
     assert point.strip_dt() == expected
 
 
-def test_geoshape_vertices():
+def test_geoshape_edges():
     polygon = GeoPolygon(
         [
             Coordinate(1.0, 0.0), Coordinate(1.0, 1.0),
@@ -351,7 +362,7 @@ def test_geoshape_vertices():
             ])
         ]
     )
-    assert polygon.vertices() == [
+    assert polygon.edges() == [
         [
             (Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)),
             (Coordinate(1.0, 1.0), Coordinate(0.0, 0.5)),
@@ -1013,7 +1024,7 @@ def test_geoellipse_repr(geoellipse):
 
 def test_geoellipse_bounds():
     assert GeoEllipse(Coordinate(0.0, 0.0), 1000, 500, 45).bounds == (
-        (-0.0071069, 0.0071069), (-0.0071069, 0.0071069)
+        (-0.0071098, 0.0071098), (-0.0071098, 0.0071098)
     )
 
 
@@ -1066,8 +1077,8 @@ def test_geoellipse_circumscribing_rectangle(geoellipse):
 
 def test_geoellipse_circumscribing_circle(geoellipse):
     assert geoellipse.circumscribing_circle() == GeoCircle(
-        geoellipse.center,
-        geoellipse.major_axis,
+        geoellipse.centroid,
+        geoellipse.semi_major,
         dt=default_test_datetime
     )
 
@@ -1188,10 +1199,10 @@ def test_georing_to_geojson(georing):
 
 def test_georing_circumscribing_rectangle(georing, geowedge):
 
-    max_lon, _ = inverse_haversine_degrees(georing.center, 90, 1000).to_float()
-    min_lon, _ = inverse_haversine_degrees(georing.center, -90, 1000).to_float()
-    _, max_lat = inverse_haversine_degrees(georing.center, 0, 1000).to_float()
-    _, min_lat = inverse_haversine_degrees(georing.center, 180, 1000).to_float()
+    max_lon, _ = inverse_haversine_degrees(georing.centroid, 90, 1000).to_float()
+    min_lon, _ = inverse_haversine_degrees(georing.centroid, -90, 1000).to_float()
+    _, max_lat = inverse_haversine_degrees(georing.centroid, 0, 1000).to_float()
+    _, min_lat = inverse_haversine_degrees(georing.centroid, 180, 1000).to_float()
 
     assert georing.circumscribing_rectangle() == GeoBox(
         Coordinate(min_lon, max_lat),
@@ -1257,14 +1268,30 @@ def test_georing_linear_rings(georing, geowedge):
 
 def test_georing_to_wkt():
     ring = GeoRing(Coordinate(0.0, 0.0), 500, 1000)
-    assert ring.to_wkt() == 'POLYGON((-0.0 0.0089932,-0.0015617 0.0088566,-0.0030759 0.0084509,-0.0044966 0.0077884,-0.0057807 0.0068892,-0.0068892 0.0057807,-0.0077884 0.0044966,-0.0084509 0.0030759,-0.0088566 0.0015617,-0.0089932 -0.0,-0.0088566 -0.0015617,-0.0084509 -0.0030759,-0.0077884 -0.0044966,-0.0068892 -0.0057807,-0.0057807 -0.0068892,-0.0044966 -0.0077884,-0.0030759 -0.0084509,-0.0015617 -0.0088566,0.0 -0.0089932,0.0015617 -0.0088566,0.0030759 -0.0084509,0.0044966 -0.0077884,0.0057807 -0.0068892,0.0068892 -0.0057807,0.0077884 -0.0044966,0.0084509 -0.0030759,0.0088566 -0.0015617,0.0089932 0.0,0.0088566 0.0015617,0.0084509 0.0030759,0.0077884 0.0044966,0.0068892 0.0057807,0.0057807 0.0068892,0.0044966 0.0077884,0.0030759 0.0084509,0.0015617 0.0088566,0.0 0.0089932,-0.0 0.0089932), (-0.0 0.0044966,-0.0007808 0.0044283,-0.0015379 0.0042254,-0.0022483 0.0038942,-0.0028904 0.0034446,-0.0034446 0.0028904,-0.0038942 0.0022483,-0.0042254 0.0015379,-0.0044283 0.0007808,-0.0044966 -0.0,-0.0044283 -0.0007808,-0.0042254 -0.0015379,-0.0038942 -0.0022483,-0.0034446 -0.0028904,-0.0028904 -0.0034446,-0.0022483 -0.0038942,-0.0015379 -0.0042254,-0.0007808 -0.0044283,0.0 -0.0044966,0.0007808 -0.0044283,0.0015379 -0.0042254,0.0022483 -0.0038942,0.0028904 -0.0034446,0.0034446 -0.0028904,0.0038942 -0.0022483,0.0042254 -0.0015379,0.0044283 -0.0007808,0.0044966 0.0,0.0044283 0.0007808,0.0042254 0.0015379,0.0038942 0.0022483,0.0034446 0.0028904,0.0028904 0.0034446,0.0022483 0.0038942,0.0015379 0.0042254,0.0007808 0.0044283,0.0 0.0044966,-0.0 0.0044966))'
+    assert ring.to_wkt() == 'POLYGON((-0.0 0.0089932,-0.0015617 0.0088566,-0.0030759 0.0084509,-0.0044966 0.0077884,-0.0057807 0.0068892,-0.0068892 0.0057807,-0.0077884 0.0044966,-0.0084509 0.0030759,-0.0088566 0.0015617,-0.0089932 -0.0,-0.0088566 -0.0015617,-0.0084509 -0.0030759,-0.0077884 -0.0044966,-0.0068892 -0.0057807,-0.0057807 -0.0068892,-0.0044966 -0.0077884,-0.0030759 -0.0084509,-0.0015617 -0.0088566,0.0 -0.0089932,0.0015617 -0.0088566,0.0030759 -0.0084509,0.0044966 -0.0077884,0.0057807 -0.0068892,0.0068892 -0.0057807,0.0077884 -0.0044966,0.0084509 -0.0030759,0.0088566 -0.0015617,0.0089932 0.0,0.0088566 0.0015617,0.0084509 0.0030759,0.0077884 0.0044966,0.0068892 0.0057807,0.0057807 0.0068892,0.0044966 0.0077884,0.0030759 0.0084509,0.0015617 0.0088566,0.0 0.0089932), (-0.0 0.0044966,-0.0007808 0.0044283,-0.0015379 0.0042254,-0.0022483 0.0038942,-0.0028904 0.0034446,-0.0034446 0.0028904,-0.0038942 0.0022483,-0.0042254 0.0015379,-0.0044283 0.0007808,-0.0044966 -0.0,-0.0044283 -0.0007808,-0.0042254 -0.0015379,-0.0038942 -0.0022483,-0.0034446 -0.0028904,-0.0028904 -0.0034446,-0.0022483 -0.0038942,-0.0015379 -0.0042254,-0.0007808 -0.0044283,0.0 -0.0044966,0.0007808 -0.0044283,0.0015379 -0.0042254,0.0022483 -0.0038942,0.0028904 -0.0034446,0.0034446 -0.0028904,0.0038942 -0.0022483,0.0042254 -0.0015379,0.0044283 -0.0007808,0.0044966 0.0,0.0044283 0.0007808,0.0042254 0.0015379,0.0038942 0.0022483,0.0034446 0.0028904,0.0028904 0.0034446,0.0022483 0.0038942,0.0015379 0.0042254,0.0007808 0.0044283,0.0 0.0044966))'
 
     wedge = GeoRing(Coordinate(0.0, 0.0), 500, 1000, 90, 180)
     assert wedge.to_wkt() == 'POLYGON((0.0 -0.0089932,0.0014068 -0.0088825,0.0027791 -0.0085531,0.0040828 -0.008013,0.0052861 -0.0072757,0.0063592 -0.0063592,0.0072757 -0.0052861,0.008013 -0.0040828,0.0085531 -0.0027791,0.0088825 -0.0014068,0.0089932 0.0,0.0044966 0.0,0.0044412 -0.0007034,0.0042765 -0.0013895,0.0040065 -0.0020414,0.0036378 -0.002643,0.0031796 -0.0031796,0.002643 -0.0036378,0.0020414 -0.0040065,0.0013895 -0.0042765,0.0007034 -0.0044412,0.0 -0.0044966,0.0 -0.0089932))'
 
 
-def test_georing_to_polygon(georing):
-    assert georing.to_polygon() == GeoPolygon(georing.bounding_coords(), dt=default_test_datetime)
+def test_georing_to_polygon():
+    georing = GeoRing(Coordinate(0.0, 0.0), 500, 1000, dt=default_test_datetime)
+
+    # Because its not a wedge, should become a polygon with a hole
+    rings = georing.linear_rings()
+    assert georing.to_polygon() == GeoPolygon(
+        rings[0],
+        holes=[GeoPolygon(rings[1])],
+        dt=default_test_datetime
+    )
+
+    # Is a wedge, so just a normal polygon
+    geowedge = GeoRing(Coordinate(0.0, 0.0), 500, 1000, 90, 180, dt=default_test_datetime)
+    rings = geowedge.linear_rings()
+    assert geowedge.to_polygon() == GeoPolygon(
+        rings[0],
+        dt=default_test_datetime
+    )
 
 
 def test_geolinestring_contains_dunder(geolinestring):
@@ -1494,9 +1521,9 @@ def test_geopoint_bounding_coords(geopoint):
         _ = geopoint.bounding_coords()
 
 
-def test_geopoint_bounding_vertices():
+def test_geopoint_bounding_edges():
     with pytest.raises(NotImplementedError):
-        _ = GeoPoint(Coordinate(0., 0.)).bounding_vertices()
+        _ = GeoPoint(Coordinate(0., 0.)).bounding_edges()
 
 
 def test_geopoint_copy():
@@ -1578,9 +1605,7 @@ def test_geopoint_to_geojson(geopoint):
 
 
 def test_geopoint_to_shapely(geopoint):
-    assert geopoint._shapely == None
     assert geopoint.to_shapely() == shapely.Point(0.0, 0.0)
-    assert geopoint._shapely == shapely.Point(0.0, 0.0)
 
 
 def test_geopoint_circumscribing_circle(geopoint):
@@ -1609,6 +1634,9 @@ def test_geopoint_from_wkt():
     wkt_str = 'POINT(1.0 1.0)'
     assert GeoPoint.from_wkt(wkt_str) == GeoPoint(Coordinate(1.0, 1.0))
 
+    wkt_str = 'POINT(-1.0 -1.0)'
+    assert GeoPoint.from_wkt(wkt_str) == GeoPoint(Coordinate(-1.0, -1.0))
+
     with pytest.raises(ValueError):
         _ = GeoPoint.from_wkt('NOT WKT')
 
@@ -1622,6 +1650,6 @@ def test_geopoint_to_polygon(geopoint):
         geopoint.to_polygon()
 
 
-def test_geopoint_vertices():
+def test_geopoint_edges():
     with pytest.raises(NotImplementedError):
-        _ = GeoPoint(Coordinate(0., 0.)).vertices()
+        _ = GeoPoint(Coordinate(0., 0.)).edges()

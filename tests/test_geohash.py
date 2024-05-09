@@ -1,25 +1,28 @@
 
 import pytest
+from datetime import datetime
 
 from geostructures import Coordinate, GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.collections import FeatureCollection
 from geostructures.geohash import (
-    coord_to_niemeyer, get_niemeyer_subhashes, niemeyer_to_geobox,
+    _coord_to_niemeyer, _get_niemeyer_subhashes, niemeyer_to_geobox,
     H3Hasher, NiemeyerHasher, convert_hashmap
 )
+from geostructures.time import TimeInterval
+from geostructures.utils.agg_functions import *
 
 
 def test_coord_to_niemeyer():
     coord = Coordinate(0.1, -0.1)
-    assert coord_to_niemeyer(coord, 8, 16) == '95555659'
+    assert _coord_to_niemeyer(coord, 8, 16) == '95555659'
 
     with pytest.raises(ValueError):
-        _ = coord_to_niemeyer(coord, 8, 42)
+        _ = _coord_to_niemeyer(coord, 8, 42)
 
 
 def test_get_niemeyer_subhashes():
     geohash = '95555659'
-    assert get_niemeyer_subhashes(geohash, 16) == {
+    assert _get_niemeyer_subhashes(geohash, 16) == {
         '955556590', '955556591', '955556592', '955556593', '955556594',
         '955556595', '955556596', '955556597', '955556598', '955556599',
         '95555659a', '95555659b', '95555659c', '95555659d', '95555659e',
@@ -27,7 +30,7 @@ def test_get_niemeyer_subhashes():
     }
 
     with pytest.raises(ValueError):
-        get_niemeyer_subhashes(geohash, 42)
+        _get_niemeyer_subhashes(geohash, 42)
 
 
 def test_niemeyer_to_geobox():
@@ -121,6 +124,54 @@ def test_hash_collection():
         hasher.hash_collection(fcol)
 
 
+def test_hash_collection_with_total_time():
+    shape = GeoCircle(Coordinate(0.0, 0.0), 600, 
+                      dt=TimeInterval(datetime(2024,1,1), datetime(2024,1,1,1)))
+    shape2 = GeoCircle(Coordinate(0.0, 0.0), 300,
+                      dt=TimeInterval(datetime(2024,1,1), datetime(2024,1,1,2)))
+    fcol = FeatureCollection([shape, shape2])
+    hasher = H3Hasher(resolution=9)
+
+    assert hasher.hash_collection(fcol, agg_fn=total_time) == {
+        '89754e64d2fffff': 10800.0,
+        '89754e64d2bffff': 3600.0,
+        '89754e64983ffff': 3600.0,
+        '89754e64987ffff': 3600.0,
+        '89754e64993ffff': 10800.0,
+        '89754e64997ffff': 10800.0,
+        '89754e64d27ffff': 3600.0,
+        '89754e64d67ffff': 3600.0,
+        '89754a9324bffff': 3600.0,
+        '89754e64d23ffff': 3600.0,
+        '89754a9325bffff': 3600.0,
+        '89754e6499bffff': 3600.0
+    }
+
+def test_hash_collection_with_unique_entities():
+    shape = GeoCircle(Coordinate(0.0, 0.0), 600, 
+                      properties={'entity': 1})
+    shape2 = GeoCircle(Coordinate(0.0, 0.0), 300,
+                      properties={'entity': 2})
+    shape3 = GeoCircle(Coordinate(0.0, 0.0), 450,
+                      properties={'entity': 1})
+    fcol = FeatureCollection([shape, shape2, shape3])
+    hasher = H3Hasher(resolution=9)
+
+    assert hasher.hash_collection(fcol, agg_fn=unique_entities) == {
+        '89754e64d2fffff': 2,
+        '89754e64d2bffff': 1,
+        '89754e64983ffff': 1,
+        '89754e64987ffff': 1,
+        '89754e64993ffff': 2,
+        '89754e64997ffff': 2,
+        '89754e64d27ffff': 1,
+        '89754e64d67ffff': 1,
+        '89754a9324bffff': 1,
+        '89754e64d23ffff': 1,
+        '89754a9325bffff': 1,
+        '89754e6499bffff': 1
+    }
+
 def test_niemeyer_hash_collection():
     hasher = NiemeyerHasher(8, 16)
     col = FeatureCollection([
@@ -192,6 +243,12 @@ def test_niemeyer_hash_shape():
         'c000001a', 'c000001b', 'c0000023', 'c0000025', 'c0000026', 'c0000027',
         'c0000028', 'c0000029', 'c000002a', 'c0000030'
     }
+
+
+    # test that small shapes still produce a single geohash
+    shape = GeoCircle(Coordinate(0.0001, 0.0001), 5)
+    assert hasher.hash_shape(shape) == {'c0000000'}
+
 
 def test_convert_hashmap():
     testhashmap={'87195da49ffffff'}

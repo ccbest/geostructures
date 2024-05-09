@@ -1,9 +1,9 @@
 """ Geometric calculations for Coordinates and Geostructures """
 
 __all__ = [
-    'bearing_degrees', 'ensure_vertex_bounds', 'haversine_distance_meters',
+    'bearing_degrees', 'ensure_edge_bounds', 'haversine_distance_meters',
     'inverse_haversine_degrees', 'inverse_haversine_radians', 'rotate_coordinates',
-    'find_line_intersection', 'do_vertices_intersect'
+    'find_line_intersection', 'do_edges_intersect'
 ]
 
 import math
@@ -51,20 +51,20 @@ def bearing_degrees(coord1: Coordinate, coord2: Coordinate, **kwargs) -> float:
     return round_half_up(bearing, kwargs.get('precision', 5))
 
 
-def do_vertices_intersect(
-    vertices_a: List[Tuple[Coordinate, Coordinate]],
-    vertices_b: List[Tuple[Coordinate, Coordinate]],
+def do_edges_intersect(
+    edges_a: List[Tuple[Coordinate, Coordinate]],
+    edges_b: List[Tuple[Coordinate, Coordinate]],
 ) -> bool:
     """
-    Tests whether two sets of vertices ever intersect. Uses the sweep line algorithm
+    Tests whether two shape edges ever intersect. Uses the sweep line algorithm
     to minimize the number of intersections calculated.
 
     Args:
-        vertices_a:
-            The list of vertices from the first group/shape
+        edges_a:
+            The list of edges (pairs of coordinates) from the first group/shape
 
-        vertices_b:
-            The list of vertices from the second group/shape
+        edges_b:
+            The list of edges (pairs of coordinates) from the second group/shape
 
     Returns:
         bool
@@ -102,25 +102,25 @@ def do_vertices_intersect(
             """Required for creating a set of events"""
             return self.segment == other.segment and self.group == other.group
 
-    def _create_events(vertices, group):
-        """Creates 2x events per vertex from a list of vertices. Ensures the lesser x
+    def _create_events(edges, group):
+        """Creates 2x events per edge from a list of edges. Ensures the lesser x
         value corresponds to the start event."""
         _events = []
-        for vertex in vertices:
-            if vertex[0].latitude > vertex[1].latitude:
-                vertex = (vertex[1], vertex[0])
+        for edge in edges:
+            if edge[0].latitude > edge[1].latitude:
+                edge = (edge[1], edge[0])
 
             _events += [
-                _Event(vertex[0].latitude, vertex[0].latitude <= vertex[1].latitude, vertex, group),
-                _Event(vertex[1].latitude, vertex[1].latitude <= vertex[0].latitude, vertex, group)
+                _Event(edge[0].latitude, edge[0].latitude <= edge[1].latitude, edge, group),
+                _Event(edge[1].latitude, edge[1].latitude <= edge[0].latitude, edge, group)
             ]
         return _events
 
-    vertices_a = [ensure_vertex_bounds(x, y) for x, y in vertices_a]
-    vertices_b = [ensure_vertex_bounds(x, y) for x, y in vertices_b]
+    edges_a = [ensure_edge_bounds(x, y) for x, y in edges_a]
+    edges_b = [ensure_edge_bounds(x, y) for x, y in edges_b]
 
-    events = _create_events(vertices_a, 'a')
-    events += _create_events(vertices_b, 'b')
+    events = _create_events(edges_a, 'a')
+    events += _create_events(edges_b, 'b')
 
     events.sort()
     active_events: Set[_Event] = set()
@@ -129,7 +129,7 @@ def do_vertices_intersect(
             active_events.remove(event)
             continue
 
-        # All vertices belong to same group
+        # All edges belong to same group
         if len(set(x.group for x in [*active_events, event])) <= 1:
             active_events.add(event)
             continue
@@ -147,23 +147,23 @@ def do_vertices_intersect(
     return False
 
 
-def ensure_vertex_bounds(coord1: Coordinate, coord2: Coordinate) -> Tuple[Coordinate, Coordinate]:
+def ensure_edge_bounds(coord1: Coordinate, coord2: Coordinate) -> Tuple[Coordinate, Coordinate]:
     """
-    Ensures vertices (lines extending from point A to point B) are properly bounded,
+    Ensures edges (line segments from extending from point A to point B) are properly bounded,
     such that a line which crosses the antimeridian does not mathematically circumnavigate
     the globe.
 
-    If the shortest path between the start and end points of a vertex crosses the antimeridian,
+    If the shortest path between the start and end points of an edge crosses the antimeridian,
     this function will "unbound" the end point coordinate such that its latitude value
     is not limited to [-180, 180), thereby allowing the meridian crossing to be calculated
     correctly.
 
     Args:
         coord1:
-            A geostructures coordinate representing the vertex start
+            A geostructures coordinate representing the edge start
 
         coord2:
-            A geostructures coordinate representing the vertex finish
+            A geostructures coordinate representing the edge finish
 
     Returns:
         A tuple of unbounded coordinates
@@ -215,8 +215,8 @@ def find_line_intersection(
         return max([range1[0], range2[0]]) <= min([range1[1], range2[1]])
 
     # Adjust lines if they cross the antimeridian
-    line1 = ensure_vertex_bounds(line1[0], line1[1])
-    line2 = ensure_vertex_bounds(line2[0], line2[1])
+    line1 = ensure_edge_bounds(line1[0], line1[1])
+    line2 = ensure_edge_bounds(line2[0], line2[1])
 
     line1_flt = (line1[0].to_float(), line1[1].to_float())
     if line1_flt[1][0] < line1_flt[0][0]:  # Flip order such that lower x value is first
@@ -277,7 +277,7 @@ def haversine_distance_meters(coord1: Coordinate, coord2: Coordinate) -> float:
     Returns:
         (float) the bearing in degrees
     """
-    coord1, coord2 = ensure_vertex_bounds(coord1, coord2)
+    coord1, coord2 = ensure_edge_bounds(coord1, coord2)
 
     lon1, lat1 = math.radians(coord1.longitude), math.radians(coord1.latitude)
     lon2, lat2 = math.radians(coord2.longitude), math.radians(coord2.latitude)
@@ -381,7 +381,7 @@ def rotate_coordinates(
     Returns:
         List[Coordinate]
     """
-    coords = [ensure_vertex_bounds(origin, x)[1] for x in coords]
+    coords = [ensure_edge_bounds(origin, x)[1] for x in coords]
     angle = np.deg2rad(degrees)
     R = np.array([
         [np.cos(angle), -np.sin(angle)],

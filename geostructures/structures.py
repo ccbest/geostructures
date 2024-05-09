@@ -10,7 +10,8 @@ __all__ = [
 
 from abc import abstractmethod
 import copy
-from datetime import datetime
+from datetime import datetime, timedelta
+from functools import cached_property, lru_cache
 import math
 import re
 import statistics
@@ -21,13 +22,13 @@ import numpy as np
 from geostructures import LOGGER
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
-    ensure_vertex_bounds,
+    ensure_edge_bounds,
     inverse_haversine_radians,
     inverse_haversine_degrees,
     haversine_distance_meters,
     bearing_degrees,
     find_line_intersection,
-    do_vertices_intersect
+    do_edges_intersect
 )
 from geostructures.utils.functions import round_half_up
 from geostructures.utils.mixins import DefaultZuluMixin, WarnOnceMixin
@@ -39,7 +40,7 @@ _GEOTIME_TYPE = Union[datetime, TimeInterval]
 _RE_COORD_STR = r'((?:\s?\-?\d+\.?\d*\s\-?\d+\.?\d*\s?\,?)+)'
 _RE_COORD = re.compile(_RE_COORD_STR)
 _RE_COORD_GROUPS_STR = r'(?:\(' + _RE_COORD_STR + r'\)\,?\s?)+'
-_RE_POINT_WKT = re.compile(r'POINT\s?\((\s?\d+\.?\d*\s\d+\.?\d*\s?)\)')
+_RE_POINT_WKT = re.compile(r'POINT\s?\((\s?-?\d{1,3}\.?\d*\s-?\d{1,3}\.?\d*\s?)\)')
 _RE_POLYGON_WKT = re.compile(r'POLYGON\s?\(' + _RE_COORD_GROUPS_STR + r'\)')
 _RE_LINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_COORD_GROUPS_STR + r'\s?')
 
@@ -102,7 +103,7 @@ class GeoShape(DefaultZuluMixin):
             self.dt = dt
 
         self._properties = properties or {}
-        self._shapely = None
+        self.to_shapely = lru_cache(maxsize=1)(self._to_shapely)
         self.holes = holes or []
         if any(x.holes for x in self.holes):
             raise ValueError('Holes cannot themselves contain holes.')
@@ -125,7 +126,7 @@ class GeoShape(DefaultZuluMixin):
     def __repr__(self):
         """REPL representation of this object"""
 
-    @property
+    @cached_property
     def area(self):
         """
         The area of the shape, in meters squared.
@@ -183,7 +184,7 @@ class GeoShape(DefaultZuluMixin):
 
         return self.dt.start
 
-    @property
+    @cached_property
     def volume(self) -> float:
         """
         The volume of the shape, in meters squared seconds.
@@ -245,16 +246,16 @@ class GeoShape(DefaultZuluMixin):
             A list of coordinates, representing the boundary.
         """
 
-    def bounding_vertices(self, **kwargs) -> List[Tuple[Coordinate, Coordinate]]:
+    def bounding_edges(self, **kwargs) -> List[Tuple[Coordinate, Coordinate]]:
         """
-        Returns a list of vertices, defined as a 2-tuple (start and end) of coordinates, that
+        Returns a list of edges, defined as a 2-tuple (start and end) of coordinates, that
         represent the polygon's boundary.
 
         Using discrete coordinates to represent a continuous curve implies some level of data
         loss. You can minimize this loss by specifying k, which represents the number of
         points drawn.
 
-        Does not include information about holes - see the vertices method.
+        Does not include information about holes - see the edges method.
 
         Keyword Args:
             k: (int)
@@ -262,10 +263,35 @@ class GeoShape(DefaultZuluMixin):
                 points generated along the curve
 
         Returns:
-            A list of 2-tuples representing the vertices
+            A list of 2-tuples representing the edges
         """
         bounding_coords = self.bounding_coords(**kwargs)
         return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
+
+    def buffer_dt(
+        self: _SHAPE_TYPE,
+        buffer: timedelta,
+        inplace: bool = False
+    ) -> _SHAPE_TYPE:
+        """
+        Adds a timedelta buffer to the beginning and end of dt.
+
+        Args:
+            buffer:
+                A timedelta that will expand both sides of dt
+
+            inplace:
+                Return a new object? Defaults to False.
+        """
+        if not self.dt:
+            raise ValueError("GeoShape has no associated time information.")
+
+        dt = cast(TimeInterval, self.dt)
+        shp = self if inplace else self.copy()
+
+        shp.dt = TimeInterval(dt.start-buffer, dt.end+buffer)
+
+        return shp
 
     @abstractmethod
     def circumscribing_circle(self) -> 'GeoCircle':
@@ -344,18 +370,18 @@ class GeoShape(DefaultZuluMixin):
             bool
         """
 
-        s_vertices = self.vertices(**kwargs)
-        o_vertices = shape.vertices(**kwargs)
-        if do_vertices_intersect(
-            [x for vertex_ring in s_vertices for x in vertex_ring],
-            [x for vertex_ring in o_vertices for x in vertex_ring]
+        s_edges = self.edges(**kwargs)
+        o_edges = shape.edges(**kwargs)
+        if do_edges_intersect(
+            [x for edge_ring in s_edges for x in edge_ring],
+            [x for edge_ring in o_edges for x in edge_ring]
         ):
-            # At least one vertex pair intersects - cannot be contained
+            # At least one edge pair intersects - cannot be contained
             return False
 
-        # No vertices intersect, so make sure one point along the boundary is
+        # No edges intersect, so make sure one point along the boundary is
         # contained
-        return o_vertices[0][0][0] in self
+        return o_edges[0][0][0] in self
 
     def contains_time(self, dt: Union[datetime, TimeInterval]) -> bool:
         """
@@ -424,19 +450,19 @@ class GeoShape(DefaultZuluMixin):
         if isinstance(shape, GeoPoint):
             return shape in self
 
-        s_vertices = self.vertices(**kwargs)
-        o_vertices = shape.vertices(**kwargs)
-        if do_vertices_intersect(
-            [x for vertex_ring in s_vertices for x in vertex_ring],
-            [x for vertex_ring in o_vertices for x in vertex_ring]
+        s_edges = self.edges(**kwargs)
+        o_edges = shape.edges(**kwargs)
+        if do_edges_intersect(
+            [x for edge_ring in s_edges for x in edge_ring],
+            [x for edge_ring in o_edges for x in edge_ring]
         ):
-            # At least one vertex pair intersects
+            # At least one edge pair intersects
             return True
 
-        # If no vertices intersect, one shape could still contain the other
+        # If no edges intersect, one shape could still contain the other
         # which counts as intersection. Have to use a point from the boundary
         # because the centroid may fall in a hole
-        return o_vertices[0][0][0] in self or s_vertices[0][0][0] in shape
+        return o_edges[0][0][0] in self or s_edges[0][0][0] in shape
 
     def intersects_time(self, dt: Union[datetime, TimeInterval]) -> bool:
         """
@@ -545,7 +571,7 @@ class GeoShape(DefaultZuluMixin):
             (GeoPolygon)
         """
 
-    def to_shapely(self):
+    def _to_shapely(self):
         """
         Converts the geoshape into a Shapely shape.
         """
@@ -576,19 +602,19 @@ class GeoShape(DefaultZuluMixin):
         )
         return f'POLYGON({bbox_str})'
 
-    def vertices(self, **kwargs) -> List[List[Tuple[Coordinate, Coordinate]]]:
+    def edges(self, **kwargs) -> List[List[Tuple[Coordinate, Coordinate]]]:
         """
-        Returns lists of vertices, defined as a 2-tuple (start and end) of coordinates, for the
+        Returns lists of edges, defined as a 2-tuple (start and end) of coordinates, for the
         outer boundary as well as holes in the polygon.
 
-        Operates similar to the `bounding_vertices` method but includes information about holes
+        Operates similar to the `bounding_edges` method but includes information about holes
         in the shape.
 
         Using discrete coordinates to represent a continuous curve implies some level of data
         loss. You can minimize this loss by specifying k, which represents the number of
         points drawn.
 
-        Does not include information about holes - see the vertices method.
+        Does not include information about holes - see the edges method.
 
         Keyword Args:
             k: (int)
@@ -596,7 +622,7 @@ class GeoShape(DefaultZuluMixin):
                 points generated along the curve
 
         Returns:
-            Lists of 2-tuples representing vertices. The first list will always represent
+            Lists of 2-tuples representing edges. The first list will always represent
             the shape's boundary, and any following lists will represent holes.
         """
         rings = self.linear_rings(**kwargs)
@@ -701,7 +727,7 @@ class GeoPolygon(GeoShape, WarnOnceMixin):
     def __repr__(self):
         return f'<GeoPolygon of {len(self.outline) - 1} coordinates>'
 
-    @property
+    @cached_property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         lons, lats = cast(
             Tuple[List[float], List[float]],
@@ -709,7 +735,7 @@ class GeoPolygon(GeoShape, WarnOnceMixin):
         )
         return (min(lons), max(lons)), (min(lats), max(lats))
 
-    @property
+    @cached_property
     def centroid(self):
         # Decompose polygon into triangles using vertex pairs around the origin
         poly1 = np.array([x.to_float() for x in self.bounding_coords()])
@@ -752,8 +778,8 @@ class GeoPolygon(GeoShape, WarnOnceMixin):
         """
         test_line = (coord, Coordinate(180, float(coord.latitude)))
         _intersections = 0
-        for vertex in zip(polygon, [*polygon[1:], polygon[0]]):
-            intersection = find_line_intersection(test_line, vertex)
+        for edge in zip(polygon, [*polygon[1:], polygon[0]]):
+            intersection = find_line_intersection(test_line, edge)
             if not intersection:
                 continue
 
@@ -783,7 +809,7 @@ class GeoPolygon(GeoShape, WarnOnceMixin):
         ans = sum(
             (y.longitude - x.longitude) * (y.latitude + x.latitude)
             for x, y in map(
-                lambda x: ensure_vertex_bounds(x[0], x[1]),
+                lambda x: ensure_edge_bounds(x[0], x[1]),
                 zip(bounds, [*bounds[1:], bounds[0]])
             )
         )
@@ -1084,7 +1110,7 @@ class GeoCircle(GeoShape):
     def __repr__(self) -> str:
         return f'<GeoCircle at {self.centroid.to_float()}; radius {self.radius} meters>'
 
-    @property
+    @cached_property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         nw_bound = inverse_haversine_degrees(
             self.center, 315, self.radius * math.sqrt(2)
@@ -1107,7 +1133,7 @@ class GeoCircle(GeoShape):
             coord = inverse_haversine_radians(self.center, angle, self.radius)
             coords.append(coord)
 
-        return [*coords, coords[0]]
+        return coords
 
     def circumscribing_circle(self) -> 'GeoCircle':
         return self
@@ -1140,18 +1166,18 @@ class GeoEllipse(GeoShape):
     """
     An ellipsoid shape (or oval), represented by:
         * a Coordinate center
-        * a major axis (the radius at its greatest value)
-        * a minor axis (the radius at its least value)
+        * a semi major axis (the radius at its greatest value)
+        * a semi minor axis (the radius at its least value)
         * rotation (the major axis's degree offset from North)
 
     Args:
         center: (Coordinate)
             The centroid of the ellipse
 
-        major_axis: (float)
+        semi_major: (float)
             The maximum radius value
 
-        minor_axis: (float)
+        semi_minor: (float)
             The minimum radius value
 
         rotation: (float)
@@ -1162,8 +1188,8 @@ class GeoEllipse(GeoShape):
     def __init__(  # pylint: disable=R0913
         self,
         center: Coordinate,
-        major_axis: float,
-        minor_axis: float,
+        semi_major: float,
+        semi_minor: float,
         rotation: float,
         holes: Optional[List[GeoShape]] = None,
         dt: Optional[_GEOTIME_TYPE] = None,
@@ -1172,8 +1198,8 @@ class GeoEllipse(GeoShape):
         super().__init__(holes=holes, dt=dt, properties=properties)
 
         self.center = center
-        self.major_axis = major_axis
-        self.minor_axis = minor_axis
+        self.semi_major = semi_major
+        self.semi_minor = semi_minor
         self.rotation = rotation
 
     def __eq__(self, other) -> bool:
@@ -1182,31 +1208,41 @@ class GeoEllipse(GeoShape):
 
         return (
             self.center == other.center
-            and self.major_axis == other.major_axis
-            and self.minor_axis == other.minor_axis
+            and self.semi_major == other.semi_major
+            and self.semi_minor == other.semi_minor
             and self.rotation == other.rotation
             and self.dt == other.dt
         )
 
     def __hash__(self) -> int:
         return hash(
-            (self.centroid, self.minor_axis, self.major_axis, self.rotation, self.dt)
+            (self.centroid, self.semi_minor, self.semi_major, self.rotation, self.dt)
         )
 
     def __repr__(self) -> str:
         return (
             f'<GeoEllipse at {self.center.to_float()}; '
-            f'radius {self.major_axis}/{self.minor_axis}; '
+            f'radius {self.semi_major}/{self.semi_minor}; '
             f'rotation {self.rotation}>'
         )
 
-    @property
+    @cached_property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-        lons, lats = cast(
-            Tuple[List[float], List[float]],
-            zip(*[y.to_float() for y in self.bounding_coords()])
-        )
-        return (min(lons), max(lons)), (min(lats), max(lats))
+        rot_rad = math.radians(self.rotation)
+        cos_rot_sq = math.cos(rot_rad)**2
+        sin_rot_sq = math.sin(rot_rad)**2
+        semi_major_sq = (self.semi_major)**2
+        semi_minor_sq = (self.semi_minor)**2
+
+        dx = math.sqrt(semi_major_sq * sin_rot_sq + semi_minor_sq * cos_rot_sq)
+        dy = math.sqrt(semi_major_sq * cos_rot_sq + semi_minor_sq * sin_rot_sq)
+
+        _, max_lat = inverse_haversine_degrees(self.centroid, 0, dy).to_float()
+        max_lon, _ = inverse_haversine_degrees(self.centroid, 90, dx).to_float()
+        _, min_lat = inverse_haversine_degrees(self.centroid, 180, dy).to_float()
+        min_lon, _ = inverse_haversine_degrees(self.centroid, 270, dx).to_float()
+
+        return (min_lon, max_lon), (min_lat, max_lat)
 
     @property
     def centroid(self) -> Coordinate:
@@ -1224,16 +1260,16 @@ class GeoEllipse(GeoShape):
             float
         """
         return (
-            self.major_axis
-            * self.minor_axis
+            self.semi_major
+            * self.semi_minor
             / math.sqrt(
-                (self.major_axis**2) * (math.sin(angle) ** 2)
-                + (self.minor_axis**2) * (math.cos(angle) ** 2)
+                (self.semi_major**2) * (math.sin(angle) ** 2)
+                + (self.semi_minor**2) * (math.cos(angle) ** 2)
             )
         )
 
     def bounding_coords(self, **kwargs) -> List[Coordinate]:
-        k = kwargs.get('k') or math.ceil(36 * self.major_axis / self.minor_axis)
+        k = kwargs.get('k') or math.ceil(36 * self.semi_major / self.semi_minor)
         coords = []
         rotation = math.radians(self.rotation)
 
@@ -1245,10 +1281,10 @@ class GeoEllipse(GeoShape):
             )
             coords.append(coord)
 
-        return [*coords, coords[0]]
+        return coords
 
     def circumscribing_circle(self) -> GeoCircle:
-        return GeoCircle(self.center, self.major_axis, dt=self.dt)
+        return GeoCircle(self.center, self.semi_major, dt=self.dt)
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         bearing = bearing_degrees(self.center, coord)
@@ -1265,8 +1301,8 @@ class GeoEllipse(GeoShape):
     def copy(self) -> 'GeoEllipse':
         return GeoEllipse(
             self.center,
-            self.major_axis,
-            self.minor_axis,
+            self.semi_major,
+            self.semi_minor,
             self.rotation,
             holes=self.holes.copy(),
             dt=self.dt.copy() if self.dt else None,
@@ -1357,7 +1393,7 @@ class GeoRing(GeoShape):
             f'{f"; {self.angle_min}-{self.angle_max} degrees" if self.angle_min else ""}>'
         )
 
-    @property
+    @cached_property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         if self.angle_max - self.angle_min >= 360:
             nw_bound = inverse_haversine_degrees(
@@ -1408,10 +1444,11 @@ class GeoRing(GeoShape):
     def bounding_coords(self, **kwargs) -> List[Coordinate]:
         outer_bounds, inner_bounds = self._draw_bounds(**kwargs)
 
+        # Is a ring
         if self.angle_min == 0 and self.angle_max == 360:
-            return [*outer_bounds, outer_bounds[0]]
+            return outer_bounds
 
-        # Is self-closing
+        # Is a wedge
         return [*outer_bounds, *inner_bounds[::-1], outer_bounds[0]]
 
     def circumscribing_circle(self) -> GeoCircle:
@@ -1477,9 +1514,14 @@ class GeoRing(GeoShape):
         ]
 
     def to_polygon(self, **kwargs) -> GeoPolygon:
+        rings = self.linear_rings(**kwargs)
+        holes = self.holes
+        if len(rings) > 1:
+            holes += [GeoPolygon(x) for x in rings[1:]]
+
         return GeoPolygon(
-            self.bounding_coords(**kwargs),
-            holes=self.holes,
+            rings[0],
+            holes=holes,
             dt=self.dt,
             properties=self._properties
         )
@@ -1527,7 +1569,7 @@ class GeoLineString(GeoShape):
     def __repr__(self) -> str:
         return f'<GeoLineString with {len(self.coords)} points>'
 
-    @property
+    @cached_property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         lons, lats = cast(
             Tuple[List[float], List[float]],
@@ -1535,7 +1577,7 @@ class GeoLineString(GeoShape):
         )
         return (min(lons), max(lons)), (min(lats), max(lats))
 
-    @property
+    @cached_property
     def centroid(self) -> Coordinate:
         lon, lat = [
             round_half_up(statistics.mean(x), 7)
@@ -1546,7 +1588,7 @@ class GeoLineString(GeoShape):
     def bounding_coords(self, **_) -> List[Coordinate]:
         return self.coords
 
-    def bounding_vertices(self, **_) -> List[Tuple[Coordinate, Coordinate]]:
+    def bounding_edges(self, **_) -> List[Tuple[Coordinate, Coordinate]]:
         return list(zip(self.bounding_coords(), self.bounding_coords()[1:]))
 
     def circumscribing_circle(self) -> GeoCircle:
@@ -1702,21 +1744,16 @@ class GeoLineString(GeoShape):
             dt=self.dt
         )
 
-    def to_shapely(self):
-        if self._shapely:  # pragma: no cover
-            # Check if memoized
-            return self._shapely
-
+    def _to_shapely(self):
         import shapely
-        self._shapely = shapely.LineString([x.to_float() for x in self.coords])
-        return self._shapely
+        return shapely.LineString([x.to_float() for x in self.coords])
 
     def to_wkt(self, **kwargs) -> str:
         bbox_str = self._linear_ring_to_wkt(self.bounding_coords(**kwargs))
         return f'LINESTRING{bbox_str}'
 
-    def vertices(self, **_) -> List[List[Tuple[Coordinate, Coordinate]]]:
-        return [self.bounding_vertices()]
+    def edges(self, **_) -> List[List[Tuple[Coordinate, Coordinate]]]:
+        return [self.bounding_edges()]
 
 
 class GeoPoint(GeoShape):
@@ -1765,7 +1802,7 @@ class GeoPoint(GeoShape):
     def bounding_coords(self, **kwargs):
         raise NotImplementedError('Points are not bounded')
 
-    def bounding_vertices(self, **kwargs):
+    def bounding_edges(self, **kwargs):
         raise NotImplementedError('Points are not bounded')
 
     def circumscribing_circle(self):
@@ -1895,16 +1932,12 @@ class GeoPoint(GeoShape):
     def to_polygon(self, **kwargs):
         raise NotImplementedError('Points cannot be converted to polygons')
 
-    def to_shapely(self):
-        if self._shapely:  # pragma: no cover
-            return self._shapely
-
+    def _to_shapely(self):
         import shapely
-        self._shapely = shapely.Point(self.centroid.longitude, self.centroid.latitude)
-        return self._shapely
+        return shapely.Point(self.centroid.longitude, self.centroid.latitude)
 
     def to_wkt(self, **_) -> str:
         return f'POINT({" ".join(self.center.to_str())})'
 
-    def vertices(self, **kwargs):
+    def edges(self, **kwargs):
         raise NotImplementedError('Points are not bounded')
