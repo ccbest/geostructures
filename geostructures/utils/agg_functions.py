@@ -38,3 +38,4 @@ def unique_entities(shapes: List[GeoShape]) -> float:
     return float(len(
         set(shape.properties['entity'] for shape in shapes if 'entity' in shape.properties)
     ))
+    
