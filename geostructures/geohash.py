@@ -2,19 +2,23 @@
 Module for geohash transformers
 """
 
+
 __all__ = [
     'H3Hasher', 'HasherBase', 'NiemeyerHasher',
-    'niemeyer_to_geobox'
+    'niemeyer_to_geobox', 'convert_hashmap'
 ]
+
 
 import abc
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, TypedDict
 
-from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint
+from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.structures import GeoShape
-from geostructures.collections import ShapeCollection
+from geostructures.collections import FeatureCollection, ShapeCollection
 from geostructures.calc import find_line_intersection
+from geostructures.utils.functions import round_half_up
+from h3 import h3_to_geo_boundary
 
 
 _NIEMEYER_CONFIG_TYPE = TypedDict(
@@ -668,3 +672,27 @@ class NiemeyerHasher(HasherBase):
             return self._hash_linestring(shape)
 
         return self._hash_polygon(shape)
+
+
+def convert_hashmap(hexmap: Dict[str, float]):
+    """
+    Converts an H3 hashmap into a geostructure FeatureCollection
+
+    Args:
+        hexmap:
+            A dictionary of h3 hexagon ids to their corresponding weights.
+    """
+    polygon_hex_list: List[GeoShape] = []
+    for hex in hexmap:
+        coordList = []
+        points = []
+        coordList = h3_to_geo_boundary(hex, geo_json=True)
+        points = [Coordinate(round_half_up(coord[0], 8), round_half_up(coord[1], 8)) for coord in coordList]
+        if isinstance(hexmap, dict):
+            polgon_hex = GeoPolygon(points, properties={'weight': hexmap.get(hex)})
+        else:
+            polgon_hex = GeoPolygon(points)
+
+        polygon_hex_list.append(polgon_hex)
+
+    return FeatureCollection(polygon_hex_list)

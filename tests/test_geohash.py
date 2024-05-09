@@ -2,11 +2,11 @@
 import pytest
 from datetime import datetime
 
-from geostructures import Coordinate, GeoBox, GeoCircle, GeoLineString, GeoPoint
+from geostructures import Coordinate, GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.collections import FeatureCollection
 from geostructures.geohash import (
     _coord_to_niemeyer, _get_niemeyer_subhashes, niemeyer_to_geobox,
-    H3Hasher, NiemeyerHasher
+    H3Hasher, NiemeyerHasher, convert_hashmap
 )
 from geostructures.time import TimeInterval
 from geostructures.utils.agg_functions import *
@@ -244,6 +244,20 @@ def test_niemeyer_hash_shape():
         'c0000028', 'c0000029', 'c000002a', 'c0000030'
     }
 
+
     # test that small shapes still produce a single geohash
     shape = GeoCircle(Coordinate(0.0001, 0.0001), 5)
     assert hasher.hash_shape(shape) == {'c0000000'}
+
+
+def test_convert_hashmap():
+    testhashmap={'87195da49ffffff'}
+    polygon = GeoPolygon(
+    [
+        Coordinate(-0.14556039, 51.52194368), Coordinate(-0.16020368, 51.51507904), 
+        Coordinate(-0.15716008, 51.50284849), Coordinate(-0.13948088, 51.49748360),
+        Coordinate(-0.12484221, 51.50434724), Coordinate(-0.12787812, 51.51657678),
+        Coordinate(-0.14556039, 51.52194368) 
+    ]
+)
+    assert convert_hashmap(testhashmap) == FeatureCollection([polygon])
