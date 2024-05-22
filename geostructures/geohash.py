@@ -204,7 +204,7 @@ def _get_niemeyer_subhashes(geohash: str, base: int) -> Set[str]:
 
 def h3_to_geopolygon(
         h3_geohash: str,
-        dt: Optional[Union[datetime, TimeInterval]],
+        dt: Optional[Union[datetime, TimeInterval]] = None,
         properties: Optional[Dict] = None
 ) -> GeoPolygon:
     """
@@ -231,7 +231,7 @@ def h3_to_geopolygon(
         dt=dt,
         properties={
             'h3_geohash': h3_geohash,
-            **properties
+            **(properties or {})
         }
     )
 
@@ -239,7 +239,7 @@ def h3_to_geopolygon(
 def niemeyer_to_geobox(
         geohash: str,
         base: int,
-        dt: Optional[Union[datetime, TimeInterval]],
+        dt: Optional[Union[datetime, TimeInterval]] = None,
         properties: Optional[Dict] = None
 ) -> GeoBox:
     """
@@ -273,7 +273,7 @@ def niemeyer_to_geobox(
         dt=dt,
         properties={
             'niemeyer_geohash': geohash,
-            **properties
+            **(properties or {})
         }
     )
 

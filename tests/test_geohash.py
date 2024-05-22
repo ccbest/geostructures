@@ -5,8 +5,8 @@ from datetime import datetime
 from geostructures import Coordinate, GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.collections import FeatureCollection
 from geostructures.geohash import (
-    _coord_to_niemeyer, _get_niemeyer_subhashes, niemeyer_to_geobox,
-    H3Hasher, NiemeyerHasher, convert_hashmap
+    _coord_to_niemeyer, _get_niemeyer_subhashes, h3_to_geopolygon, niemeyer_to_geobox,
+    H3Hasher, NiemeyerHasher
 )
 from geostructures.time import TimeInterval
 from geostructures.utils.agg_functions import *
@@ -250,14 +250,23 @@ def test_niemeyer_hash_shape():
     assert hasher.hash_shape(shape) == {'c0000000'}
 
 
-def test_convert_hashmap():
-    testhashmap={'87195da49ffffff'}
-    polygon = GeoPolygon(
-    [
-        Coordinate(-0.14556039, 51.52194368), Coordinate(-0.16020368, 51.51507904), 
-        Coordinate(-0.15716008, 51.50284849), Coordinate(-0.13948088, 51.49748360),
-        Coordinate(-0.12484221, 51.50434724), Coordinate(-0.12787812, 51.51657678),
-        Coordinate(-0.14556039, 51.52194368) 
-    ]
-)
-    assert convert_hashmap(testhashmap) == FeatureCollection([polygon])
+def test_h3_to_geopolygon():
+    expected = GeoPolygon(
+        [
+            Coordinate(-0.14556038501053445, 51.52194368343689),
+            Coordinate(-0.16020367734345392, 51.51507903672858),
+            Coordinate(-0.15716008247709198, 51.5028484942742),
+            Coordinate(-0.13948087736730877, 51.49748360263347),
+            Coordinate(-0.12484220854872598, 51.504347239648745),
+            Coordinate(-0.12787812145596703, 51.51657677751165),
+            Coordinate(-0.14556038501053445, 51.52194368343689)
+        ],
+        dt=datetime(2020, 1, 1),
+        properties={
+            'h3_geohash': '87195da49ffffff',
+            'test': 'prop',
+        }
+    )
+    actual = h3_to_geopolygon('87195da49ffffff', dt=datetime(2020, 1, 1), properties={'test': 'prop'})
+    assert actual == expected
+    assert actual.properties == expected.properties
