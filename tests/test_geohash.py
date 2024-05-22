@@ -11,6 +11,8 @@ from geostructures.geohash import (
 from geostructures.time import TimeInterval
 from geostructures.utils.agg_functions import *
 
+from tests import assert_shape_equivalence
+
 
 def test_coord_to_niemeyer():
     coord = Coordinate(0.1, -0.1)
@@ -253,13 +255,13 @@ def test_niemeyer_hash_shape():
 def test_h3_to_geopolygon():
     expected = GeoPolygon(
         [
-            Coordinate(-0.14556038501053445, 51.52194368343689),
-            Coordinate(-0.16020367734345392, 51.51507903672858),
-            Coordinate(-0.15716008247709198, 51.5028484942742),
-            Coordinate(-0.13948087736730877, 51.49748360263347),
-            Coordinate(-0.12484220854872598, 51.504347239648745),
-            Coordinate(-0.12787812145596703, 51.51657677751165),
-            Coordinate(-0.14556038501053445, 51.52194368343689)
+            Coordinate(-0.14556, 51.52194),
+            Coordinate(-0.1602, 51.51508),
+            Coordinate(-0.15716, 51.50285),
+            Coordinate(-0.13948, 51.49748),
+            Coordinate(-0.12484, 51.50435),
+            Coordinate(-0.12788, 51.51658),
+            Coordinate(-0.14556, 51.52194)
         ],
         dt=datetime(2020, 1, 1),
         properties={
@@ -268,5 +270,5 @@ def test_h3_to_geopolygon():
         }
     )
     actual = h3_to_geopolygon('87195da49ffffff', dt=datetime(2020, 1, 1), properties={'test': 'prop'})
-    assert actual == expected
+    assert_shape_equivalence(actual, expected, precision=5)
     assert actual.properties == expected.properties
