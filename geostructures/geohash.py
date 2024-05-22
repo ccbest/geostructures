@@ -230,7 +230,7 @@ def h3_to_geopolygon(
         [Coordinate(*x) for x in h3_to_geo_boundary(h3_geohash, geo_json=True)],
         dt=dt,
         properties={
-            'geohash': h3_geohash,
+            'h3_geohash': h3_geohash,
             **properties
         }
     )
