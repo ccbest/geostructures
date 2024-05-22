@@ -2,14 +2,16 @@
 import pytest
 from datetime import datetime
 
-from geostructures import Coordinate, GeoBox, GeoCircle, GeoLineString, GeoPoint
+from geostructures import Coordinate, GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.collections import FeatureCollection
 from geostructures.geohash import (
-    _coord_to_niemeyer, _get_niemeyer_subhashes, niemeyer_to_geobox,
+    _coord_to_niemeyer, _get_niemeyer_subhashes, h3_to_geopolygon, niemeyer_to_geobox,
     H3Hasher, NiemeyerHasher
 )
 from geostructures.time import TimeInterval
 from geostructures.utils.agg_functions import *
+
+from tests import assert_shape_equivalence
 
 
 def test_coord_to_niemeyer():
@@ -244,6 +246,29 @@ def test_niemeyer_hash_shape():
         'c0000028', 'c0000029', 'c000002a', 'c0000030'
     }
 
+
     # test that small shapes still produce a single geohash
     shape = GeoCircle(Coordinate(0.0001, 0.0001), 5)
     assert hasher.hash_shape(shape) == {'c0000000'}
+
+
+def test_h3_to_geopolygon():
+    expected = GeoPolygon(
+        [
+            Coordinate(-0.14556, 51.52194),
+            Coordinate(-0.1602, 51.51508),
+            Coordinate(-0.15716, 51.50285),
+            Coordinate(-0.13948, 51.49748),
+            Coordinate(-0.12484, 51.50435),
+            Coordinate(-0.12788, 51.51658),
+            Coordinate(-0.14556, 51.52194)
+        ],
+        dt=datetime(2020, 1, 1),
+        properties={
+            'h3_geohash': '87195da49ffffff',
+            'test': 'prop',
+        }
+    )
+    actual = h3_to_geopolygon('87195da49ffffff', dt=datetime(2020, 1, 1), properties={'test': 'prop'})
+    assert_shape_equivalence(actual, expected, precision=5)
+    assert actual.properties == expected.properties

@@ -24,7 +24,8 @@ from geostructures._base import (
 )
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
-    ensure_edge_bounds,
+    _test_counter_clockwise,
+    circumscribing_circle_for_polygon,
     inverse_haversine_radians,
     inverse_haversine_degrees,
     haversine_distance_meters,
@@ -73,7 +74,7 @@ class GeoPolygon(ShapeLike, WarnOnceMixin):
             )
             outline = [*outline, outline[0]]
 
-        if not self._test_counter_clockwise(outline) ^ _is_hole:
+        if not _test_counter_clockwise(outline) ^ _is_hole:
             self.warn_once(
                 'Polygon violates the right hand rule. Inverting coordinate '
                 'order; this warning will not repeat.'
@@ -196,37 +197,12 @@ class GeoPolygon(ShapeLike, WarnOnceMixin):
 
         return _intersections > 0 and _intersections % 2 != 0
 
-    @staticmethod
-    def _test_counter_clockwise(bounds: List[Coordinate]) -> bool:
-        """
-        Tests a polygon to determine whether it's defined in a counterclockwise
-        (or mostly, for complex shapes) order.
-
-        Args:
-            bounds:
-                A list of Coordinates, in order
-
-        Returns:
-            bool
-        """
-        ans = sum(
-            (y.longitude - x.longitude) * (y.latitude + x.latitude)
-            for x, y in map(
-                lambda x: ensure_edge_bounds(x[0], x[1]),
-                zip(bounds, [*bounds[1:], bounds[0]])
-            )
-        )
-        return ans <= 0
-
     def bounding_coords(self, **kwargs) -> List[Coordinate]:
         return self.outline
 
     def circumscribing_circle(self) -> 'GeoCircle':
-        centroid = self.centroid
-        max_dist = max(
-            haversine_distance_meters(x, centroid) for x in self.outline[:-1]
-        )
-        return GeoCircle(centroid, max_dist, dt=self.dt)
+        ctr, rad = circumscribing_circle_for_polygon(self.outline[:-1], [])
+        return GeoCircle(cast(Coordinate, ctr), cast(float, rad), dt=self.dt)
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         # First see if the point even falls inside the circumscribing rectangle

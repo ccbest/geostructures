@@ -3,12 +3,39 @@ import math
 
 from geostructures.calc import *
 from geostructures.coordinates import Coordinate
+from geostructures.utils.functions import round_half_up
 
 
 def test_bearing_degrees():
     assert bearing_degrees(Coordinate(0.0, 0.0), Coordinate(0.001, 0.001)) == 45.
     assert bearing_degrees(Coordinate(0.0, 0.0), Coordinate(0.001, 0.001), precision=9) == 44.999999996
 
+def test_circumscribing_circle_for_polygon():
+    points =[
+        Coordinate(0,5),
+        Coordinate(0,0),
+        Coordinate(2,1),
+        Coordinate(4,3)
+    ]
+    cc = circumscribing_circle_for_polygon(points, [])
+    assert round_half_up(cc[0].latitude, 6) == 2.499407
+    assert round_half_up(cc[0].longitude, 6) == 1.248383
+    assert round_half_up(cc[1], 0) == 310640
+
+def test_dist_xyz_meters():
+    # Sourced from haversine package
+    actual_dist_meters = 157.25359
+    calc_dist = dist_xyz_meters(Coordinate(0.0, 0.0), Coordinate(0.001, 0.001))
+    assert round(actual_dist_meters) == round(calc_dist)
+
+    actual_dist_meters = 157_249.59847
+    calc_dist = dist_xyz_meters(Coordinate(0.0, 0.0), Coordinate(1.0, 1.0))
+    assert abs(round(actual_dist_meters) - round(calc_dist)) < 2
+
+    # Antimeridian test
+    actual_dist_meters = 222390
+    calc_dist = dist_xyz_meters(Coordinate(179., 0.), Coordinate(-179., 0.))
+    assert round(calc_dist) == actual_dist_meters
 
 def test_do_edges_intersect():
     edge_a = [
