@@ -14,12 +14,10 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, TypedDict, Union
 
-from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint
-from geostructures._base import BaseShape
 from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint, GeoPolygon
+from geostructures._base import BaseShape
 from geostructures.calc import find_line_intersection
 from geostructures.collections import ShapeCollection
-from geostructures.structures import GeoShape
 from geostructures.time import TimeInterval
 
 
