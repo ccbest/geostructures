@@ -6,13 +6,11 @@ import re
 from abc import abstractmethod, ABC
 from datetime import datetime, timedelta
 from functools import lru_cache, cached_property
-from typing import Optional, List, Dict, Union, Tuple, cast, Any, TYPE_CHECKING, Protocol
+from typing import Callable, Optional, List, Dict, Union, Tuple, cast, Any, TYPE_CHECKING, Protocol, TypeVar
 
-from geostructures._types import GEOTIME_TYPE, SHAPE_TYPE
 from geostructures.coordinates import Coordinate
 from geostructures.utils.functions import default_to_zulu, sanitize_json
-from geostructures.time import TimeInterval
-
+from geostructures.time import TimeInterval, GEOTIME_TYPE
 
 if TYPE_CHECKING:  # pragma: no cover
     from geostructures import GeoCircle, GeoBox, Coordinate
@@ -39,6 +37,10 @@ _RE_MULTIPOLYGON_WKT = re.compile(r'MULTIPOLYGON\s?\((' + _RE_LINEAR_RINGS_STR +
 _RE_MULTILINESTRING_WKT = re.compile(r'MULTILINESTRING\s?' + _RE_LINEAR_RINGS_STR)
 
 
+SHAPE_TYPE = TypeVar('SHAPE_TYPE', bound='BaseShapeProtocol')
+MULTI_SHAPE_TYPE = TypeVar('MULTI_SHAPE_TYPE', bound='MultiShapeBase')
+
+
 def parse_wkt_linear_ring(group: str) -> List[Coordinate]:
     """Parse wkt coordinate list into Coordinate objects"""
     return [
@@ -50,47 +52,8 @@ def parse_wkt_linear_ring(group: str) -> List[Coordinate]:
 class BaseShapeProtocol(Protocol):
 
     dt: Optional[TimeInterval]
-
-    @property
-    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-        pass
-
-    @property
-    def centroid(self) -> Coordinate:
-        pass
-
-    @property
-    def end(self) -> datetime:
-        pass
-
-    @property
-    def properties(self):
-        pass
-
-    @property
-    def start(self) -> datetime:
-        pass
-
-
-class BaseShape(ABC):
-
-    """Abstract base class for all geoshapes"""
-
-    def __init__(
-            self,
-            dt: Optional[GEOTIME_TYPE] = None,
-            properties: Optional[Dict] = None
-    ):
-        super().__init__()
-        if isinstance(dt, datetime):
-            # Convert to a zero-second time interval
-            dt = default_to_zulu(dt)
-            self.dt: Optional[TimeInterval] = TimeInterval(dt, dt)
-        else:
-            self.dt = dt
-
-        self._properties = properties or {}
-        self.to_shapely = lru_cache(maxsize=1)(self._to_shapely)
+    _properties: Dict
+    to_shapely: Callable
 
     def __contains__(self, other: Union['ShapeLike', 'LineLike', 'PointLike', Coordinate]):
         return self.contains(other)
@@ -386,6 +349,27 @@ class BaseShape(ABC):
         Returns:
             str
         """
+
+
+class BaseShape(BaseShapeProtocol, ABC):
+
+    """Abstract base class for all geoshapes"""
+
+    def __init__(
+            self,
+            dt: Optional[GEOTIME_TYPE] = None,
+            properties: Optional[Dict] = None
+    ):
+        super().__init__()
+        if isinstance(dt, datetime):
+            # Convert to a zero-second time interval
+            dt = default_to_zulu(dt)
+            self.dt: Optional[TimeInterval] = TimeInterval(dt, dt)
+        else:
+            self.dt = dt
+
+        self._properties = properties or {}
+        self.to_shapely = lru_cache(maxsize=1)(self._to_shapely)
 
 
 class ShapeLike(BaseShapeProtocol, ABC):

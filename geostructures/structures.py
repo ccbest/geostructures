@@ -23,7 +23,7 @@ from geostructures._base import (
     _RE_LINESTRING_WKT, BaseShape, ShapeLike, LineLike, MultiShapeBase,
     PointLike, parse_wkt_linear_ring, ANY_SHAPE_TYPE
 )
-from geostructures._types import GEOTIME_TYPE
+from geostructures.time import GEOTIME_TYPE
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
     inverse_haversine_radians,

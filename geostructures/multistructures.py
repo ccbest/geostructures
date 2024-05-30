@@ -15,7 +15,7 @@ from geostructures._base import (
     ShapeLike, MultiShapeBase, parse_wkt_linear_ring,
     PointLike, LineLike
 )
-from geostructures._types import GEOTIME_TYPE
+from geostructures.time import GEOTIME_TYPE
 from geostructures._geometry import convex_hull
 from geostructures.calc import haversine_distance_meters
 from geostructures.coordinates import Coordinate

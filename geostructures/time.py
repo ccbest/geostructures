@@ -108,3 +108,4 @@ class TimeInterval:
 
 
 _GEOTIME_TYPE = Union[datetime, TimeInterval]
+GEOTIME_TYPE = Union[datetime, TimeInterval]
