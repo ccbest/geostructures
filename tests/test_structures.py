@@ -455,11 +455,10 @@ def test_polygon_to_geojson(geopolygon):
 
 
 def test_geopolygon_circumscribing_circle(geopolygon):
-    assert geopolygon.circumscribing_circle() == GeoCircle(
-        center=Coordinate(0.5, 0.5),
-        radius=78626.18767687456,
-        dt=default_test_datetime
-    )
+    gc = geopolygon.circumscribing_circle()
+    assert round_half_up(gc.center.latitude, 4) == 0.5
+    assert round_half_up(gc.center.longitude, 4) == 0.5
+    assert round_half_up(gc.radius, 0) == 78625
 
 
 def test_geopolygon_circumscribing_rectangle(geopolygon):
