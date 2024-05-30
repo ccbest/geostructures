@@ -2,6 +2,7 @@
 import math
 
 from geostructures.calc import *
+from geostructures._geometry import *
 from geostructures.coordinates import Coordinate
 from geostructures.utils.functions import round_half_up
 

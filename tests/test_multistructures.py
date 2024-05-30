@@ -80,9 +80,6 @@ def test_multigeolinestring_from_wkt():
     ]
 
 
-
-
-
 def test_multigeolinestring_to_geojson():
     mls = MultiGeoLineString(
         [
@@ -138,14 +135,6 @@ def test_multigeopoint_repr():
         GeoPoint(Coordinate(0., 0.)),
     ])
     assert repr(mp) == '<MultiGeoPoint of 1 point>'
-
-
-def test_multigeopoint_area():
-    mp = MultiGeoPoint([
-        GeoPoint(Coordinate(0., 0.)),
-        GeoPoint(Coordinate(1., 1.))
-    ])
-    assert mp.area() == 0.
 
 
 def test_multigeopoint_centroid():

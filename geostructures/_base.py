@@ -2,24 +2,21 @@
 Base class declarations for geostructures
 """
 
-import copy
 import re
-from abc import abstractmethod, ABC, ABCMeta
+from abc import abstractmethod, ABC
 from datetime import datetime, timedelta
 from functools import lru_cache, cached_property
-from typing import Optional, List, Dict, Union, Tuple, cast, Any, TYPE_CHECKING, TypeVar, Protocol, Sequence
+from typing import Optional, List, Dict, Union, Tuple, cast, Any, TYPE_CHECKING, Protocol
 
+from geostructures._types import GEOTIME_TYPE, SHAPE_TYPE
 from geostructures.coordinates import Coordinate
-from geostructures.utils.functions import default_to_zulu
+from geostructures.utils.functions import default_to_zulu, sanitize_json
 from geostructures.time import TimeInterval
 
 
 if TYPE_CHECKING:  # pragma: no cover
     from geostructures import GeoCircle, GeoBox, Coordinate
 
-_SHAPE_TYPE = TypeVar('_SHAPE_TYPE', bound='BaseShape')
-_MULTI_SHAPE_TYPE = TypeVar('_MULTI_SHAPE_TYPE', bound='MultiShapeBase')
-_GEOTIME_TYPE = Union[datetime, TimeInterval]
 
 # A wkt coordinate, e.g. '-1.0 2.0'
 _RE_COORD_STR = r'-?\d{1,3}(?:\.?\d*)?\s-?\d{1,3}(?:\.?\d*)?'
@@ -42,18 +39,17 @@ _RE_MULTIPOLYGON_WKT = re.compile(r'MULTIPOLYGON\s?\((' + _RE_LINEAR_RINGS_STR +
 _RE_MULTILINESTRING_WKT = re.compile(r'MULTILINESTRING\s?' + _RE_LINEAR_RINGS_STR)
 
 
+def parse_wkt_linear_ring(group: str) -> List[Coordinate]:
+    """Parse wkt coordinate list into Coordinate objects"""
+    return [
+        Coordinate(*coord.strip().split(' '))  # type: ignore
+        for coord in group.strip('()').split(',') if coord
+    ]
+
+
 class BaseShapeProtocol(Protocol):
 
     dt: Optional[TimeInterval]
-
-    def __contains__(self, other: Union['ShapeLike', 'LineLike', 'PointLike', Coordinate]):
-        pass
-
-    def __hash__(self) -> int:
-        pass
-
-    def __repr__(self):
-        pass
 
     @property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
@@ -63,12 +59,15 @@ class BaseShapeProtocol(Protocol):
     def centroid(self) -> Coordinate:
         pass
 
+    @property
     def end(self) -> datetime:
         pass
 
+    @property
     def properties(self):
         pass
 
+    @property
     def start(self) -> datetime:
         pass
 
@@ -79,7 +78,7 @@ class BaseShape(ABC):
 
     def __init__(
             self,
-            dt: Optional[_GEOTIME_TYPE] = None,
+            dt: Optional[GEOTIME_TYPE] = None,
             properties: Optional[Dict] = None
     ):
         super().__init__()
@@ -142,6 +141,10 @@ class BaseShape(ABC):
         return props
 
     @property
+    def _properties_json(self) -> Dict:
+        return sanitize_json(self.properties)
+
+    @property
     def start(self) -> datetime:
         """The start date/datetime, if present"""
         if not self.dt:
@@ -175,10 +178,10 @@ class BaseShape(ABC):
         return f'({",".join(" ".join(coord.to_str()) for coord in ring)})'
 
     def buffer_dt(
-        self: _SHAPE_TYPE,
+        self: SHAPE_TYPE,
         buffer: timedelta,
         inplace: bool = False
-    ) -> _SHAPE_TYPE:
+    ) -> SHAPE_TYPE:
         """
         Adds a timedelta buffer to the beginning and end of dt.
 
@@ -258,7 +261,7 @@ class BaseShape(ABC):
         return dt in self.dt
 
     @abstractmethod
-    def copy(self: _SHAPE_TYPE) -> _SHAPE_TYPE:
+    def copy(self: SHAPE_TYPE) -> SHAPE_TYPE:
         """Produces a copy of the geoshape."""
 
     def intersects(self, shape: 'ANY_SHAPE_TYPE', **kwargs) -> bool:
@@ -334,7 +337,7 @@ class BaseShape(ABC):
         """
         self._properties[key] = value
 
-    def strip_dt(self: _SHAPE_TYPE) -> _SHAPE_TYPE:
+    def strip_dt(self: SHAPE_TYPE) -> SHAPE_TYPE:
         _copy = self.copy()
         _copy.dt = None
         return _copy
@@ -630,11 +633,3 @@ class MultiShapeBase(BaseShape, ABC):
             return False
 
         return False
-
-
-def parse_wkt_linear_ring(group: str) -> List[Coordinate]:
-    """Parse wkt coordinate list into Coordinate objects"""
-    return [
-        Coordinate(*coord.strip().split(' '))  # type: ignore
-        for coord in group.strip('()').split(',') if coord
-    ]

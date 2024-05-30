@@ -5,7 +5,7 @@ Geospatial shape representations, for use with earth-surface calculations
 
 __all__ = [
     'GeoBox', 'GeoCircle', 'GeoEllipse', 'GeoLineString', 'GeoPoint', 'GeoPolygon',
-    'GeoRing'
+    'GeoRing', 'ShapeBase'
 ]
 
 from abc import ABC
@@ -19,31 +19,30 @@ import numpy as np
 
 from geostructures import LOGGER
 from geostructures._base import (
-    _GEOTIME_TYPE, _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT,
+    _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT,
     _RE_LINESTRING_WKT, BaseShape, ShapeLike, LineLike, MultiShapeBase,
     PointLike, parse_wkt_linear_ring, ANY_SHAPE_TYPE
 )
+from geostructures._types import GEOTIME_TYPE
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
-    _test_counter_clockwise,
-    circumscribing_circle_for_polygon,
-    do_edges_intersect,
     inverse_haversine_radians,
     inverse_haversine_degrees,
     haversine_distance_meters,
-    bearing_degrees,
-    find_line_intersection
+    bearing_degrees
 )
+from geostructures._geometry import circumscribing_circle_for_polygon, do_edges_intersect, find_line_intersection, \
+    is_counter_clockwise
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
 
 
-class _ShapeBase(BaseShape, ShapeLike, ABC):
+class ShapeBase(BaseShape, ShapeLike, ABC):
 
     def __init__(
         self,
         holes: Optional[Sequence[ShapeLike]] = None,
-        dt: Optional[_GEOTIME_TYPE] = None,
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt=dt, properties=properties)
@@ -161,8 +160,7 @@ class _ShapeBase(BaseShape, ShapeLike, ABC):
                 ]
             },
             'properties': {
-                **self.properties,
-                **self._dt_to_json(),
+                **self._properties_json,
                 **(properties or {})
             },
             **kwargs
@@ -200,7 +198,7 @@ class _ShapeBase(BaseShape, ShapeLike, ABC):
         return f'POLYGON({bbox_str})'
 
 
-class GeoPolygon(_ShapeBase):
+class GeoPolygon(ShapeBase):
 
     """
     A Polygon, as expressed by an ordered list of Coordinates. The final Coordinate
@@ -225,7 +223,7 @@ class GeoPolygon(_ShapeBase):
         self,
         outline: List[Coordinate],
         holes: Optional[Sequence[ShapeLike]] = None,
-        dt: Optional[_GEOTIME_TYPE] = None,
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
         _is_hole: bool = False,
     ):
@@ -238,7 +236,7 @@ class GeoPolygon(_ShapeBase):
             )
             outline = [*outline, outline[0]]
 
-        if not _test_counter_clockwise(outline) ^ _is_hole:
+        if not is_counter_clockwise(outline) ^ _is_hole:
             warn_once(
                 'Polygon violates the right hand rule. Inverting coordinate '
                 'order; this warning will not repeat.'
@@ -465,7 +463,7 @@ class GeoPolygon(_ShapeBase):
     def from_wkt(
         cls,
         wkt_str: str,
-        dt: Optional[_GEOTIME_TYPE] = None,
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
     ) -> 'GeoPolygon':
         """Create a GeoPolygon from a wkt string"""
@@ -497,11 +495,11 @@ class GeoPolygon(_ShapeBase):
         bboxs = [self._linear_ring_to_wkt(ring) for ring in self.linear_rings(**kwargs)]
         return f'POLYGON({",".join(bboxs)})'
 
-    def to_polygon(self, **kwargs):
+    def to_polygon(self, **_):
         return self
 
 
-class GeoBox(_ShapeBase):
+class GeoBox(ShapeBase):
 
     """
     A Box (or Square), as expressed by the Northwest and Southeast corners.
@@ -520,7 +518,7 @@ class GeoBox(_ShapeBase):
         nw_bound: Coordinate,
         se_bound: Coordinate,
         holes: Optional[List[ShapeLike]] = None,
-        dt: Optional[_GEOTIME_TYPE] = None,
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(holes=holes, dt=dt, properties=properties)
@@ -609,7 +607,7 @@ class GeoBox(_ShapeBase):
         return GeoPolygon(outer_bound, holes=self.holes, dt=self.dt)
 
 
-class GeoCircle(_ShapeBase):
+class GeoCircle(ShapeBase):
 
     """
     A circle shape, as expressed by:
@@ -629,7 +627,7 @@ class GeoCircle(_ShapeBase):
         center: Coordinate,
         radius: float,
         holes: Optional[List[ShapeLike]] = None,
-        dt: Optional[_GEOTIME_TYPE] = None,
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(holes=holes, dt=dt, properties=properties)
@@ -703,7 +701,7 @@ class GeoCircle(_ShapeBase):
         return GeoPolygon(self.bounding_coords(**kwargs), holes=self.holes, dt=self.dt)
 
 
-class GeoEllipse(_ShapeBase):
+class GeoEllipse(ShapeBase):
 
     """
     An ellipsoid shape (or oval), represented by:
@@ -734,7 +732,7 @@ class GeoEllipse(_ShapeBase):
         semi_minor: float,
         rotation: float,
         holes: Optional[List[ShapeLike]] = None,
-        dt: Optional[_GEOTIME_TYPE] = None,
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(holes=holes, dt=dt, properties=properties)
@@ -773,8 +771,8 @@ class GeoEllipse(_ShapeBase):
         rot_rad = math.radians(self.rotation)
         cos_rot_sq = math.cos(rot_rad)**2
         sin_rot_sq = math.sin(rot_rad)**2
-        semi_major_sq = (self.semi_major)**2
-        semi_minor_sq = (self.semi_minor)**2
+        semi_major_sq = self.semi_major**2
+        semi_minor_sq = self.semi_minor**2
 
         dx = math.sqrt(semi_major_sq * sin_rot_sq + semi_minor_sq * cos_rot_sq)
         dy = math.sqrt(semi_major_sq * cos_rot_sq + semi_minor_sq * sin_rot_sq)
@@ -855,7 +853,7 @@ class GeoEllipse(_ShapeBase):
         return GeoPolygon(self.bounding_coords(**kwargs), holes=self.holes, dt=self.dt)
 
 
-class GeoRing(_ShapeBase):
+class GeoRing(ShapeBase):
 
     """
     A ring shape consisting of the area between two concentric circles, represented by:
@@ -893,7 +891,7 @@ class GeoRing(_ShapeBase):
         angle_min: float = 0.0,
         angle_max: float = 360.0,
         holes: Optional[List[ShapeLike]] = None,
-        dt: Optional[_GEOTIME_TYPE] = None,
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(holes=holes, dt=dt, properties=properties)
@@ -1093,7 +1091,7 @@ class GeoLineString(BaseShape, LineLike):
     def __init__(
             self,
             vertices: List[Coordinate],
-            dt: Optional[_GEOTIME_TYPE] = None,
+            dt: Optional[GEOTIME_TYPE] = None,
             properties: Optional[Dict] = None
     ):
         super().__init__(dt=dt, properties=properties)
@@ -1230,7 +1228,7 @@ class GeoLineString(BaseShape, LineLike):
     def from_wkt(
         cls,
         wkt_str: str,
-        dt: Optional[_GEOTIME_TYPE] = None,
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
     ) -> 'GeoLineString':
         """Create a GeoLineString from a wkt string"""
@@ -1285,8 +1283,7 @@ class GeoLineString(BaseShape, LineLike):
                 'coordinates': [list(x.to_float()) for x in self.vertices],
             },
             'properties': {
-                **self.properties,
-                **self._dt_to_json(),
+                **self._properties_json,
                 **(properties or {})
             },
             **kwargs
@@ -1323,7 +1320,7 @@ class GeoPoint(BaseShape, PointLike):
     def __init__(
         self,
         center: Coordinate,
-        dt: Optional[_GEOTIME_TYPE] = None,
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
     ):
         super().__init__(dt=dt, properties=properties)
@@ -1441,7 +1438,7 @@ class GeoPoint(BaseShape, PointLike):
     def from_wkt(
         cls,
         wkt_str: str,
-        dt: Optional[_GEOTIME_TYPE] = None,
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
     ) -> 'GeoPoint':
         """Create a GeoPoint from a wkt string"""
@@ -1469,8 +1466,7 @@ class GeoPoint(BaseShape, PointLike):
                 'coordinates': list(self.center.to_float()),
             },
             'properties': {
-                **self.properties,
-                **self._dt_to_json(),
+                **self._properties_json,
                 **(properties or {})
             },
             **kwargs

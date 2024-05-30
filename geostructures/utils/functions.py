@@ -1,6 +1,9 @@
 """Module for miscellaneous multi-use functions"""
 
-__all__ = ['default_to_zulu', 'get_dt_from_geojson_props', 'round_half_up', 'is_sub_list']
+__all__ = [
+    'default_to_zulu', 'get_dt_from_geojson_props', 'is_sub_list',
+    'round_half_up', 'sanitize_json'
+]
 
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Union, List
@@ -65,6 +68,16 @@ def round_half_up(value: float, precision) -> float:
     mod = value + 10 ** -(precision + 12)
 
     return round(mod, precision)
+
+
+def sanitize_json(obj: Any):
+    if isinstance(obj, dict):
+        return {k: sanitize_json(v) for k,v in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize_json(x) for x in obj]
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    return obj
 
 
 def is_sub_list(list_a: List, list_b: List) -> bool:

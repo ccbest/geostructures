@@ -3,24 +3,24 @@
 __all__ = ['MultiGeoShape', 'MultiGeoLineString', 'MultiGeoPoint']
 
 
-from abc import ABC
 import copy
 from functools import cached_property
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
+from typing import Any, Dict, List, Optional, Tuple, Sequence
 
 import numpy as np
 
 from geostructures._base import (
-    _GEOTIME_TYPE, _RE_COORD, _RE_MULTIPOLYGON_WKT, _RE_MULTIPOINT_WKT,
-    _RE_MULTILINESTRING_WKT, _RE_LINEAR_RING, _RE_LINEAR_RINGS, _SHAPE_TYPE,
-    BaseShape, ShapeLike, MultiShapeBase, parse_wkt_linear_ring,
+    _RE_MULTIPOLYGON_WKT, _RE_MULTIPOINT_WKT,
+    _RE_MULTILINESTRING_WKT, _RE_LINEAR_RING, _RE_LINEAR_RINGS,
+    ShapeLike, MultiShapeBase, parse_wkt_linear_ring,
     PointLike, LineLike
 )
+from geostructures._types import GEOTIME_TYPE
 from geostructures._geometry import convex_hull
-from geostructures.calc import do_edges_intersect, haversine_distance_meters
+from geostructures.calc import haversine_distance_meters
 from geostructures.coordinates import Coordinate
-from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, _ShapeBase
-from geostructures.utils.functions import is_sub_list, get_dt_from_geojson_props
+from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, ShapeBase
+from geostructures.utils.functions import get_dt_from_geojson_props
 
 
 class MultiGeoLineString(MultiShapeBase, LineLike):
@@ -28,7 +28,7 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
     def __init__(
         self,
         geoshapes: List[GeoLineString],
-        dt: Optional[_GEOTIME_TYPE] = None,
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt, properties)
@@ -121,7 +121,7 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
     def from_wkt(
         cls,
         wkt_str: str,
-        dt: Optional[_GEOTIME_TYPE] = None,
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
     ) -> 'MultiGeoLineString':
         """Create a GeoMultiLineString from a wkt string"""
@@ -172,7 +172,7 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
                 ]
             },
             'properties': {
-                **self.properties,
+                **self._properties_json,
                 **(properties or {})
             },
             **kwargs
@@ -218,7 +218,7 @@ class MultiGeoPoint(MultiShapeBase, PointLike):
     def __init__(
         self,
         geoshapes: List[GeoPoint],
-        dt: Optional[_GEOTIME_TYPE] = None,
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt, properties)
@@ -309,7 +309,7 @@ class MultiGeoPoint(MultiShapeBase, PointLike):
     def from_wkt(
         cls,
         wkt_str: str,
-        dt: Optional[_GEOTIME_TYPE] = None,
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
     ) -> 'MultiGeoPoint':
         """Create a GeoPolygon from a wkt string"""
@@ -357,8 +357,7 @@ class MultiGeoPoint(MultiShapeBase, PointLike):
                 ]
             },
             'properties': {
-                **self.properties,
-                **self._dt_to_json(),
+                **self._properties_json,
                 **(properties or {})
             },
             **kwargs
@@ -393,8 +392,8 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
 
     def __init__(
         self,
-        geoshapes: Sequence[_ShapeBase],
-        dt: Optional[_GEOTIME_TYPE] = None,
+        geoshapes: Sequence[ShapeBase],
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt, properties)
@@ -522,7 +521,7 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
     def from_wkt(
         cls,
         wkt_str: str,
-        dt: Optional[_GEOTIME_TYPE] = None,
+        dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
     ) -> 'MultiGeoShape':
         """Create a GeoPolygon from a wkt string"""
@@ -604,8 +603,7 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
                 ]
             },
             'properties': {
-                **self.properties,
-                **self._dt_to_json(),
+                **self._properties_json,
                 **(properties or {})
             },
             **kwargs
