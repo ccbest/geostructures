@@ -13,15 +13,17 @@ import numpy as np
 from geostructures._base import (
     _GEOTIME_TYPE, _RE_COORD, _RE_MULTIPOLYGON_WKT, _RE_MULTIPOINT_WKT,
     _RE_MULTILINESTRING_WKT, _RE_LINEAR_RING, _RE_LINEAR_RINGS, _SHAPE_TYPE,
-    BaseShape, ShapeLike, MultiShapeType, parse_wkt_linear_ring
+    BaseShape, ShapeLike, MultiShapeBase, parse_wkt_linear_ring,
+    PointLike, LineLike
 )
+from geostructures._geometry import convex_hull
 from geostructures.calc import do_edges_intersect, haversine_distance_meters
 from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.utils.functions import is_sub_list, get_dt_from_geojson_props
 
 
-class MultiGeoLineString(MultiShapeType):
+class MultiGeoLineString(MultiShapeBase, LineLike):
 
     def __init__(
         self,
@@ -47,6 +49,12 @@ class MultiGeoLineString(MultiShapeType):
             axis=0
         )
         return Coordinate(lon, lat)
+
+    @property
+    def segments(self) -> List[List[Tuple[Coordinate, Coordinate]]]:
+        return [
+            x.segments for x in self.geoshapes
+        ]
 
     def circumscribing_circle(self) -> 'GeoCircle':
         centroid = self.centroid
@@ -168,6 +176,13 @@ class MultiGeoLineString(MultiShapeType):
             **kwargs
         }
 
+    def convex_hull(self, **_) -> GeoPolygon:
+        return GeoPolygon(
+            convex_hull([vertex for shape in self.geoshapes for vertex in shape.vertices]),
+            dt=self.dt,
+            properties=self._properties
+        )
+
     def _to_shapely(self, **kwargs):
         """
         Converts the geoshape into a Shapely shape.
@@ -196,7 +211,7 @@ class MultiGeoLineString(MultiShapeType):
         return f'MULTILINESTRING({", ".join(lines)})'
 
 
-class MultiGeoPoint(MultiShapeType):
+class MultiGeoPoint(MultiShapeBase, PointLike):
 
     def __init__(
         self,
@@ -205,7 +220,7 @@ class MultiGeoPoint(MultiShapeType):
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt, properties)
-        self.geoshapes = points
+        self.geoshapes: List[GeoPoint] = points
 
     def __hash__(self) -> int:
         return hash(tuple(hash(x) for x in self.geoshapes))
@@ -231,6 +246,13 @@ class MultiGeoPoint(MultiShapeType):
             for point in self.geoshapes
         )
         return GeoCircle(centroid, max_dist, dt=self.dt)
+
+    def convex_hull(self, **_) -> GeoPolygon:
+        return GeoPolygon(
+            convex_hull([shape.centroid for shape in self.geoshapes]),
+            dt=self.dt,
+            properties=self._properties
+        )
 
     @classmethod
     def from_geojson(
@@ -362,7 +384,7 @@ class MultiGeoPoint(MultiShapeType):
         return f'MULTIPOINT({", ".join(points)})'
 
 
-class MultiGeoShape(MultiShapeType):
+class MultiGeoShape(MultiShapeBase, ShapeLike):
 
     def __init__(
         self,

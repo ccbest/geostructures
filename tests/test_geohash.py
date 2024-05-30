@@ -2,7 +2,7 @@
 import pytest
 from datetime import datetime
 
-from geostructures import Coordinate, GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon
+from geostructures import *
 from geostructures.collections import FeatureCollection
 from geostructures.geohash import (
     _coord_to_niemeyer, _get_niemeyer_subhashes, h3_to_geopolygon, niemeyer_to_geobox,
@@ -245,6 +245,11 @@ def test_niemeyer_hash_shape():
         'c000001a', 'c000001b', 'c0000023', 'c0000025', 'c0000026', 'c0000027',
         'c0000028', 'c0000029', 'c000002a', 'c0000030'
     }
+    shape = MultiGeoLineString([
+        GeoLineString([Coordinate(0.0, 0.0), Coordinate(0.02, 0.03), Coordinate(0.04, 0.0)]),
+        GeoLineString([Coordinate(0.1, 0.1), Coordinate(0.1001, 0.1001), Coordinate(0.04, 0.0)]),
+    ])
+
 
 
     # test that small shapes still produce a single geohash

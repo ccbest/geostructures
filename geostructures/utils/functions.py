@@ -1,11 +1,24 @@
 """Module for miscellaneous multi-use functions"""
 
-__all__ = ['get_dt_from_geojson_props', 'round_half_up', 'is_sub_list']
+__all__ = ['default_to_zulu', 'get_dt_from_geojson_props', 'round_half_up', 'is_sub_list']
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Union, List
 
+from geostructures.utils.logging import warn_once
 from geostructures.time import TimeInterval
+
+
+def default_to_zulu(dt: datetime) -> datetime:
+    """Add Zulu/UTC as timezone, if timezone not present"""
+    if not dt.tzinfo:
+        warn_once(
+            'Datetime does not contain timezone information; Zulu/UTC time assumed. '
+            '(this warning will not repeat)'
+        )
+        return dt.replace(tzinfo=timezone.utc)
+
+    return dt
 
 
 def get_dt_from_geojson_props(

@@ -8,6 +8,7 @@ __all__ = [
     'GeoRing'
 ]
 
+from abc import ABC
 import copy
 from functools import cached_property
 import math
@@ -19,13 +20,14 @@ import numpy as np
 from geostructures import LOGGER
 from geostructures._base import (
     _GEOTIME_TYPE, _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT,
-    _RE_LINESTRING_WKT, BaseShape, ShapeLike, LineLike, MultiShapeType,
+    _RE_LINESTRING_WKT, BaseShape, ShapeLike, LineLike, MultiShapeBase,
     PointLike, parse_wkt_linear_ring
 )
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
     _test_counter_clockwise,
     circumscribing_circle_for_polygon,
+    do_edges_intersect,
     inverse_haversine_radians,
     inverse_haversine_degrees,
     haversine_distance_meters,
@@ -33,10 +35,172 @@ from geostructures.calc import (
     find_line_intersection
 )
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
-from geostructures.utils.mixins import WarnOnceMixin
+from geostructures.utils.logging import warn_once
 
 
-class GeoPolygon(ShapeLike, WarnOnceMixin):
+class _ShapeBase(BaseShape, ShapeLike, ABC):
+
+    def __init__(
+        self,
+        holes: Optional[List[ShapeLike]] = None,
+        dt: Optional[_GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None,
+    ):
+        super().__init__(dt=dt, properties=properties)
+        self.holes = holes or []
+        if any(x.holes for x in self.holes):
+            raise ValueError('Holes cannot themselves contain holes.')
+
+    @cached_property
+    def area(self):
+        from pyproj import Geod
+        geod = Geod(ellps="WGS84")
+        area, _ = geod.geometry_area_perimeter(self.to_shapely())
+        return area
+
+    def bounding_edges(self, **kwargs) -> List[Tuple[Coordinate, Coordinate]]:
+        bounding_coords = self.bounding_coords(**kwargs)
+        return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
+
+    def contains_shape(self, shape: 'BaseShape', **kwargs) -> bool:
+        if isinstance(shape, MultiShapeBase):
+            for subshape in shape.geoshapes:
+                if not self.contains_shape(subshape):
+                    return False
+            return True
+
+        if isinstance(shape, PointLike):
+            return self.contains_coordinate(shape.centroid)
+
+        s_edges = self.edges(**kwargs)
+        o_edges = shape.edges(**kwargs) if isinstance(shape, ShapeLike) else [cast(LineLike, shape).segments]
+        if do_edges_intersect(
+            [x for edge_ring in s_edges for x in edge_ring],
+            [x for edge_ring in o_edges for x in edge_ring]
+        ):
+            # At least one edge pair intersects - cannot be contained
+            return False
+
+        # No edges intersect, so make sure one point along the boundary is
+        # contained
+        return o_edges[0][0][0] in self
+
+    def edges(self, **kwargs) -> List[List[Tuple[Coordinate, Coordinate]]]:
+        """
+        Returns lists of edges, defined as a 2-tuple (start and end) of coordinates, for the
+        outer boundary as well as holes in the polygon.
+
+        Operates similar to the `bounding_edges` method but includes information about holes
+        in the shape.
+
+        Using discrete coordinates to represent a continuous curve implies some level of data
+        loss. You can minimize this loss by specifying k, which represents the number of
+        points drawn.
+
+        Does not include information about holes - see the edges method.
+
+        Keyword Args:
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+
+        Returns:
+            Lists of 2-tuples representing edges. The first list will always represent
+            the shape's boundary, and any following lists will represent holes.
+        """
+        rings = self.linear_rings(**kwargs)
+        return [
+            list(zip(ring, ring[1:]))
+            for ring in rings
+        ]
+
+    def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
+        if isinstance(shape, MultiShapeBase):
+            for subshape in shape.geoshapes:
+                if self.intersects_shape(subshape, **kwargs):
+                    return True
+
+            return False
+
+        if isinstance(shape, PointLike):
+            return shape in self
+
+        s_edges = self.edges(**kwargs)
+        o_edges = shape.edges(**kwargs) if isinstance(shape, ShapeLike) else [cast(LineLike, shape).segments]
+        if do_edges_intersect(
+            [x for edge_ring in s_edges for x in edge_ring],
+            [x for edge_ring in o_edges for x in edge_ring]
+        ):
+            # At least one edge pair intersects
+            return True
+
+        # If no edges intersect, one shape could still contain the other
+        # which counts as intersection. Have to use a point from the boundary
+        # because the centroid may fall in a hole
+        return o_edges[0][0][0] in self or s_edges[0][0][0] in shape
+
+    def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
+        return [
+            self.bounding_coords(**kwargs),
+            *[list(reversed(shape.bounding_coords())) for shape in self.holes]
+        ]
+
+    def to_geojson(
+        self,
+        properties: Optional[Dict] = None,
+        **kwargs
+    ) -> Dict:
+        k = kwargs.pop('k', None)
+        return {
+            'type': 'Feature',
+            'geometry': {
+                'type': 'Polygon',
+                'coordinates': [
+                    [list(coord.to_float()) for coord in ring]
+                    for ring in self.linear_rings(k=k)
+                ]
+            },
+            'properties': {
+                **self.properties,
+                **self._dt_to_json(),
+                **(properties or {})
+            },
+            **kwargs
+        }
+
+    def _to_shapely(self):
+        """
+        Converts the geoshape into a Shapely shape.
+        """
+        import shapely  # pylint: disable=import-outside-toplevel
+        rings = self.linear_rings()
+        holes = []
+        if len(rings) > 1:
+            holes = rings[1:]
+
+        return shapely.geometry.Polygon(
+            [x.to_float() for x in rings[0]],
+            holes=[[x.to_float() for x in ring] for ring in holes]
+        )
+
+    def to_wkt(self, **kwargs) -> str:
+        """
+        Converts the shape to its WKT string representation
+
+        Keyword Args:
+            Arguments to be passed to the .bounding_coords() method. Reference
+            that method for a list of corresponding kwargs.
+
+        Returns:
+            str
+        """
+        bbox_str = ', '.join(
+            [self._linear_ring_to_wkt(ring) for ring in self.linear_rings(**kwargs)]
+        )
+        return f'POLYGON({bbox_str})'
+
+
+class GeoPolygon(_ShapeBase):
 
     """
     A Polygon, as expressed by an ordered list of Coordinates. The final Coordinate
@@ -75,7 +239,7 @@ class GeoPolygon(ShapeLike, WarnOnceMixin):
             outline = [*outline, outline[0]]
 
         if not _test_counter_clockwise(outline) ^ _is_hole:
-            self.warn_once(
+            warn_once(
                 'Polygon violates the right hand rule. Inverting coordinate '
                 'order; this warning will not repeat.'
             )
@@ -337,7 +501,7 @@ class GeoPolygon(ShapeLike, WarnOnceMixin):
         return self
 
 
-class GeoBox(ShapeLike):
+class GeoBox(_ShapeBase):
 
     """
     A Box (or Square), as expressed by the Northwest and Southeast corners.
@@ -445,7 +609,7 @@ class GeoBox(ShapeLike):
         return GeoPolygon(outer_bound, holes=self.holes, dt=self.dt)
 
 
-class GeoCircle(ShapeLike):
+class GeoCircle(_ShapeBase):
 
     """
     A circle shape, as expressed by:
@@ -539,7 +703,7 @@ class GeoCircle(ShapeLike):
         return GeoPolygon(self.bounding_coords(**kwargs), holes=self.holes, dt=self.dt)
 
 
-class GeoEllipse(ShapeLike):
+class GeoEllipse(_ShapeBase):
 
     """
     An ellipsoid shape (or oval), represented by:
@@ -691,7 +855,7 @@ class GeoEllipse(ShapeLike):
         return GeoPolygon(self.bounding_coords(**kwargs), holes=self.holes, dt=self.dt)
 
 
-class GeoRing(ShapeLike):
+class GeoRing(_ShapeBase):
 
     """
     A ring shape consisting of the area between two concentric circles, represented by:
@@ -920,7 +1084,7 @@ class GeoRing(ShapeLike):
         return super().to_wkt(**kwargs)
 
 
-class GeoLineString(LineLike):
+class GeoLineString(BaseShape, LineLike):
 
     """
     A LineString (or more colloquially, a path) consisting of a series of
@@ -962,6 +1126,10 @@ class GeoLineString(LineLike):
             for x in zip(*[y.to_float() for y in self.vertices])
         ]
         return Coordinate(lon, lat)
+
+    @property
+    def segments(self) -> List[Tuple[Coordinate, Coordinate]]:
+        return list(zip(self.vertices, self.vertices[1:]))
 
     def circumscribing_circle(self) -> GeoCircle:
         centroid = self.centroid
@@ -1079,6 +1247,32 @@ class GeoLineString(LineLike):
             properties=properties
         )
 
+    def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
+        if isinstance(shape, MultiShapeBase):
+            for subshape in shape.geoshapes:
+                if self.intersects_shape(subshape, **kwargs):
+                    return True
+
+            return False
+
+        if isinstance(shape, PointLike):
+            return shape in self
+
+        s_edges = [self.segments]
+        o_edges = shape.edges(**kwargs) if isinstance(shape, ShapeLike) else [cast(LineLike, shape).segments]
+        if do_edges_intersect(
+            [x for edge_ring in s_edges for x in edge_ring],
+            [x for edge_ring in o_edges for x in edge_ring]
+        ):
+            # At least one edge pair intersects
+            print('edge pair intersects')
+            return True
+
+        # If no edges intersect, one shape could still contain the other
+        # which counts as intersection. Have to use a point from the boundary
+        # because the centroid may fall in a hole
+        return o_edges[0][0][0] in self or s_edges[0][0][0] in shape
+
     def to_geojson(
             self,
             properties: Optional[Dict] = None,
@@ -1115,7 +1309,7 @@ class GeoLineString(LineLike):
         return f'LINESTRING{bbox_str}'
 
 
-class GeoPoint(PointLike):
+class GeoPoint(BaseShape, PointLike):
 
     """
     A Coordinate with an associated timestamp. This is the only shape which
@@ -1158,14 +1352,11 @@ class GeoPoint(PointLike):
     def centroid(self) -> Coordinate:
         return self.center
 
-    def contains(self, shape: BaseShape, **kwargs) -> bool:
-        if isinstance(shape, MultiShapeType):
-            return all(self.contains_shape(subshape) for subshape in shape)
-
-        return self.contains_shape(shape)
+    def contains_coordinate(self, coord: Coordinate) -> bool:
+        return coord == self.centroid
 
     def contains_shape(self, shape: BaseShape, **kwargs) -> bool:
-        if isinstance(shape, MultiShapeType):
+        if isinstance(shape, MultiShapeBase):
             for subshape in shape.geoshapes:
                 if not self.contains_shape(subshape):
                     return False
@@ -1176,20 +1367,17 @@ class GeoPoint(PointLike):
 
         return False
 
-    def contains_coordinate(self, coord: Coordinate) -> bool:
-        return coord == self.centroid
-
-    def intersects_shape(self, shape: BaseShape, **kwargs) -> bool:
-        if isinstance(shape, GeoPoint):
-            return self == shape
-        return self in shape
-
     def copy(self) -> 'GeoPoint':
         return GeoPoint(
             self.center,
             dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self._properties)
         )
+
+    def intersects_shape(self, shape: BaseShape, **kwargs) -> bool:
+        if isinstance(shape, GeoPoint):
+            return self == shape
+        return self in shape
 
     @classmethod
     def from_geojson(

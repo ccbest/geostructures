@@ -20,13 +20,13 @@ from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
 from geostructures._base import BaseShape, LineLike, PointLike, ShapeLike
 from geostructures.time import TimeInterval
 from geostructures.calc import haversine_distance_meters
-from geostructures.utils.mixins import DefaultZuluMixin
+from geostructures.utils.functions import default_to_zulu
 
 
 _COL_TYPE = TypeVar('_COL_TYPE', bound='ShapeCollection')
 
 
-class ShapeCollection(DefaultZuluMixin):
+class ShapeCollection:
 
     def __init__(self, geoshapes: List[BaseShape]):
         super().__init__()
@@ -102,7 +102,7 @@ class ShapeCollection(DefaultZuluMixin):
         """
         # Has to be checked before date - datetimes are dates, but dates are not datetimes
         if isinstance(dt, datetime):
-            dt = self._default_to_zulu(dt)
+            dt = default_to_zulu(dt)
             return type(self)(
                 [x for x in self.geoshapes if x.dt is not None and x.dt == TimeInterval(dt, dt)]
             )
@@ -474,15 +474,14 @@ class ShapeCollection(DefaultZuluMixin):
         lines: List[BaseShape] = []
         shapes: List[BaseShape] = []
         for shape in self.geoshapes:
-            if not isinstance(shape, ShapeLike):
-                shapes.append(shape)
-                continue
-
-            if isinstance(shape, PointLike):
+            if isinstance(shape, GeoPoint):
                 points.append(shape)
-                continue
 
-            lines.append(shape)
+            elif isinstance(shape, GeoLineString):
+                lines.append(shape)
+
+            else:
+                shapes.append(shape)
 
         with tempfile.TemporaryDirectory() as tempdir:
             for shapetype, shape_group in (('points', points), ('lines', lines), ('shapes', shapes)):
@@ -528,10 +527,10 @@ class ShapeCollection(DefaultZuluMixin):
                     props = shape.properties
                     writer.record(*[_convert_dt(props.get(k)) for k in typemap], idx)
 
-                    if isinstance(shape, GeoPoint):
+                    if isinstance(shape, PointLike):
                         writer.point(*shape.centroid.to_float())
 
-                    elif isinstance(shape, GeoLineString):
+                    elif isinstance(shape, LineLike):
                         writer.line([[list(x.to_float()) for x in shape.vertices]])
 
                     else:
@@ -608,7 +607,7 @@ class FeatureCollection(ShapeCollection):
         return FeatureCollection(self.geoshapes.copy())
 
 
-class Track(ShapeCollection, DefaultZuluMixin):
+class Track(ShapeCollection):
 
     """
     A sequence of chronologically-ordered (by start time) GeoShapes
@@ -654,10 +653,10 @@ class Track(ShapeCollection, DefaultZuluMixin):
         Returns:
             Track
         """
-        _start = self._default_to_zulu(
+        _start = default_to_zulu(
             val.start or self.geoshapes[0].start
         )
-        _stop = self._default_to_zulu(
+        _stop = default_to_zulu(
             val.stop or self.geoshapes[-1].end + timedelta(seconds=1)
         )
         return Track(
