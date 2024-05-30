@@ -53,14 +53,14 @@ def convex_hull(coordinates: List[Coordinate]) -> List[Coordinate]:
         return coordinates
 
     # Build lower hull
-    lower = []
+    lower: List[Coordinate] = []
     for coord in coordinates:
         while len(lower) >= 2 and coordinate_vector_cross_product(lower[-2], lower[-1], coord) <= 0:
             lower.pop()
         lower.append(coord)
 
     # Build upper hull
-    upper = []
+    upper: List[Coordinate] = []
     for coord in reversed(coordinates):
         while len(upper) >= 2 and coordinate_vector_cross_product(upper[-2], upper[-1], coord) <= 0:
             upper.pop()

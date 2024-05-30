@@ -13,7 +13,7 @@ import copy
 from functools import cached_property
 import math
 import statistics
-from typing import cast, Any, Dict, List, Optional, Tuple
+from typing import cast, Any, Dict, List, Optional, Tuple, Sequence
 
 import numpy as np
 
@@ -21,7 +21,7 @@ from geostructures import LOGGER
 from geostructures._base import (
     _GEOTIME_TYPE, _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT,
     _RE_LINESTRING_WKT, BaseShape, ShapeLike, LineLike, MultiShapeBase,
-    PointLike, parse_wkt_linear_ring
+    PointLike, parse_wkt_linear_ring, ANY_SHAPE_TYPE
 )
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
@@ -42,12 +42,12 @@ class _ShapeBase(BaseShape, ShapeLike, ABC):
 
     def __init__(
         self,
-        holes: Optional[List[ShapeLike]] = None,
+        holes: Optional[Sequence[ShapeLike]] = None,
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt=dt, properties=properties)
-        self.holes = holes or []
+        self.holes = list(holes or [])
         if any(x.holes for x in self.holes):
             raise ValueError('Holes cannot themselves contain holes.')
 
@@ -62,7 +62,7 @@ class _ShapeBase(BaseShape, ShapeLike, ABC):
         bounding_coords = self.bounding_coords(**kwargs)
         return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
 
-    def contains_shape(self, shape: 'BaseShape', **kwargs) -> bool:
+    def contains_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
         if isinstance(shape, MultiShapeBase):
             for subshape in shape.geoshapes:
                 if not self.contains_shape(subshape):
@@ -114,7 +114,7 @@ class _ShapeBase(BaseShape, ShapeLike, ABC):
             for ring in rings
         ]
 
-    def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
+    def intersects_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
         if isinstance(shape, MultiShapeBase):
             for subshape in shape.geoshapes:
                 if self.intersects_shape(subshape, **kwargs):
@@ -224,7 +224,7 @@ class GeoPolygon(_ShapeBase):
     def __init__(
         self,
         outline: List[Coordinate],
-        holes: Optional[List[ShapeLike]] = None,
+        holes: Optional[Sequence[ShapeLike]] = None,
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
         _is_hole: bool = False,
@@ -1144,7 +1144,7 @@ class GeoLineString(BaseShape, LineLike):
             dt=self.dt,
         )
 
-    def contains_shape(self, shape: BaseShape, **kwargs) -> bool:
+    def contains_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
         # Make sure the times overlap, if present on both
         if self.dt and shape.dt:
             if not self.contains_time(shape.dt):
@@ -1247,7 +1247,7 @@ class GeoLineString(BaseShape, LineLike):
             properties=properties
         )
 
-    def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
+    def intersects_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
         if isinstance(shape, MultiShapeBase):
             for subshape in shape.geoshapes:
                 if self.intersects_shape(subshape, **kwargs):
@@ -1355,7 +1355,7 @@ class GeoPoint(BaseShape, PointLike):
     def contains_coordinate(self, coord: Coordinate) -> bool:
         return coord == self.centroid
 
-    def contains_shape(self, shape: BaseShape, **kwargs) -> bool:
+    def contains_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
         if isinstance(shape, MultiShapeBase):
             for subshape in shape.geoshapes:
                 if not self.contains_shape(subshape):
@@ -1374,7 +1374,7 @@ class GeoPoint(BaseShape, PointLike):
             properties=copy.deepcopy(self._properties)
         )
 
-    def intersects_shape(self, shape: BaseShape, **kwargs) -> bool:
+    def intersects_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
         if isinstance(shape, GeoPoint):
             return self == shape
         return self in shape

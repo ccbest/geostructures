@@ -18,6 +18,7 @@ from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint, GeoPolygo
 from geostructures._base import BaseShape, PointLike, ShapeLike, LineLike, MultiShapeBase
 from geostructures.calc import find_line_intersection
 from geostructures.collections import ShapeCollection
+from geostructures.multistructures import MultiGeoPoint
 from geostructures.time import TimeInterval
 
 
@@ -624,10 +625,11 @@ class NiemeyerHasher(HasherBase):
         Returns:
             A set of geohashes
         """
-        if isinstance(point, MultiShapeBase):
+        if isinstance(point, MultiGeoPoint):
             return {
-                self._hash_point(_point)
+                geohash
                 for _point in point.geoshapes
+                for geohash in self._hash_point(_point)
             }
 
         return {_coord_to_niemeyer(point.centroid, self.length, self.base)}
@@ -647,8 +649,9 @@ class NiemeyerHasher(HasherBase):
         """
         if isinstance(polygon, MultiShapeBase):
             return {
-                self._hash_polygon(_polygon)
+                geohash
                 for _polygon in polygon.geoshapes
+                for geohash in self._hash_polygon(_polygon)
             }
 
         valid, checked, queue = set(), set(), set()

@@ -6,7 +6,7 @@ __all__ = ['MultiGeoShape', 'MultiGeoLineString', 'MultiGeoPoint']
 from abc import ABC
 import copy
 from functools import cached_property
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
 
 import numpy as np
 
@@ -19,7 +19,7 @@ from geostructures._base import (
 from geostructures._geometry import convex_hull
 from geostructures.calc import do_edges_intersect, haversine_distance_meters
 from geostructures.coordinates import Coordinate
-from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon
+from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, _ShapeBase
 from geostructures.utils.functions import is_sub_list, get_dt_from_geojson_props
 
 
@@ -27,19 +27,16 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
 
     def __init__(
         self,
-        linestrings: List[GeoLineString],
+        geoshapes: List[GeoLineString],
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt, properties)
-        self.geoshapes: List[GeoLineString] = linestrings
+        self.geoshapes: List[GeoLineString] = geoshapes
 
     def __repr__(self):
         pl = "s" if len(self.geoshapes) != 1 else ""
         return f'<MultiGeoLineString of {len(self.geoshapes)} linestring{pl}>'
-
-    def area(self) -> float:
-        return 0.
 
     @cached_property
     def centroid(self):
@@ -64,6 +61,13 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
             for coord in shape.vertices
         )
         return GeoCircle(centroid, max_dist, dt=self.dt)
+
+    def copy(self) -> 'MultiGeoLineString':
+        return MultiGeoLineString(
+            [x.copy() for x in self.geoshapes],
+            dt=self.dt,
+            properties=copy.deepcopy(self._properties)
+        )
 
     @classmethod
     def from_geojson(
@@ -137,7 +141,6 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
 
     def to_geojson(
         self,
-        k: Optional[int] = None,
         properties: Optional[Dict] = None,
         **kwargs
     ) -> Dict:
@@ -170,7 +173,6 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
             },
             'properties': {
                 **self.properties,
-                **self._dt_to_json(),
                 **(properties or {})
             },
             **kwargs
@@ -215,12 +217,12 @@ class MultiGeoPoint(MultiShapeBase, PointLike):
 
     def __init__(
         self,
-        points: List[GeoPoint],
+        geoshapes: List[GeoPoint],
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt, properties)
-        self.geoshapes: List[GeoPoint] = points
+        self.geoshapes: List[GeoPoint] = geoshapes
 
     def __hash__(self) -> int:
         return hash(tuple(hash(x) for x in self.geoshapes))
@@ -228,9 +230,6 @@ class MultiGeoPoint(MultiShapeBase, PointLike):
     def __repr__(self):
         pl = "s" if len(self.geoshapes) != 1 else ""
         return f'<MultiGeoPoint of {len(self.geoshapes)} point{pl}>'
-
-    def area(self) -> float:
-        return 0.
 
     @cached_property
     def centroid(self):
@@ -252,6 +251,13 @@ class MultiGeoPoint(MultiShapeBase, PointLike):
             convex_hull([shape.centroid for shape in self.geoshapes]),
             dt=self.dt,
             properties=self._properties
+        )
+
+    def copy(self) -> 'MultiGeoPoint':
+        return MultiGeoPoint(
+            [x.copy() for x in self.geoshapes],
+            dt=self.dt,
+            properties=copy.deepcopy(self._properties)
         )
 
     @classmethod
@@ -322,7 +328,6 @@ class MultiGeoPoint(MultiShapeBase, PointLike):
 
     def to_geojson(
         self,
-        k: Optional[int] = None,
         properties: Optional[Dict] = None,
         **kwargs
     ) -> Dict:
@@ -388,12 +393,12 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
 
     def __init__(
         self,
-        geoshapes: List[ShapeLike],
+        geoshapes: Sequence[_ShapeBase],
         dt: Optional[_GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt, properties)
-        self.geoshapes = geoshapes
+        self.geoshapes = list(geoshapes)
 
     def __repr__(self):
         pl = "s" if len(self.geoshapes) != 1 else ""
@@ -427,6 +432,13 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
             for x in poly.bounding_coords()
         )
         return GeoCircle(centroid, max_dist, dt=self.dt)
+
+    def copy(self) -> 'MultiGeoShape':
+        return MultiGeoShape(
+            [x.copy() for x in self.geoshapes],
+            dt=self.dt,
+            properties=copy.deepcopy(self._properties)
+        )
 
     def edges(self, **kwargs) -> List[List[List[Tuple[Coordinate, Coordinate]]]]:
         """
@@ -470,7 +482,7 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
         shapes = []
         for shape in geom.get('coordinates', []):
             rings = [[Coordinate(x, y) for x, y in ring] for ring in shape]
-            shell, holes = rings[0], []
+            shell, holes = rings[0], None
             if len(rings) > 1:
                 holes = [GeoPolygon(list(reversed(ring))) for ring in rings[1:]]
 
@@ -520,7 +532,7 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
         shapes = []
         for shape in _RE_LINEAR_RINGS.findall(wkt_str):
             coord_groups = _RE_LINEAR_RING.findall(shape)
-            shell, holes = parse_wkt_linear_ring(coord_groups[0]), []
+            shell, holes = parse_wkt_linear_ring(coord_groups[0]), None
 
             if len(coord_groups) > 1:
                 holes = [
@@ -559,7 +571,6 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
 
     def to_geojson(
         self,
-        k: Optional[int] = None,
         properties: Optional[Dict] = None,
         **kwargs
     ) -> Dict:
@@ -589,7 +600,7 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
                             list(coord.to_float()) for coord in ring
                         ] for ring in shape
                     ]
-                    for shape in self.linear_rings(k=k)
+                    for shape in self.linear_rings(k=kwargs.pop('k', None))
                 ]
             },
             'properties': {

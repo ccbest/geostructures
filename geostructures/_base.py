@@ -7,7 +7,7 @@ import re
 from abc import abstractmethod, ABC, ABCMeta
 from datetime import datetime, timedelta
 from functools import lru_cache, cached_property
-from typing import Optional, List, Dict, Union, Tuple, cast, Any, TYPE_CHECKING, TypeVar, Protocol
+from typing import Optional, List, Dict, Union, Tuple, cast, Any, TYPE_CHECKING, TypeVar, Protocol, Sequence
 
 from geostructures.coordinates import Coordinate
 from geostructures.utils.functions import default_to_zulu
@@ -18,6 +18,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from geostructures import GeoCircle, GeoBox, Coordinate
 
 _SHAPE_TYPE = TypeVar('_SHAPE_TYPE', bound='BaseShape')
+_MULTI_SHAPE_TYPE = TypeVar('_MULTI_SHAPE_TYPE', bound='MultiShapeBase')
 _GEOTIME_TYPE = Union[datetime, TimeInterval]
 
 # A wkt coordinate, e.g. '-1.0 2.0'
@@ -41,6 +42,37 @@ _RE_MULTIPOLYGON_WKT = re.compile(r'MULTIPOLYGON\s?\((' + _RE_LINEAR_RINGS_STR +
 _RE_MULTILINESTRING_WKT = re.compile(r'MULTILINESTRING\s?' + _RE_LINEAR_RINGS_STR)
 
 
+class BaseShapeProtocol(Protocol):
+
+    dt: Optional[TimeInterval]
+
+    def __contains__(self, other: Union['ShapeLike', 'LineLike', 'PointLike', Coordinate]):
+        pass
+
+    def __hash__(self) -> int:
+        pass
+
+    def __repr__(self):
+        pass
+
+    @property
+    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        pass
+
+    @property
+    def centroid(self) -> Coordinate:
+        pass
+
+    def end(self) -> datetime:
+        pass
+
+    def properties(self):
+        pass
+
+    def start(self) -> datetime:
+        pass
+
+
 class BaseShape(ABC):
 
     """Abstract base class for all geoshapes"""
@@ -61,7 +93,7 @@ class BaseShape(ABC):
         self._properties = properties or {}
         self.to_shapely = lru_cache(maxsize=1)(self._to_shapely)
 
-    def __contains__(self, other: Union['BaseShape', Coordinate]):
+    def __contains__(self, other: Union['ShapeLike', 'LineLike', 'PointLike', Coordinate]):
         return self.contains(other)
 
     @abstractmethod
@@ -117,23 +149,6 @@ class BaseShape(ABC):
 
         return self.dt.start
 
-    @cached_property
-    def volume(self) -> float:
-        """
-        The volume of the shape, in meters squared seconds.
-
-        Shapes with no time dimension (dt is None), or whose
-        time dimension is an instance in time (dt is a datetime)
-        will always have a volume of zero.
-
-        Returns:
-            float
-        """
-        if self.dt is None:
-            return 0.
-
-        return self.area * self.dt.elapsed.total_seconds()
-
     def _dt_to_json(self) -> Dict[str, str]:
         """Safely convert time bounds to json"""
         if not self.dt:
@@ -184,7 +199,7 @@ class BaseShape(ABC):
 
         return shp
 
-    def contains(self, shape: Union['BaseShape', Coordinate], **kwargs) -> bool:
+    def contains(self, shape: Union['ShapeLike', 'LineLike', 'PointLike', Coordinate], **kwargs) -> bool:
         """Test whether a coordinate or GeoShape is contained within this geoshape"""
         if isinstance(shape, Coordinate):
             return self.contains_coordinate(shape)
@@ -209,7 +224,7 @@ class BaseShape(ABC):
         """
 
     @abstractmethod
-    def contains_shape(self, shape: 'BaseShape', **kwargs) -> bool:
+    def contains_shape(self, shape: 'ANY_SHAPE_TYPE', **kwargs) -> bool:
         """
         Tests whether this shape fully contains another one.
 
@@ -246,7 +261,7 @@ class BaseShape(ABC):
     def copy(self: _SHAPE_TYPE) -> _SHAPE_TYPE:
         """Produces a copy of the geoshape."""
 
-    def intersects(self, shape: 'BaseShape', **kwargs) -> bool:
+    def intersects(self, shape: 'ANY_SHAPE_TYPE', **kwargs) -> bool:
         """
         Tests whether another shape intersects this one along both the spatial and time axes.
 
@@ -270,7 +285,7 @@ class BaseShape(ABC):
         return self.intersects_shape(shape, **kwargs)
 
     @abstractmethod
-    def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
+    def intersects_shape(self, shape: 'ANY_SHAPE_TYPE', **kwargs) -> bool:
         """
         Tests whether another shape intersects this one along its spatial axes.
 
@@ -327,7 +342,6 @@ class BaseShape(ABC):
     @abstractmethod
     def to_geojson(
         self,
-        k: Optional[int] = None,
         properties: Optional[Dict] = None,
         **kwargs
     ) -> Dict:
@@ -371,12 +385,14 @@ class BaseShape(ABC):
         """
 
 
-class ShapeLike(ABC):
+class ShapeLike(BaseShapeProtocol, ABC):
 
     """
     Mixin for shapes, singular or multi, that is enclosed by a line, e.g.
     boxes, ellipses, etc.
     """
+
+    holes: List['ShapeLike']
 
     @property
     @abstractmethod
@@ -389,8 +405,25 @@ class ShapeLike(ABC):
         """
         pass
 
+    @cached_property
+    def volume(self) -> float:
+        """
+        The volume of the shape, in meters squared seconds.
+
+        Shapes with no time dimension (dt is None), or whose
+        time dimension is an instance in time (dt is a datetime)
+        will always have a volume of zero.
+
+        Returns:
+            float
+        """
+        if self.dt is None:
+            return 0.
+
+        return self.area * self.dt.elapsed.total_seconds()
+
     @abstractmethod
-    def bounding_coords(self, **kwargs) -> List[Coordinate]:
+    def bounding_coords(self, **kwargs):
         """
         Produces a list of coordinates that define the polygon's boundary.
 
@@ -410,7 +443,7 @@ class ShapeLike(ABC):
         """
 
     @abstractmethod
-    def bounding_edges(self, **kwargs) -> List[Tuple[Coordinate, Coordinate]]:
+    def bounding_edges(self, **kwargs):
         """
         Returns a list of edges, defined as a 2-tuple (start and end) of coordinates, that
         represent the polygon's boundary.
@@ -480,7 +513,8 @@ class ShapeLike(ABC):
             the shape's boundary, and any following lists will represent holes.
         """
 
-    def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
+    @abstractmethod
+    def linear_rings(self, **kwargs):
         """
         Produce a list of linear rings for the object, where the first ring is the outermost
         shell and the following rings are holes.
@@ -499,15 +533,13 @@ class ShapeLike(ABC):
         """
 
 
-class LineLike(ABC):
+class LineLike(BaseShapeProtocol, ABC):
 
-    dt: TimeInterval
-    bounds: property
     vertices: List[Coordinate]
 
     @property
     @abstractmethod
-    def segments(self) -> List[Tuple[Coordinate, Coordinate]]:
+    def segments(self) -> Any:
         pass
 
     @abstractmethod
@@ -536,15 +568,20 @@ class LineLike(ABC):
         )
 
 
-class PointLike(ABC):
+class PointLike(BaseShapeProtocol, ABC):
     pass
+
+
+ANY_SHAPE_TYPE = Union[LineLike, PointLike, ShapeLike]
 
 
 class MultiShapeBase(BaseShape, ABC):
 
-    geoshapes: List[BaseShape]
+    geoshapes: List
 
-    def __eq__(self, other: 'MultiShapeBase'):
+    def __eq__(self, other):
+        if not isinstance(other, MultiShapeBase):
+            return NotImplemented
         return set(self.geoshapes) == set(other.geoshapes) and self.dt == other.dt
 
     def __hash__(self) -> int:
@@ -567,7 +604,7 @@ class MultiShapeBase(BaseShape, ABC):
 
         return False
 
-    def contains_shape(self, shape: 'BaseShape', **kwargs) -> bool:
+    def contains_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
         if isinstance(shape, MultiShapeBase):
             if all(self.contains_shape(subshape, **kwargs) for subshape in shape.geoshapes):
                 return True
@@ -579,14 +616,7 @@ class MultiShapeBase(BaseShape, ABC):
 
         return False
 
-    def copy(self: _SHAPE_TYPE) -> _SHAPE_TYPE:
-        return type(self)(
-            [x.copy() for x in self.geoshapes],
-            dt=self.dt,
-            properties=copy.deepcopy(self._properties)
-        )
-
-    def intersects_shape(self, shape: 'BaseShape', **kwargs) -> bool:
+    def intersects_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
         if isinstance(shape, MultiShapeBase):
             for subshape in shape.geoshapes:
                 if self.intersects_shape(subshape, **kwargs):

@@ -17,7 +17,7 @@ import numpy as np
 
 from geostructures import Coordinate, LOGGER
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
-from geostructures._base import BaseShape, LineLike, PointLike, ShapeLike
+from geostructures._base import BaseShape, LineLike, PointLike, ShapeLike, ANY_SHAPE_TYPE
 from geostructures.time import TimeInterval
 from geostructures.calc import haversine_distance_meters
 from geostructures.utils.functions import default_to_zulu
@@ -114,7 +114,7 @@ class ShapeCollection:
 
         raise ValueError(f"Unexpected dt object: {dt}")
 
-    def filter_by_intersection(self: _COL_TYPE, shape: BaseShape) -> _COL_TYPE:
+    def filter_by_intersection(self: _COL_TYPE, shape: ANY_SHAPE_TYPE) -> _COL_TYPE:
         """
         Filter the shape collection using an intersecting geoshape, which is optionally
         time-bounded.
@@ -384,7 +384,7 @@ class ShapeCollection:
         bounds = self.bounds
         return bounds[0][1] - bounds[0][0] + bounds[1][1] - bounds[1][0]
 
-    def intersects(self, shape: BaseShape):
+    def intersects(self, shape: ANY_SHAPE_TYPE):
         """
         Boolean determination of whether any pings from the track exist inside the provided
         geostructure.
@@ -537,7 +537,7 @@ class ShapeCollection:
                         writer.poly(
                             [
                                 [list(coord.to_float()) for coord in ring]
-                                for ring in shape.linear_rings()
+                                for ring in cast(ShapeLike, shape).linear_rings()
                             ]
                         )
 

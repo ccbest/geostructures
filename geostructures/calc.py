@@ -508,7 +508,7 @@ def is_point_in_line(point: Coordinate, line: Tuple[Coordinate, Coordinate], **k
     )
     if abs(cross_product) > epsilon:
         return False
-
+    return True
 
 
 def rotate_coordinates(
