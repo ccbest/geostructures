@@ -1,6 +1,7 @@
 
 from datetime import datetime
 
+import pytest
 import shapely
 
 from geostructures import *
@@ -23,6 +24,19 @@ def test_multigeolinestring_repr():
         ],
     )
     assert repr(mls) == '<MultiGeoLineString of 2 linestrings>'
+
+
+def test_multigeolinestring_segments():
+    mls = MultiGeoLineString(
+        [
+            GeoLineString([Coordinate(0., 1.), Coordinate(0.5, 0.5), Coordinate(1., 0.)]),
+            GeoLineString([Coordinate(1., 1.), Coordinate(0.5, 0.5), Coordinate(0., 0.)]),
+        ],
+    )
+    assert mls.segments == [
+        [(Coordinate(0., 1.), Coordinate(0.5, 0.5)), (Coordinate(0.5, 0.5), Coordinate(1., 0.))],
+        [(Coordinate(1., 1.), Coordinate(0.5, 0.5)), (Coordinate(0.5, 0.5), Coordinate(0., 0.))]
+    ]
 
 
 def test_multigeolinestring_circumscribing_circle():
@@ -73,6 +87,15 @@ def test_multigeolinestring_from_geojson():
     assert mls.dt == TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))
     assert mls._properties == {'test_prop': 'test_value'}
 
+    with pytest.raises(ValueError):
+        gjson = {
+            "type": "Feature",
+            "geometry": {
+                "type": "SomethingElse",
+            }
+        }
+        MultiGeoLineString.from_geojson(gjson)
+
 
 def test_multigeolinestring_from_shapely():
     smls = shapely.MultiLineString([[[0, 0], [1, 2]], [[4, 4], [5, 6]]])
@@ -91,6 +114,9 @@ def test_multigeolinestring_from_wkt():
         GeoLineString([Coordinate(0.0, 1.0), Coordinate(0.5, 0.5), Coordinate(1.0, 0.0)]),
         GeoLineString([Coordinate(1.0, 1.0), Coordinate(0.5, 0.5), Coordinate(0.0, 0.0)])
     ]
+
+    with pytest.raises(ValueError):
+        MultiGeoLineString.from_wkt('test')
 
 
 def test_multigeolinestring_to_geojson():
@@ -135,6 +161,30 @@ def test_multigeolinestring_to_wkt():
         GeoLineString([Coordinate(1.0, 1.0), Coordinate(0.5, 0.5), Coordinate(0.0, 0.0)])
     ])
     assert mls.to_wkt() == "MULTILINESTRING((0.0 1.0,0.5 0.5,1.0 0.0), (1.0 1.0,0.5 0.5,0.0 0.0))"
+
+
+def test_multigeopoint_hash():
+    assert len({
+        MultiGeoPoint([
+            GeoPoint(Coordinate(0., 0.)),
+            GeoPoint(Coordinate(1., 1.))
+        ]),
+        MultiGeoPoint([
+            GeoPoint(Coordinate(0., 0.)),
+            GeoPoint(Coordinate(1., 1.))
+        ])
+    }) == 1
+
+    assert len({
+        MultiGeoPoint([
+            GeoPoint(Coordinate(0., 0.)),
+            GeoPoint(Coordinate(1., 1.))
+        ]),
+        MultiGeoPoint([
+            GeoPoint(Coordinate(0., 0.)),
+            GeoPoint(Coordinate(2., 1.))
+        ])
+    }) == 2
 
 
 def test_multigeopoint_repr():
@@ -182,6 +232,18 @@ def test_multigeopoint_convex_hull():
     ])
 
 
+def test_multigeopoint_copy():
+    mp = MultiGeoPoint([
+        GeoPoint(Coordinate(0., 0.)),
+        GeoPoint(Coordinate(1., 1.))
+    ])
+    mp2 = mp.copy()
+    assert mp == mp2
+
+    mp2.geoshapes.pop()
+    assert mp != mp2
+
+
 def test_multigeopoint_from_geojson():
     gjson = {
         "type": "Feature",
@@ -202,6 +264,15 @@ def test_multigeopoint_from_geojson():
     assert mp._properties == {"test_prop": "test_value"}
     assert mp.dt == TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
 
+    with pytest.raises(ValueError):
+        gjson = {
+            "type": "Feature",
+            "geometry": {
+                "type": "test",
+            }
+        }
+        MultiGeoPoint.from_geojson(gjson)
+
 
 def test_multigeopoint_from_shapely():
     shapely_mp = shapely.MultiPoint([(0., 1.), (1., 1.)])
@@ -219,6 +290,9 @@ def test_multigeopoint_from_wkt():
         GeoPoint(Coordinate(0., 1.)),
         GeoPoint(Coordinate(1., 1.))
     ]
+
+    with pytest.raises(ValueError):
+        MultiGeoPoint.from_wkt('test')
 
 
 def test_multigeopoint_to_geojson():
@@ -335,6 +409,18 @@ def test_multigeoshape_circumscribing_circle():
     assert mp.circumscribing_circle() == GeoCircle(Coordinate(1., 1.), 157249.38127194397)
 
 
+def test_multigeoshape_copy():
+    mp = MultiGeoShape([
+        GeoBox(Coordinate(0., 1.), Coordinate(0.5, 0.)),
+        GeoBox(Coordinate(0.5, 1.), Coordinate(1., 0.))
+    ])
+    mp2 = mp.copy()
+    assert mp2 == mp
+
+    mp.geoshapes.pop()
+    assert mp2 != mp
+
+
 def test_multigeoshape_convex_hull():
     mp = MultiGeoShape([
         GeoBox(Coordinate(0., 1.), Coordinate(0.5, 0.)),
@@ -421,6 +507,15 @@ def test_multigeoshape_from_geojson():
     assert mp._properties == {'test_prop': 'test_val'}
     assert mp.dt == TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
 
+    with pytest.raises(ValueError):
+        gjson = {
+            "type": "Feature",
+            "geometry": {
+                "type": "test",
+            }
+        }
+        MultiGeoShape.from_geojson(gjson)
+
 
 def test_multigeoshape_from_shapely():
     shapely_mp = shapely.MultiPolygon([
@@ -488,6 +583,10 @@ def test_multigeoshape_from_wkt():
             ],
         )
     ]
+
+    with pytest.raises(ValueError):
+        MultiGeoShape.from_wkt('test')
+
 
 def test_multigeoshape_linear_rings():
     mp = MultiGeoShape(

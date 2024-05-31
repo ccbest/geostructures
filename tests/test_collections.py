@@ -7,7 +7,6 @@ from zipfile import ZipFile
 import numpy as np
 import pytest
 import shapely
-from scipy.spatial import ConvexHull
 
 from geostructures.coordinates import Coordinate
 from geostructures import GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon, GeoRing

@@ -6,6 +6,7 @@ from shapely import wkt
 from geostructures.structures import *
 from geostructures.calc import inverse_haversine_degrees
 from geostructures.coordinates import Coordinate
+from geostructures.multistructures import *
 from geostructures.utils.functions import round_half_up
 from geostructures.time import TimeInterval
 
@@ -179,9 +180,76 @@ def test_geoshape_intersects():
 
 
 
+def test_baseshape_contains_coordinate():
+
+    # Triangle
+    polygon = GeoPolygon([
+        Coordinate(0.0, 0.0), Coordinate(1.0, 1.0),
+        Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+    ])
+    # Way outside
+    assert Coordinate(1.5, 1.5) not in polygon
+
+    # Center along hypotenuse - boundary intersection should not count
+    assert Coordinate(0.5, 0.5) not in polygon
+
+    # Nudge above to be just inside
+    assert Coordinate(0.5, 0.49) in polygon
+
+    # Outside, to upper left
+    assert Coordinate(0.1, 0.9) not in polygon
+
+    # 5-point Star
+    polygon = GeoPolygon([
+        Coordinate(0.004, 0.382), Coordinate(0.596, 0.803), Coordinate(0.364, 0.114),
+        Coordinate(0.948, -0.319), Coordinate(0.221, -0.311), Coordinate(-0.01, -1),
+        Coordinate(-0.228, -0.307), Coordinate(-0.954, -0.299), Coordinate(-0.362, 0.122),
+        Coordinate(-0.579, 0.815), Coordinate(0.004, 0.382)
+    ])
+    assert Coordinate(0.0, 0.0) in polygon
+    assert Coordinate(0.9, 0.1) not in polygon
+    assert Coordinate(-0.9, 0.4) not in polygon
+    assert Coordinate(-0.9, 0.1) not in polygon
+
+    # Box with hole in middle
+    polygon = GeoPolygon(
+        [
+            Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
+            Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
+        ],
+        holes=[GeoPolygon([
+            Coordinate(0.25, 0.25), Coordinate(0.25, 0.75), Coordinate(0.75, 0.75),
+            Coordinate(0.75, 0.25), Coordinate(0.25, 0.25)
+        ])]
+    )
+    assert Coordinate(0.9, 0.9) in polygon  # outside hole
+    assert Coordinate(0.5, 0.5) not in polygon  # inside hole
+    assert Coordinate(0.75, 0.75) in polygon  # on hole edge
 
 
+def test_baseshape_contains_shape():
+    # Base case
+    circle_outer = GeoCircle(Coordinate(0., 0.), 5_000)
+    circle_inner = GeoCircle(Coordinate(0., 0.), 2_000)
+    assert circle_outer.contains_shape(circle_inner)
+    assert not circle_inner.contains_shape(circle_outer)
 
+    # Intersecting, not containing
+    circle1 = GeoCircle(Coordinate(0., 0.), 5_000)
+    circle2 = GeoCircle(Coordinate(0.0899322, 0.0), 6_000)
+    assert not circle1.contains_shape(circle2)
+
+    # inner circle fully contained within hole
+    circle_outer = GeoCircle(Coordinate(0., 0.,), 5_000, holes=[GeoCircle(Coordinate(0., 0.,), 4_000)])
+    circle_inner = GeoCircle(Coordinate(0., 0.), 2_000)
+    assert not circle_outer.contains_shape(circle_inner)
+
+    # Verify it works for multishapes
+    mp = MultiGeoPoint([GeoPoint(Coordinate(0., 0.)), GeoPoint(Coordinate(0.00001, 0.00001))])
+    assert circle1.contains(mp)
+
+    mp = MultiGeoPoint([GeoPoint(Coordinate(0., 0.)), GeoPoint(Coordinate(1.0, 1.0))])
+    assert not circle1.contains(mp)
 
 
 def test_shape_to_geojson(geocircle):
@@ -333,26 +401,6 @@ def test_geopolygon_eq(geopolygon, geopolygon_cycle, geopolygon_reverse):
     )
     # Holes are not equal
     assert p1 != p2
-
-
-def test_gt_to_json():
-    geopoint = GeoPoint(Coordinate('0.0', '0.0'), dt=default_test_datetime)
-    assert geopoint._dt_to_json() == {
-        'datetime_start': default_test_datetime.isoformat(),
-        'datetime_end': default_test_datetime.isoformat()
-    }
-
-    geopoint = GeoPoint(
-        Coordinate('0.0', '0.0'),
-        dt=TimeInterval(datetime(1970, 1, 1, 0, 0), datetime(1970, 1, 1, 1, 0))
-    )
-    assert geopoint._dt_to_json() == {
-        'datetime_start': datetime(1970, 1, 1, 0, 0, tzinfo=timezone.utc).isoformat(),
-        'datetime_end': datetime(1970, 1, 1, 1, 0, tzinfo=timezone.utc).isoformat()
-    }
-
-    geopoint = GeoCircle(Coordinate('0.0', '0.0'), 50)
-    assert geopoint._dt_to_json() == {}
 
 
 def test_geopolygon_hash(geopolygon):

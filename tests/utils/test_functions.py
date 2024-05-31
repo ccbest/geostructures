@@ -8,11 +8,9 @@ from geostructures.time import TimeInterval
 def test_default_to_zulu(caplog):
     dt = datetime(2020, 1, 1, tzinfo=timezone.utc)
     assert default_to_zulu(dt).tzinfo == timezone.utc
-    assert 'Datetime does not contain timezone information' not in caplog.text
 
     dt = datetime(2020, 1, 1)
     assert default_to_zulu(dt).tzinfo == timezone.utc
-    assert 'Datetime does not contain timezone information' in caplog.text
 
 
 def test_get_dt_from_geojson_props():

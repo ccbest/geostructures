@@ -60,7 +60,7 @@ class BaseShapeProtocol(Protocol):
     to_shapely: Callable
 
     def __contains__(self, other: Union['ShapeLike', 'LineLike', 'PointLike', Coordinate]):
-        return self.contains(other)
+        return self.contains(other)  # pragma: no cover
 
     @abstractmethod
     def __hash__(self) -> int:
@@ -109,6 +109,7 @@ class BaseShapeProtocol(Protocol):
 
     @property
     def _properties_json(self) -> Dict:
+        """The shape properties, sanitized to be JSON-serializable"""
         return sanitize_json(self.properties)
 
     @property
@@ -118,16 +119,6 @@ class BaseShapeProtocol(Protocol):
             raise ValueError("GeoShape has no associated time information.")
 
         return self.dt.start
-
-    def _dt_to_json(self) -> Dict[str, str]:
-        """Safely convert time bounds to json"""
-        if not self.dt:
-            return {}
-
-        return {
-            'datetime_start': self.start.isoformat(),
-            'datetime_end': self.end.isoformat(),
-        }
 
     @staticmethod
     def _linear_ring_to_wkt(ring: List[Coordinate]) -> str:
@@ -394,7 +385,6 @@ class ShapeLike(BaseShapeProtocol, ABC):
         Returns:
             float
         """
-        pass
 
     @cached_property
     def volume(self) -> float:
@@ -531,7 +521,14 @@ class LineLike(BaseShapeProtocol, ABC):
     @property
     @abstractmethod
     def segments(self) -> Any:
-        pass
+        """
+        Segments (as two-tuples of coordinates) defining the lines between pairs of vertices
+        in the linestring(s).
+
+        Returns:
+            GeoLineStrings: A list of two-tuples
+            MultiGeoLineStrings: A list of the above, one for each sub-linestring
+        """
 
     @abstractmethod
     def circumscribing_circle(self) -> 'GeoCircle':

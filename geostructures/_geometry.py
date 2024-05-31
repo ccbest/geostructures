@@ -136,7 +136,7 @@ def circumscribing_circle_for_triangle(
         if rad >= dist_xyz_meters(midp_coord, p):
             return midp_coord, rad
 
-    [a, b, c] = [p.xyz for p in points]
+    [a, b, c] = [np.longdouble(p.xyz) for p in points]
     cc_num = np.cross(a, b) + np.cross(b, c) + np.cross(c, a)
     cc_norm = norm(cc_num)
     ctr = Coordinate._from_xyz([i/cc_norm for i in cc_num])
@@ -199,6 +199,22 @@ def dist_xyz_meters(coord1: Coordinate, coord2: Coordinate) -> float:
         (float) the distance in meters
     """
     return math.acos(sum([an*bn for an, bn in zip(coord1.xyz, coord2.xyz)])) * EARTH_RADIUS
+
+
+def do_bounds_overlap(bounds1: Tuple[float, float], bounds2: Tuple[float, float]):
+    """
+    Test whether two ranges (on the same axis) overlap
+
+    Args:
+        bounds1:
+            A two-tuple of floats, representing the range of values across the axis
+        bounds2:
+            Another two-tuple of floats
+
+    Returns:
+        True if the ranges overlap, False if not
+    """
+    return max([bounds1[0], bounds2[0]]) <= min([bounds1[1], bounds2[1]])
 
 
 def do_edges_intersect(
@@ -360,10 +376,6 @@ def find_line_intersection(
             (round_half_up(y_sort[0], 10), round_half_up(y_sort[1], 10)),
         )
 
-    def test_ranges_overlap(range1: Tuple[float, float], range2: Tuple[float, float]):
-        """Test whether two ranges overlap"""
-        return max([range1[0], range2[0]]) <= min([range1[1], range2[1]])
-
     # Adjust lines if they cross the antimeridian
     line1 = ensure_edge_bounds(line1[0], line1[1])
     line2 = ensure_edge_bounds(line2[0], line2[1])
@@ -379,8 +391,8 @@ def find_line_intersection(
     line1_bounds, line2_bounds = get_line_bounds(line1_flt), get_line_bounds(line2_flt)
 
     if not (
-        test_ranges_overlap(line1_bounds[0], line2_bounds[0]) and
-        test_ranges_overlap(line1_bounds[1], line2_bounds[1])
+        do_bounds_overlap(line1_bounds[0], line2_bounds[0]) and
+        do_bounds_overlap(line1_bounds[1], line2_bounds[1])
     ):
         # line bounds do not overlap
         return None
@@ -415,12 +427,15 @@ def find_line_intersection(
 
 def is_point_in_line(point: Coordinate, line: Tuple[Coordinate, Coordinate], **kwargs) -> bool:
     epsilon = kwargs.get('epsilon', 0.00001)
-    cross_product = (
-        (point.latitude - line[0].latitude) * (line[1].longitude - line[0].longitude) -
-        (point.longitude - line[0].longitude) * (line[1].latitude - line[0].latitude)
-    )
-    if abs(cross_product) > epsilon:
+
+    if not line[0].longitude <= point.longitude <= line[1].longitude:
+        # Point does not fall within x bounds of the line
         return False
+
+    if abs(coordinate_vector_cross_product(line[0], line[1], point)) > epsilon:
+        # vector cross product differs significantly enough
+        return False
+
     return True
 
 

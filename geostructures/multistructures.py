@@ -49,9 +49,7 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
 
     @property
     def segments(self) -> List[List[Tuple[Coordinate, Coordinate]]]:
-        return [
-            x.segments for x in self.geoshapes
-        ]
+        return [x.segments for x in self.geoshapes]
 
     def circumscribing_circle(self) -> 'GeoCircle':
         centroid = self.centroid
@@ -182,13 +180,6 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
             },
             **kwargs
         }
-
-    def convex_hull(self, **_) -> GeoPolygon:
-        return GeoPolygon(
-            convex_hull([vertex for shape in self.geoshapes for vertex in shape.vertices]),
-            dt=self.dt,
-            properties=self._properties
-        )
 
     def _to_shapely(self, **kwargs):
         """
