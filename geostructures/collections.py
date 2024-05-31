@@ -177,7 +177,7 @@ class ShapeCollection:
                 raise ValueError(f'Unrecognized geometry type: {geom_type}')
 
             shapes.append(
-                conv_map[geom_type].from_geojson(
+                conv_map[geom_type].from_geojson(  # type: ignore
                     feature,
                     time_start_property,
                     time_end_property,
@@ -253,7 +253,7 @@ class ShapeCollection:
             dt = _get_dt(record)
             props = {k: v for k, v in record.items() if k in prop_fields}
             shapes.append(
-                conv_map[geom_type].from_wkt(
+                conv_map[geom_type].from_wkt(  # type: ignore
                     record['geometry'].wkt,
                     dt=dt,
                     properties=props
