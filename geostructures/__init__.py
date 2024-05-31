@@ -8,6 +8,7 @@ from geostructures.structures import (
     GeoBox, GeoCircle, GeoEllipse, GeoLineString, GeoPoint, GeoPolygon,
     GeoRing
 )
+from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoShape
 from geostructures.collections import FeatureCollection, Track
 from geostructures.utils.conditional_imports import ConditionalPackageInterceptor
 
@@ -35,6 +36,9 @@ __all__ = [
     'GeoPoint',
     'GeoPolygon',
     'GeoRing',
+    'MultiGeoLineString',
+    'MultiGeoPoint',
+    'MultiGeoShape',
     'Track',
     'LOGGER',
 ]

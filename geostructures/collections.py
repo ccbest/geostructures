@@ -16,18 +16,21 @@ from zipfile import ZipFile
 import numpy as np
 
 from geostructures import Coordinate, LOGGER
-from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon, GeoShape
-from geostructures.time import TimeInterval
+from geostructures._base import BaseShape, LineLike, MultiShapeBase, PointLike, ShapeLike, ANY_SHAPE_TYPE
+from geostructures._geometry import convex_hull
 from geostructures.calc import haversine_distance_meters
-from geostructures.utils.mixins import DefaultZuluMixin
+from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoShape
+from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
+from geostructures.time import TimeInterval
+from geostructures.utils.functions import default_to_zulu
 
 
 _COL_TYPE = TypeVar('_COL_TYPE', bound='ShapeCollection')
 
 
-class ShapeCollection(DefaultZuluMixin):
+class ShapeCollection:
 
-    def __init__(self, geoshapes: List[GeoShape]):
+    def __init__(self, geoshapes: List[BaseShape]):
         super().__init__()
         self.geoshapes = geoshapes
 
@@ -69,24 +72,24 @@ class ShapeCollection(DefaultZuluMixin):
     @cached_property
     def convex_hull(self):
         """Creates a convex hull around the pings"""
-        from scipy import spatial  # pylint: disable=import-outside-toplevel
+        def _get_vertices(shapes):
+            vertices = []
+            for shape in shapes:
+                if isinstance(shape, MultiShapeBase):
+                    vertices += [
+                        vertex
+                        for _shape in shape.geoshapes
+                        for vertex in _get_vertices([_shape])
+                    ]
+                elif isinstance(shape, PointLike):
+                    vertices.append(shape.centroid)
+                elif isinstance(shape, LineLike):
+                    vertices += shape.vertices
+                elif isinstance(shape, ShapeLike):
+                    vertices += shape.bounding_coords()
+            return vertices
 
-        if len(self.geoshapes) <= 2 and all(isinstance(x, GeoPoint) for x in self.geoshapes):
-            raise ValueError('Cannot create a convex hull from less than three points.')
-
-        _points = filter(lambda x: isinstance(x, GeoPoint), self.geoshapes)
-        _lines = cast(
-            List[GeoLineString],
-            filter(lambda x: isinstance(x, GeoLineString), self.geoshapes)
-        )
-        _shapes = filter(lambda x: not isinstance(x, (GeoPoint, GeoLineString)), self.geoshapes)
-
-        points = []
-        points += [y.to_float() for x in _shapes for y in x.bounding_coords()]
-        points += [y.to_float() for x in _lines for y in x.coords]
-        points += [x.centroid.to_float() for x in _points]
-        hull = spatial.ConvexHull(points)
-        return GeoPolygon([Coordinate(*points[x]) for x in [*hull.vertices, hull.vertices[0]]])
+        return GeoPolygon(convex_hull(_get_vertices(self.geoshapes)))
 
     def filter_by_dt(self: _COL_TYPE, dt: Union[datetime, TimeInterval]) -> _COL_TYPE:
         """
@@ -101,7 +104,7 @@ class ShapeCollection(DefaultZuluMixin):
         """
         # Has to be checked before date - datetimes are dates, but dates are not datetimes
         if isinstance(dt, datetime):
-            dt = self._default_to_zulu(dt)
+            dt = default_to_zulu(dt)
             return type(self)(
                 [x for x in self.geoshapes if x.dt is not None and x.dt == TimeInterval(dt, dt)]
             )
@@ -113,7 +116,7 @@ class ShapeCollection(DefaultZuluMixin):
 
         raise ValueError(f"Unexpected dt object: {dt}")
 
-    def filter_by_intersection(self: _COL_TYPE, shape: GeoShape) -> _COL_TYPE:
+    def filter_by_intersection(self: _COL_TYPE, shape: ANY_SHAPE_TYPE) -> _COL_TYPE:
         """
         Filter the shape collection using an intersecting geoshape, which is optionally
         time-bounded.
@@ -158,40 +161,29 @@ class ShapeCollection(DefaultZuluMixin):
         if gjson.get('type') != 'FeatureCollection':
             raise ValueError('Malformed GeoJSON; expected FeatureCollection')
 
-        shapes: List[GeoShape] = []
+        conv_map = {
+            'Point': GeoPoint,
+            'LineString': GeoLineString,
+            'Polygon': GeoPolygon,
+            'MultiPoint': MultiGeoPoint,
+            'MultiLineString': MultiGeoLineString,
+            'MultiPolygon': MultiGeoShape,
+        }
+
+        shapes: List[BaseShape] = []
         for feature in gjson.get('features', []):
             geom_type = feature.get('geometry', {}).get('type')
-            if geom_type == 'Point':
-                shapes.append(
-                    GeoPoint.from_geojson(
-                        feature,
-                        time_start_property,
-                        time_end_property,
-                        time_format=time_format
-                    )
-                )
-                continue
+            if geom_type not in conv_map:
+                raise ValueError(f'Unrecognized geometry type: {geom_type}')
 
-            if geom_type == 'LineString':
-                shapes.append(
-                    GeoLineString.from_geojson(
-                        feature,
-                        time_start_property,
-                        time_end_property,
-                        time_format=time_format
-                    )
+            shapes.append(
+                conv_map[geom_type].from_geojson(  # type: ignore
+                    feature,
+                    time_start_property,
+                    time_end_property,
+                    time_format=time_format
                 )
-                continue
-
-            if geom_type == 'Polygon':
-                shapes.append(
-                    GeoPolygon.from_geojson(
-                        feature,
-                        time_start_property,
-                        time_end_property,
-                        time_format=time_format
-                    )
-                )
+            )
 
         return cls(shapes)
 
@@ -223,6 +215,15 @@ class ShapeCollection(DefaultZuluMixin):
         import geopandas as gpd
         import pandas as pd
 
+        conv_map = {
+            'Point': GeoPoint,
+            'LineString': GeoLineString,
+            'Polygon': GeoPolygon,
+            'MultiPoint': MultiGeoPoint,
+            'MultiLineString': MultiGeoLineString,
+            'MultiPolygon': MultiGeoShape,
+        }
+
         def _get_dt(rec):
             """Grabs datetime data and returns appropriate struct"""
             dt_start = rec.get(time_start_field)
@@ -242,25 +243,22 @@ class ShapeCollection(DefaultZuluMixin):
         prop_fields = [
             x for x in df.columns if x not in (time_start_field, time_end_field, 'geometry')
         ]
-        shapes: List[GeoShape] = []
+        shapes: List[BaseShape] = []
         for record in df.to_dict('records'):
+            geom_type = record['geometry'].geom_type
+            if geom_type not in conv_map:  # pragma: no cover
+                # ignored coverage because can't falsify geometry type
+                raise ValueError(f'Unrecognized geometry type: {geom_type}')
+
             dt = _get_dt(record)
             props = {k: v for k, v in record.items() if k in prop_fields}
-            if record['geometry'].geom_type == 'Point':
-                shapes.append(GeoPoint.from_wkt(record['geometry'].wkt, dt, props))
-                continue
-
-            if record['geometry'].geom_type == 'LineString':
-                shapes.append(
-                    GeoLineString.from_wkt(record['geometry'].wkt, dt, props)
+            shapes.append(
+                conv_map[geom_type].from_wkt(  # type: ignore
+                    record['geometry'].wkt,
+                    dt=dt,
+                    properties=props
                 )
-                continue
-
-            if record['geometry'].geom_type == 'Polygon':
-                shapes.append(
-                    GeoPolygon.from_wkt(record['geometry'].wkt, dt, props)
-                )
-                continue
+            )
 
         return cls(shapes)
 
@@ -298,7 +296,7 @@ class ShapeCollection(DefaultZuluMixin):
         def _create_polygon(shape, dt, props):
             """
             Create a polygon out of a pyshyp polygon. Note that "points" are continuous across
-            the bounding coords and holes, so if multiple "parts" are present we need to segment
+            the bounding vertices and holes, so if multiple "parts" are present we need to segment
             the list of points. "parts" will only provide the indices for segmentation.
             """
             parts = list(shape.parts)
@@ -356,20 +354,25 @@ class ShapeCollection(DefaultZuluMixin):
         Returns:
             FeatureCollection
         """
-        from shapely.geometry import LineString, Point, Polygon
+        conv_map = {
+            'Point': GeoPoint,
+            'LineString': GeoLineString,
+            'Polygon': GeoPolygon,
+            'MultiPoint': MultiGeoPoint,
+            'MultiLineString': MultiGeoLineString,
+            'MultiPolygon': MultiGeoShape,
+        }
 
         shapes = []
         for shape in geometry_collection.geoms:
-            if isinstance(shape, Point):
-                shapes.append(GeoPoint.from_shapely(shape))
-                continue
+            geom_type = shape.geom_type
+            if geom_type not in conv_map:  # pragma: no cover
+                # ignored coverage because can't falsify geometry type
+                raise ValueError(f'Unrecognized geometry type: {geom_type}')
 
-            if isinstance(shape, Polygon):
-                shapes.append(GeoPolygon.from_shapely(shape))
-                continue
-
-            if isinstance(shape, LineString):
-                shapes.append(GeoLineString.from_shapely(shape))
+            shapes.append(
+                conv_map[geom_type].from_shapely(shape)
+            )
 
         return FeatureCollection(shapes)
 
@@ -383,7 +386,7 @@ class ShapeCollection(DefaultZuluMixin):
         bounds = self.bounds
         return bounds[0][1] - bounds[0][0] + bounds[1][1] - bounds[1][0]
 
-    def intersects(self, shape: GeoShape):
+    def intersects(self, shape: ANY_SHAPE_TYPE):
         """
         Boolean determination of whether any pings from the track exist inside the provided
         geostructure.
@@ -469,19 +472,18 @@ class ShapeCollection(DefaultZuluMixin):
                 return val.isoformat()
             return val
 
-        points: List[GeoShape] = []
-        lines: List[GeoShape] = []
-        shapes: List[GeoShape] = []
+        points: List[BaseShape] = []
+        lines: List[BaseShape] = []
+        shapes: List[BaseShape] = []
         for shape in self.geoshapes:
-            if not isinstance(shape, (GeoPoint, GeoLineString)):
-                shapes.append(shape)
-                continue
-
             if isinstance(shape, GeoPoint):
                 points.append(shape)
-                continue
 
-            lines.append(shape)
+            elif isinstance(shape, GeoLineString):
+                lines.append(shape)
+
+            else:
+                shapes.append(shape)
 
         with tempfile.TemporaryDirectory() as tempdir:
             for shapetype, shape_group in (('points', points), ('lines', lines), ('shapes', shapes)):
@@ -527,17 +529,17 @@ class ShapeCollection(DefaultZuluMixin):
                     props = shape.properties
                     writer.record(*[_convert_dt(props.get(k)) for k in typemap], idx)
 
-                    if isinstance(shape, GeoPoint):
+                    if isinstance(shape, PointLike):
                         writer.point(*shape.centroid.to_float())
 
-                    elif isinstance(shape, GeoLineString):
-                        writer.line([[list(x.to_float()) for x in shape.bounding_coords()]])
+                    elif isinstance(shape, LineLike):
+                        writer.line([[list(x.to_float()) for x in shape.vertices]])
 
                     else:
                         writer.poly(
                             [
                                 [list(coord.to_float()) for coord in ring]
-                                for ring in shape.linear_rings()
+                                for ring in cast(ShapeLike, shape).linear_rings()
                             ]
                         )
 
@@ -607,13 +609,13 @@ class FeatureCollection(ShapeCollection):
         return FeatureCollection(self.geoshapes.copy())
 
 
-class Track(ShapeCollection, DefaultZuluMixin):
+class Track(ShapeCollection):
 
     """
     A sequence of chronologically-ordered (by start time) GeoShapes
     """
 
-    def __init__(self, geoshapes: List[GeoShape]):
+    def __init__(self, geoshapes: List[BaseShape]):
         if not all(x.dt for x in geoshapes):
             raise ValueError('All track geoshapes must have an associated time value.')
 
@@ -653,10 +655,10 @@ class Track(ShapeCollection, DefaultZuluMixin):
         Returns:
             Track
         """
-        _start = self._default_to_zulu(
+        _start = default_to_zulu(
             val.start or self.geoshapes[0].start
         )
-        _stop = self._default_to_zulu(
+        _stop = default_to_zulu(
             val.stop or self.geoshapes[-1].end + timedelta(seconds=1)
         )
         return Track(

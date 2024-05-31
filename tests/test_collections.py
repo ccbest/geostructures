@@ -7,10 +7,10 @@ from zipfile import ZipFile
 import numpy as np
 import pytest
 import shapely
-from scipy.spatial import ConvexHull
 
 from geostructures.coordinates import Coordinate
-from geostructures import GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon, GeoRing
+from geostructures.multistructures import *
+from geostructures import GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon, GeoRing, MultiGeoPoint
 from geostructures.time import TimeInterval
 from geostructures.collections import Track, FeatureCollection
 
@@ -257,13 +257,52 @@ def test_collection_from_geojson():
                 'geometry': {'type': 'LineString', 'coordinates': [[0.0, 0.0], [1.0, 1.0]]},
                 'properties': {'datetime_end': '2020-01-02T00:00:00+00:00'},
                 'id': 2
+            },
+            {
+                'type': 'Feature',
+                'geometry': {'type': 'MultiPoint', 'coordinates': [[0.0, 0.0], [1.0, 1.0]]},
+                'properties': {},
+                'id': 3
+            },
+            {
+                'type': 'Feature',
+                'geometry': {
+                    'type': 'MultiLineString',
+                    'coordinates': [
+                        [[0.0, 0.0], [1.0, 1.0]],
+                        [[1.0, 1.0], [2.0, 0.0]]
+                    ]
+                },
+                'properties': {},
+                'id': 3
+            },
+            {
+                'type': 'Feature',
+                'geometry': {
+                    'type': 'MultiPolygon',
+                    'coordinates': [
+                        [[[0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [0.0, 0.0]]],
+                        [[[0.0, 0.0], [1.0, -1.0], [2.0, 0.0], [0.0, 0.0]]],
+                    ]
+                },
+                'properties': {},
+                'id': 3
             }
         ]
     }
     expected_shapes = [
         GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)], dt=datetime(2020, 1, 1)),
         GeoPoint(Coordinate(0.0, 2.0), dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))),
-        GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)], dt=datetime(2020, 1, 2))
+        GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)], dt=datetime(2020, 1, 2)),
+        MultiGeoPoint([GeoPoint(Coordinate(0.0, 0.0)), GeoPoint(Coordinate(1.0, 1.0))]),
+        MultiGeoLineString([
+            GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)]),
+            GeoLineString([Coordinate(1.0, 1.0), Coordinate(2.0, 0.0)]),
+        ]),
+        MultiGeoShape([
+            GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)]),
+            GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, -1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)]),
+        ])
     ]
     expected = FeatureCollection(expected_shapes)
     assert FeatureCollection.from_geojson(gjson) == expected
@@ -272,6 +311,20 @@ def test_collection_from_geojson():
         gjson = {
             'type': 'Not a FeatureCollection',
             'features': []
+        }
+        _ = FeatureCollection.from_geojson(gjson)
+
+    with pytest.raises(ValueError):
+        gjson = {
+            'type': 'FeatureCollection',
+            'features': [
+                {
+                    'type': 'Feature',
+                    'geometry': {
+                        'type': 'Test',
+                    }
+                }
+            ]
         }
         _ = FeatureCollection.from_geojson(gjson)
 
@@ -328,31 +381,22 @@ def test_collection_to_geojson():
 
 
 def test_collection_convex_hull():
-    track = Track(
+    track = FeatureCollection(
         [
-            GeoPoint(Coordinate('-2.0', '-2.0'), datetime(2020, 1, 1)),
-            GeoPoint(Coordinate('2.0', '0.0'), datetime(2020, 1, 1, 1)),
-            GeoPoint(Coordinate('3.0', '3.0'), datetime(2020, 1, 1, 2)),
-            GeoPoint(Coordinate('2.0', '6.0'), datetime(2020, 1, 1, 3)),
-            GeoPoint(Coordinate('-2.0', '8.0'), datetime(2020, 1, 1, 4)),
-            GeoPoint(Coordinate('-6.0', '6.0'), datetime(2020, 1, 1, 5)),
-            GeoPoint(Coordinate('-7.0', '3.0'), datetime(2020, 1, 1, 6)),
-            GeoPoint(Coordinate('-6.0', '0.0'), datetime(2020, 1, 1, 6)),
-            GeoPoint(Coordinate('-2.0', '-2.0'), datetime(2020, 1, 1, 7)),
-            GeoPoint(Coordinate('-2.0', '4.0'), datetime(2020, 1, 1, 8)),
+            GeoPoint(Coordinate(0.0, 0.0)),
+            GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.)]),
+            GeoBox(Coordinate(0.5, 1.), Coordinate(1., 0.)),
+            MultiGeoPoint([
+                GeoPoint(Coordinate(0., 1.)),
+                GeoPoint(Coordinate(0., 0.5))
+            ]),
         ]
     )
-    points = [x.centroid.to_float() for x in track.geoshapes]
-    hull = ConvexHull(points)
-    assert GeoPolygon([Coordinate(*points[x]) for x in hull.vertices]) == track.convex_hull
-
-    # Fewer than 3 points
-    new_track = Track([
-        GeoPoint(Coordinate('-2.0', '-2.0'), datetime(2020, 1, 1)),
-        GeoPoint(Coordinate('-2.0', '-2.0'), datetime(2020, 1, 2))
+    assert track.convex_hull == GeoPolygon([
+        Coordinate(0., 0.), Coordinate(1., 0.),
+        Coordinate(1., 1.), Coordinate(0., 1.,),
+        Coordinate(0, 0.)
     ])
-    with pytest.raises(ValueError):
-        _ = new_track.convex_hull
 
 
 def test_collection_to_from_shapefile(caplog):
@@ -394,7 +438,6 @@ def test_collection_to_from_shapefile(caplog):
             shapecol.to_shapefile(zfile)
 
         new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
-        print(new_shapecol.geoshapes[2].holes) # == shapecol.geoshapes[2].to_polygon())
         assert set(new_shapecol.geoshapes) == set(x.to_polygon() for x in shapecol.geoshapes)
 
     # Test writing/reading properties

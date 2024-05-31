@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-__all__ = ['TimeInterval']
+__all__ = ['TimeInterval', 'GEOTIME_TYPE']
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 
-from geostructures.utils.mixins import DefaultZuluMixin
+
+GEOTIME_TYPE = Union[datetime, 'TimeInterval']
 
 
-class TimeInterval(DefaultZuluMixin):
+class TimeInterval:
     """A class representing a right-open time interval"""
 
     def __init__(
@@ -26,6 +27,17 @@ class TimeInterval(DefaultZuluMixin):
             raise ValueError(f'end date {end} must not be less than start date {start}')
 
         self.start, self.end = self._default_to_zulu(start), self._default_to_zulu(end)
+
+    def _default_to_zulu(self, dt: datetime) -> datetime:
+        """Add Zulu/UTC as timezone, if timezone not present"""
+        if not dt.tzinfo:
+            # self.warn_once(
+            #     'Datetime does not contain timezone information; Zulu/UTC time assumed. '
+            #     '(this warning will not repeat)'
+            # )
+            return dt.replace(tzinfo=timezone.utc)
+
+        return dt
 
     def __eq__(self, other) -> bool:
         """Test equality"""
