@@ -9,6 +9,7 @@ import pytest
 import shapely
 
 from geostructures.coordinates import Coordinate
+from geostructures.multistructures import *
 from geostructures import GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon, GeoRing, MultiGeoPoint
 from geostructures.time import TimeInterval
 from geostructures.collections import Track, FeatureCollection
@@ -256,13 +257,52 @@ def test_collection_from_geojson():
                 'geometry': {'type': 'LineString', 'coordinates': [[0.0, 0.0], [1.0, 1.0]]},
                 'properties': {'datetime_end': '2020-01-02T00:00:00+00:00'},
                 'id': 2
+            },
+            {
+                'type': 'Feature',
+                'geometry': {'type': 'MultiPoint', 'coordinates': [[0.0, 0.0], [1.0, 1.0]]},
+                'properties': {},
+                'id': 3
+            },
+            {
+                'type': 'Feature',
+                'geometry': {
+                    'type': 'MultiLineString',
+                    'coordinates': [
+                        [[0.0, 0.0], [1.0, 1.0]],
+                        [[1.0, 1.0], [2.0, 0.0]]
+                    ]
+                },
+                'properties': {},
+                'id': 3
+            },
+            {
+                'type': 'Feature',
+                'geometry': {
+                    'type': 'MultiPolygon',
+                    'coordinates': [
+                        [[[0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [0.0, 0.0]]],
+                        [[[0.0, 0.0], [1.0, -1.0], [2.0, 0.0], [0.0, 0.0]]],
+                    ]
+                },
+                'properties': {},
+                'id': 3
             }
         ]
     }
     expected_shapes = [
         GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)], dt=datetime(2020, 1, 1)),
         GeoPoint(Coordinate(0.0, 2.0), dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))),
-        GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)], dt=datetime(2020, 1, 2))
+        GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)], dt=datetime(2020, 1, 2)),
+        MultiGeoPoint([GeoPoint(Coordinate(0.0, 0.0)), GeoPoint(Coordinate(1.0, 1.0))]),
+        MultiGeoLineString([
+            GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)]),
+            GeoLineString([Coordinate(1.0, 1.0), Coordinate(2.0, 0.0)]),
+        ]),
+        MultiGeoShape([
+            GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)]),
+            GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, -1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)]),
+        ])
     ]
     expected = FeatureCollection(expected_shapes)
     assert FeatureCollection.from_geojson(gjson) == expected

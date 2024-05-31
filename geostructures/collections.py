@@ -215,6 +215,15 @@ class ShapeCollection:
         import geopandas as gpd
         import pandas as pd
 
+        conv_map = {
+            'Point': GeoPoint,
+            'LineString': GeoLineString,
+            'Polygon': GeoPolygon,
+            'MultiPoint': MultiGeoPoint,
+            'MultiLineString': MultiGeoLineString,
+            'MultiPolygon': MultiGeoShape,
+        }
+
         def _get_dt(rec):
             """Grabs datetime data and returns appropriate struct"""
             dt_start = rec.get(time_start_field)
@@ -236,23 +245,19 @@ class ShapeCollection:
         ]
         shapes: List[BaseShape] = []
         for record in df.to_dict('records'):
+            geom_type = record['geometry'].geom_type
+            if not geom_type in conv_map:
+                raise ValueError
+
             dt = _get_dt(record)
             props = {k: v for k, v in record.items() if k in prop_fields}
-            if record['geometry'].geom_type == 'Point':
-                shapes.append(GeoPoint.from_wkt(record['geometry'].wkt, dt, props))
-                continue
-
-            if record['geometry'].geom_type == 'LineString':
-                shapes.append(
-                    GeoLineString.from_wkt(record['geometry'].wkt, dt, props)
+            shapes.append(
+                conv_map[geom_type].from_wkt(
+                    record['geometry'].wkt,
+                    dt=dt,
+                    properties=props
                 )
-                continue
-
-            if record['geometry'].geom_type == 'Polygon':
-                shapes.append(
-                    GeoPolygon.from_wkt(record['geometry'].wkt, dt, props)
-                )
-                continue
+            )
 
         return cls(shapes)
 
