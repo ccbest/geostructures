@@ -1319,35 +1319,35 @@ class GeoPoint(BaseShape, PointLike):
 
     def __init__(
         self,
-        center: Coordinate,
+        coordinate: Coordinate,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
     ):
         super().__init__(dt=dt, properties=properties)
-        self.center = center
+        self.coordinate = coordinate
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, GeoPoint):
             return False
 
-        return self.center == other.center and self.dt == other.dt
+        return self.coordinate == other.coordinate and self.dt == other.dt
 
     def __hash__(self) -> int:
-        return hash((self.center, self.dt))
+        return hash((self.coordinate, self.dt))
 
     def __repr__(self) -> str:
-        return f'<GeoPoint at {self.center.to_float()}>'
+        return f'<GeoPoint at {self.coordinate.to_float()}>'
 
     @property
     def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         return (
-            (self.center.longitude, self.center.longitude),
-            (self.center.latitude, self.center.latitude)
+            (self.coordinate.longitude, self.coordinate.longitude),
+            (self.coordinate.latitude, self.coordinate.latitude)
         )
 
     @property
     def centroid(self) -> Coordinate:
-        return self.center
+        return self.coordinate
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         return coord == self.centroid
@@ -1366,7 +1366,7 @@ class GeoPoint(BaseShape, PointLike):
 
     def copy(self) -> 'GeoPoint':
         return GeoPoint(
-            self.center,
+            self.coordinate,
             dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self._properties)
         )
@@ -1463,7 +1463,7 @@ class GeoPoint(BaseShape, PointLike):
             'type': 'Feature',
             'geometry': {
                 'type': 'Point',
-                'coordinates': list(self.center.to_float()),
+                'coordinates': list(self.coordinate.to_float()),
             },
             'properties': {
                 **self._properties_json,
@@ -1477,4 +1477,4 @@ class GeoPoint(BaseShape, PointLike):
         return shapely.Point(self.centroid.longitude, self.centroid.latitude)
 
     def to_wkt(self, **_) -> str:
-        return f'POINT({" ".join(self.center.to_str())})'
+        return f'POINT({" ".join(self.coordinate.to_str())})'

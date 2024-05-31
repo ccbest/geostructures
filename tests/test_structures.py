@@ -1458,7 +1458,7 @@ def test_geopoint_to_shapely(geopoint):
 
 
 def test_geopoint_centroid(geopoint):
-    assert geopoint.centroid == geopoint.center
+    assert geopoint.centroid == geopoint.coordinate
 
 
 def test_geopoint_from_wkt():

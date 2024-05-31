@@ -557,7 +557,12 @@ class LineLike(BaseShapeProtocol, ABC):
 
 
 class PointLike(BaseShapeProtocol, ABC):
-    pass
+    """
+    Class for point-like objects (GeoPoints and MultiPoints).
+
+    There are no defining methods of points; this mixin class merely
+    delineates for typing purposes.
+    """
 
 
 ANY_SHAPE_TYPE = Union[LineLike, PointLike, ShapeLike]
