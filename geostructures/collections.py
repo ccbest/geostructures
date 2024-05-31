@@ -16,10 +16,11 @@ from zipfile import ZipFile
 import numpy as np
 
 from geostructures import Coordinate, LOGGER
-from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
 from geostructures._base import BaseShape, LineLike, PointLike, ShapeLike, ANY_SHAPE_TYPE
-from geostructures.time import TimeInterval
+from geostructures._geometry import convex_hull
 from geostructures.calc import haversine_distance_meters
+from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
+from geostructures.time import TimeInterval
 from geostructures.utils.functions import default_to_zulu
 
 
@@ -70,8 +71,6 @@ class ShapeCollection:
     @cached_property
     def convex_hull(self):
         """Creates a convex hull around the pings"""
-        from scipy import spatial  # pylint: disable=import-outside-toplevel
-
         if len(self.geoshapes) <= 2 and all(isinstance(x, GeoPoint) for x in self.geoshapes):
             raise ValueError('Cannot create a convex hull from less than three points.')
 
@@ -81,13 +80,11 @@ class ShapeCollection:
             filter(lambda x: isinstance(x, GeoLineString), self.geoshapes)
         )
         _shapes = filter(lambda x: not isinstance(x, (GeoPoint, GeoLineString)), self.geoshapes)
-
         points = []
-        points += [y.to_float() for x in _shapes for y in x.bounding_coords()]
-        points += [y.to_float() for x in _lines for y in x.vertices]
-        points += [x.centroid.to_float() for x in _points]
-        hull = spatial.ConvexHull(points)
-        return GeoPolygon([Coordinate(*points[x]) for x in [*hull.vertices, hull.vertices[0]]])
+        points += [y for x in _shapes for y in x.bounding_coords()]
+        points += [y for x in _lines for y in x.vertices]
+        points += [x.centroid for x in _points]
+        return GeoPolygon(convex_hull(points))
 
     def filter_by_dt(self: _COL_TYPE, dt: Union[datetime, TimeInterval]) -> _COL_TYPE:
         """

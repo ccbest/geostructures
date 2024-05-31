@@ -1,7 +1,6 @@
 
 from datetime import datetime
 
-import pytest
 import shapely
 
 from geostructures import *
@@ -34,6 +33,20 @@ def test_multigeolinestring_circumscribing_circle():
         ],
     )
     assert mls.circumscribing_circle() == GeoCircle(Coordinate(0.5, 0.5), 78626.18767687456)
+
+
+def test_multigeolinestring_convex_hull():
+    mp = MultiGeoLineString([
+        GeoLineString([Coordinate(0., 1.), Coordinate(1., 0.)]),
+        GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.)]),
+    ])
+    assert mp.convex_hull() == GeoPolygon([
+        Coordinate(0., 0.),
+        Coordinate(1., 0.),
+        Coordinate(1., 1.),
+        Coordinate(0., 1.),
+        Coordinate(0., 0.),
+    ])
 
 
 def test_multigeolinestring_from_geojson():
@@ -151,6 +164,22 @@ def test_multigeopoint_circumscribing_circle():
         GeoPoint(Coordinate(1., 1.))
     ])
     assert mp.circumscribing_circle() == GeoCircle(Coordinate(0.5, 0.5), 78626.18767687456)
+
+
+def test_multigeopoint_convex_hull():
+    mp = MultiGeoPoint([
+        GeoPoint(Coordinate(0., 0.)),
+        GeoPoint(Coordinate(0., 1.)),
+        GeoPoint(Coordinate(1., 1.)),
+        GeoPoint(Coordinate(1., 0.)),
+    ])
+    assert mp.convex_hull() == GeoPolygon([
+        Coordinate(0., 0.),
+        Coordinate(1., 0.),
+        Coordinate(1., 1.),
+        Coordinate(0., 1.),
+        Coordinate(0., 0.),
+    ])
 
 
 def test_multigeopoint_from_geojson():
@@ -304,6 +333,20 @@ def test_multigeoshape_circumscribing_circle():
         ]
     )
     assert mp.circumscribing_circle() == GeoCircle(Coordinate(1., 1.), 157249.38127194397)
+
+
+def test_multigeoshape_convex_hull():
+    mp = MultiGeoShape([
+        GeoBox(Coordinate(0., 1.), Coordinate(0.5, 0.)),
+        GeoBox(Coordinate(0.5, 1.), Coordinate(1., 0.))
+    ])
+    assert mp.convex_hull() == GeoPolygon([
+        Coordinate(0., 0.),
+        Coordinate(1., 0.),
+        Coordinate(1., 1.),
+        Coordinate(0., 1.),
+        Coordinate(0., 0.),
+    ])
 
 
 def test_multigeoshape_edges():

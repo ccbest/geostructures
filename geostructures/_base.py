@@ -2,15 +2,19 @@
 Base class declarations for geostructures
 """
 
-import re
 from abc import abstractmethod, ABC
 from datetime import datetime, timedelta
 from functools import lru_cache, cached_property
-from typing import Callable, Optional, List, Dict, Union, Tuple, cast, Any, TYPE_CHECKING, Protocol, TypeVar
+import re
+from typing import (
+    Any, Callable, Dict, List, Optional, Protocol, Tuple, TYPE_CHECKING,
+    TypeVar, Union, cast
+)
 
 from geostructures.coordinates import Coordinate
-from geostructures.utils.functions import default_to_zulu, sanitize_json
 from geostructures.time import TimeInterval, GEOTIME_TYPE
+from geostructures.utils.functions import default_to_zulu, sanitize_json
+
 
 if TYPE_CHECKING:  # pragma: no cover
     from geostructures import GeoCircle, GeoBox, Coordinate

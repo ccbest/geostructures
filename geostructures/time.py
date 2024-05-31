@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-__all__ = ['TimeInterval']
+__all__ = ['TimeInterval', 'GEOTIME_TYPE']
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
+
+
+GEOTIME_TYPE = Union[datetime, 'TimeInterval']
 
 
 class TimeInterval:
@@ -105,7 +108,3 @@ class TimeInterval:
     def union(self, other: TimeInterval) -> TimeInterval:
         """Returns a TimeInterval that spans both time intervals"""
         return TimeInterval(min(self.start, other.start), max(self.end, other.end))
-
-
-_GEOTIME_TYPE = Union[datetime, TimeInterval]
-GEOTIME_TYPE = Union[datetime, TimeInterval]

@@ -590,13 +590,15 @@ class NiemeyerHasher(HasherBase):
         """
         if isinstance(linestring, MultiShapeBase):
             return {
-                self._hash_linestring(_line)
+                geohash
                 for _line in linestring.geoshapes
+                for geohash in self._hash_linestring(_line)
             }
 
         valid, checked, queue = set(), set(), set()
         start = _coord_to_niemeyer(linestring.vertices[0], self.length, self.base)
         queue.add(start)
+        valid.add(start)
 
         while queue:
             gh = queue.pop()
@@ -742,7 +744,6 @@ class NiemeyerHasher(HasherBase):
             return self._hash_point(shape)
 
         if isinstance(shape, LineLike):
-            print('test')
             return self._hash_linestring(shape)
 
         return self._hash_polygon(cast(ShapeLike, shape))

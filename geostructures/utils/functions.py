@@ -47,7 +47,7 @@ def get_dt_from_geojson_props(
     if dt_start is None and dt_end is None:
         return None
 
-    if not (dt_start and dt_end) or dt_start == dt_end:
+    if not (dt_start and dt_end):
         return dt_start or dt_end
 
     return TimeInterval(dt_start, dt_end)

@@ -234,27 +234,30 @@ def test_niemeyer_hash_shape():
         '3ffffffd', '3ffffffe', '3fffffff', '6aaaaaa8', '6aaaaaaa', '6aaaaaab',
         '95555554', '95555555', '95555557', 'c0000000', 'c0000001', 'c0000002'
     }
+    shape = MultiGeoShape([
+        GeoCircle(Coordinate(0.0001, 0.0001), 5),
+        GeoCircle(Coordinate(1.0001, 1.0001), 5)
+    ])
+    assert hasher.hash_shape(shape) == {'c0000000', 'c000cf3c'}
+
 
     shape = GeoPoint(Coordinate(0.0, 0.0))
     assert hasher.hash_shape(shape) == {'3fffffff'}
-
-    shape = GeoLineString([Coordinate(0.0, 0.0), Coordinate(0.02, 0.03), Coordinate(0.04, 0.0)])
-    assert hasher.hash_shape(shape) == {
-        '3fffffff', '6aaaaaaa', '95555555', '9555557f', 'c0000000', 'c0000001',
-        'c0000003', 'c0000006', 'c0000007', 'c000000c', 'c000000d', 'c0000018',
-        'c000001a', 'c000001b', 'c0000023', 'c0000025', 'c0000026', 'c0000027',
-        'c0000028', 'c0000029', 'c000002a', 'c0000030'
-    }
-    shape = MultiGeoLineString([
-        GeoLineString([Coordinate(0.0, 0.0), Coordinate(0.02, 0.03), Coordinate(0.04, 0.0)]),
-        GeoLineString([Coordinate(0.1, 0.1), Coordinate(0.1001, 0.1001), Coordinate(0.04, 0.0)]),
+    shape = MultiGeoPoint([
+        GeoPoint(Coordinate(0.0, 0.0)),
+        GeoPoint(Coordinate(1.0, 1.0))
     ])
+    assert hasher.hash_shape(shape) == {'3fffffff', 'c000cf3c'}
 
+    shape = GeoLineString([Coordinate(0.0, 0.0), Coordinate(0.001, 0.001)])
+    assert hasher.hash_shape(shape) == {'3fffffff', '6aaaaaaa', '95555555', 'c0000000'}
 
+    shape = MultiGeoLineString([
+        GeoLineString([Coordinate(0.0, 0.0), Coordinate(0.001, 0.001)]),
+        GeoLineString([Coordinate(0.1, 0.1), Coordinate(0.1001, 0.1001)]),
+    ])
+    assert hasher.hash_shape(shape) == {'3fffffff', '6aaaaaaa', '95555555', 'c0000000', 'c000030c'}
 
-    # test that small shapes still produce a single geohash
-    shape = GeoCircle(Coordinate(0.0001, 0.0001), 5)
-    assert hasher.hash_shape(shape) == {'c0000000'}
 
 
 def test_h3_to_geopolygon():

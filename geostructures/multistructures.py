@@ -62,6 +62,11 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
         )
         return GeoCircle(centroid, max_dist, dt=self.dt)
 
+    def convex_hull(self) -> GeoPolygon:
+        return GeoPolygon(
+            convex_hull([coord for shape in self.geoshapes for coord in shape.vertices])
+        )
+
     def copy(self) -> 'MultiGeoLineString':
         return MultiGeoLineString(
             [x.copy() for x in self.geoshapes],
@@ -249,8 +254,6 @@ class MultiGeoPoint(MultiShapeBase, PointLike):
     def convex_hull(self, **_) -> GeoPolygon:
         return GeoPolygon(
             convex_hull([shape.centroid for shape in self.geoshapes]),
-            dt=self.dt,
-            properties=self._properties
         )
 
     def copy(self) -> 'MultiGeoPoint':
@@ -431,6 +434,13 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
             for x in poly.bounding_coords()
         )
         return GeoCircle(centroid, max_dist, dt=self.dt)
+
+    def convex_hull(self, **kwargs) -> GeoPolygon:
+        return GeoPolygon(
+            convex_hull([
+                coord for shape in self.geoshapes for coord in shape.bounding_coords(**kwargs)
+            ])
+        )
 
     def copy(self) -> 'MultiGeoShape':
         return MultiGeoShape(

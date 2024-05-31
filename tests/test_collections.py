@@ -330,21 +330,17 @@ def test_collection_to_geojson():
 def test_collection_convex_hull():
     track = Track(
         [
-            GeoPoint(Coordinate('-2.0', '-2.0'), datetime(2020, 1, 1)),
-            GeoPoint(Coordinate('2.0', '0.0'), datetime(2020, 1, 1, 1)),
-            GeoPoint(Coordinate('3.0', '3.0'), datetime(2020, 1, 1, 2)),
-            GeoPoint(Coordinate('2.0', '6.0'), datetime(2020, 1, 1, 3)),
-            GeoPoint(Coordinate('-2.0', '8.0'), datetime(2020, 1, 1, 4)),
-            GeoPoint(Coordinate('-6.0', '6.0'), datetime(2020, 1, 1, 5)),
-            GeoPoint(Coordinate('-7.0', '3.0'), datetime(2020, 1, 1, 6)),
-            GeoPoint(Coordinate('-6.0', '0.0'), datetime(2020, 1, 1, 6)),
-            GeoPoint(Coordinate('-2.0', '-2.0'), datetime(2020, 1, 1, 7)),
-            GeoPoint(Coordinate('-2.0', '4.0'), datetime(2020, 1, 1, 8)),
+            GeoPoint(Coordinate(0.0, 0.0), datetime(2020, 1, 1)),
+            GeoPoint(Coordinate(1.0, 0.0), datetime(2020, 1, 1, 1)),
+            GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 1, 2)),
+            GeoPoint(Coordinate(0.0, 1.0), datetime(2020, 1, 1, 3)),
         ]
     )
-    points = [x.centroid.to_float() for x in track.geoshapes]
-    hull = ConvexHull(points)
-    assert GeoPolygon([Coordinate(*points[x]) for x in hull.vertices]) == track.convex_hull
+    assert track.convex_hull == GeoPolygon([
+        Coordinate(0., 0.), Coordinate(1., 0.),
+        Coordinate(1., 1.), Coordinate(0., 1.,),
+        Coordinate(0, 0.)
+    ])
 
     # Fewer than 3 points
     new_track = Track([
