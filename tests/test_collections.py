@@ -274,6 +274,20 @@ def test_collection_from_geojson():
         }
         _ = FeatureCollection.from_geojson(gjson)
 
+    with pytest.raises(ValueError):
+        gjson = {
+            'type': 'FeatureCollection',
+            'features': [
+                {
+                    'type': 'Feature',
+                    'geometry': {
+                        'type': 'Test',
+                    }
+                }
+            ]
+        }
+        _ = FeatureCollection.from_geojson(gjson)
+
 
 def test_collection_from_shapely():
     gls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 2.0)])

@@ -19,6 +19,7 @@ from geostructures import Coordinate, LOGGER
 from geostructures._base import BaseShape, LineLike, MultiShapeBase, PointLike, ShapeLike, ANY_SHAPE_TYPE
 from geostructures._geometry import convex_hull
 from geostructures.calc import haversine_distance_meters
+from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoShape
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
 from geostructures.utils.functions import default_to_zulu
@@ -160,40 +161,29 @@ class ShapeCollection:
         if gjson.get('type') != 'FeatureCollection':
             raise ValueError('Malformed GeoJSON; expected FeatureCollection')
 
+        conv_map = {
+            'Point': GeoPoint,
+            'LineString': GeoLineString,
+            'Polygon': GeoPolygon,
+            'MultiPoint': MultiGeoPoint,
+            'MultiLineString': MultiGeoLineString,
+            'MultiPolygon': MultiGeoShape,
+        }
+
         shapes: List[BaseShape] = []
         for feature in gjson.get('features', []):
             geom_type = feature.get('geometry', {}).get('type')
-            if geom_type == 'Point':
-                shapes.append(
-                    GeoPoint.from_geojson(
-                        feature,
-                        time_start_property,
-                        time_end_property,
-                        time_format=time_format
-                    )
-                )
-                continue
+            if geom_type not in conv_map:
+                raise ValueError(f'Unrecognized geometry type: {geom_type}')
 
-            if geom_type == 'LineString':
-                shapes.append(
-                    GeoLineString.from_geojson(
-                        feature,
-                        time_start_property,
-                        time_end_property,
-                        time_format=time_format
-                    )
+            shapes.append(
+                conv_map[geom_type].from_geojson(
+                    feature,
+                    time_start_property,
+                    time_end_property,
+                    time_format=time_format
                 )
-                continue
-
-            if geom_type == 'Polygon':
-                shapes.append(
-                    GeoPolygon.from_geojson(
-                        feature,
-                        time_start_property,
-                        time_end_property,
-                        time_format=time_format
-                    )
-                )
+            )
 
         return cls(shapes)
 
