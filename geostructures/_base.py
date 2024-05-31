@@ -17,7 +17,7 @@ from geostructures.utils.functions import default_to_zulu, sanitize_json
 
 
 if TYPE_CHECKING:  # pragma: no cover
-    from geostructures import GeoCircle, GeoBox, Coordinate
+    from geostructures import GeoCircle, GeoBox
 
 
 # A wkt coordinate, e.g. '-1.0 2.0'

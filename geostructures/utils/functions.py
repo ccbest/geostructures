@@ -72,7 +72,7 @@ def round_half_up(value: float, precision) -> float:
 
 def sanitize_json(obj: Any):
     if isinstance(obj, dict):
-        return {k: sanitize_json(v) for k,v in obj.items()}
+        return {k: sanitize_json(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [sanitize_json(x) for x in obj]
     if isinstance(obj, datetime):
