@@ -16,7 +16,7 @@ from zipfile import ZipFile
 import numpy as np
 
 from geostructures import Coordinate, LOGGER
-from geostructures._base import BaseShape, LineLike, PointLike, ShapeLike, ANY_SHAPE_TYPE
+from geostructures._base import BaseShape, LineLike, MultiShapeBase, PointLike, ShapeLike, ANY_SHAPE_TYPE
 from geostructures._geometry import convex_hull
 from geostructures.calc import haversine_distance_meters
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
@@ -71,20 +71,24 @@ class ShapeCollection:
     @cached_property
     def convex_hull(self):
         """Creates a convex hull around the pings"""
-        if len(self.geoshapes) <= 2 and all(isinstance(x, GeoPoint) for x in self.geoshapes):
-            raise ValueError('Cannot create a convex hull from less than three points.')
+        def _get_vertices(shapes):
+            vertices = []
+            for shape in shapes:
+                if isinstance(shape, MultiShapeBase):
+                    vertices += [
+                        vertex
+                        for _shape in shape.geoshapes
+                        for vertex in _get_vertices([_shape])
+                    ]
+                elif isinstance(shape, PointLike):
+                    vertices.append(shape.centroid)
+                elif isinstance(shape, LineLike):
+                    vertices += shape.vertices
+                elif isinstance(shape, ShapeLike):
+                    vertices += shape.bounding_coords()
+            return vertices
 
-        _points = filter(lambda x: isinstance(x, GeoPoint), self.geoshapes)
-        _lines = cast(
-            List[GeoLineString],
-            filter(lambda x: isinstance(x, GeoLineString), self.geoshapes)
-        )
-        _shapes = filter(lambda x: not isinstance(x, (GeoPoint, GeoLineString)), self.geoshapes)
-        points = []
-        points += [y for x in _shapes for y in x.bounding_coords()]
-        points += [y for x in _lines for y in x.vertices]
-        points += [x.centroid for x in _points]
-        return GeoPolygon(convex_hull(points))
+        return GeoPolygon(convex_hull(_get_vertices(self.geoshapes)))
 
     def filter_by_dt(self: _COL_TYPE, dt: Union[datetime, TimeInterval]) -> _COL_TYPE:
         """

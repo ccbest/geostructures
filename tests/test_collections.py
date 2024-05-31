@@ -9,7 +9,7 @@ import pytest
 import shapely
 
 from geostructures.coordinates import Coordinate
-from geostructures import GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon, GeoRing
+from geostructures import GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon, GeoRing, MultiGeoPoint
 from geostructures.time import TimeInterval
 from geostructures.collections import Track, FeatureCollection
 
@@ -327,12 +327,15 @@ def test_collection_to_geojson():
 
 
 def test_collection_convex_hull():
-    track = Track(
+    track = FeatureCollection(
         [
-            GeoPoint(Coordinate(0.0, 0.0), datetime(2020, 1, 1)),
-            GeoPoint(Coordinate(1.0, 0.0), datetime(2020, 1, 1, 1)),
-            GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 1, 2)),
-            GeoPoint(Coordinate(0.0, 1.0), datetime(2020, 1, 1, 3)),
+            GeoPoint(Coordinate(0.0, 0.0)),
+            GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.)]),
+            GeoBox(Coordinate(0.5, 1.), Coordinate(1., 0.)),
+            MultiGeoPoint([
+                GeoPoint(Coordinate(0., 1.)),
+                GeoPoint(Coordinate(0., 0.5))
+            ]),
         ]
     )
     assert track.convex_hull == GeoPolygon([
@@ -340,14 +343,6 @@ def test_collection_convex_hull():
         Coordinate(1., 1.), Coordinate(0., 1.,),
         Coordinate(0, 0.)
     ])
-
-    # Fewer than 3 points
-    new_track = Track([
-        GeoPoint(Coordinate('-2.0', '-2.0'), datetime(2020, 1, 1)),
-        GeoPoint(Coordinate('-2.0', '-2.0'), datetime(2020, 1, 2))
-    ])
-    with pytest.raises(ValueError):
-        _ = new_track.convex_hull
 
 
 def test_collection_to_from_shapefile(caplog):
