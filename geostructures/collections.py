@@ -246,8 +246,9 @@ class ShapeCollection:
         shapes: List[BaseShape] = []
         for record in df.to_dict('records'):
             geom_type = record['geometry'].geom_type
-            if not geom_type in conv_map:
-                raise ValueError
+            if geom_type not in conv_map:  # pragma: no cover
+                # ignored coverage because can't falsify geometry type
+                raise ValueError(f'Unrecognized geometry type: {geom_type}')
 
             dt = _get_dt(record)
             props = {k: v for k, v in record.items() if k in prop_fields}
@@ -353,20 +354,25 @@ class ShapeCollection:
         Returns:
             FeatureCollection
         """
-        from shapely.geometry import LineString, Point, Polygon
+        conv_map = {
+            'Point': GeoPoint,
+            'LineString': GeoLineString,
+            'Polygon': GeoPolygon,
+            'MultiPoint': MultiGeoPoint,
+            'MultiLineString': MultiGeoLineString,
+            'MultiPolygon': MultiGeoShape,
+        }
 
         shapes = []
         for shape in geometry_collection.geoms:
-            if isinstance(shape, Point):
-                shapes.append(GeoPoint.from_shapely(shape))
-                continue
+            geom_type = shape.geom_type
+            if geom_type not in conv_map:  # pragma: no cover
+                # ignored coverage because can't falsify geometry type
+                raise ValueError(f'Unrecognized geometry type: {geom_type}')
 
-            if isinstance(shape, Polygon):
-                shapes.append(GeoPolygon.from_shapely(shape))
-                continue
-
-            if isinstance(shape, LineString):
-                shapes.append(GeoLineString.from_shapely(shape))
+            shapes.append(
+                conv_map[geom_type].from_shapely(shape)
+            )
 
         return FeatureCollection(shapes)
 
