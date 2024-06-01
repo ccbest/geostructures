@@ -120,8 +120,9 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
                 Optional additional properties to associate to the shape
 
         Returns:
-            GeoPolygon
+            MultiGeoLineString
         """
+        properties = properties or {}
         if hasattr(shape, 'z'):
             properties['Z'] = shape.z
             warn_once(
@@ -337,7 +338,7 @@ class MultiGeoPoint(MultiShapeBase, PointLike):
 
         Args:
             shape:
-                A polygon from the pyshp library
+                A multipoint from the pyshp library
 
             dt:
                 Optional time bounds (presented as a datetime or geostructures.TimeInterval)
@@ -346,8 +347,9 @@ class MultiGeoPoint(MultiShapeBase, PointLike):
                 Optional additional properties to associate to the shape
 
         Returns:
-            GeoPolygon
+            MultiGeoPoint
         """
+        properties = properties or {}
         if hasattr(shape, 'z'):
             properties['Z'] = shape.z
             warn_once(
@@ -601,7 +603,7 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
 
         Args:
             shape:
-                A multipolygon from the pyshp library
+                A polygon from the pyshp library that contains multiple polygons
 
             dt:
                 Optional time bounds (presented as a datetime or geostructures.TimeInterval)
@@ -612,6 +614,7 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
         Returns:
             MultiGeoShape
         """
+        properties = properties or {}
         if hasattr(shape, 'z'):
             properties['Z'] = shape.z
             warn_once(

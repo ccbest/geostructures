@@ -23,7 +23,6 @@ from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, Mul
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
 from geostructures.utils.functions import default_to_zulu
-from geostructures.utils.logging import warn_once
 
 
 _COL_TYPE = TypeVar('_COL_TYPE', bound='ShapeCollection')
@@ -331,7 +330,7 @@ class ShapeCollection:
                 props = {k: v for k, v in props.items() if k not in (time_start_field, time_end_field)}
 
                 shapes.append(
-                    geostructs_type.from_pyshp(shape, dt=dt, properties=props)
+                    geostructs_type.from_pyshp(shape, dt=dt, properties=props)  # type: ignore
                 )
 
         return cls(shapes)
@@ -484,7 +483,11 @@ class ShapeCollection:
                 shapes.append(cast(ShapeLike, shape))
 
         with tempfile.TemporaryDirectory() as tempdir:
-            for shapetype, shape_group in (('points', points), ('multipoints', multipoints), ('lines', lines), ('shapes', shapes)):
+            for shapetype, shape_group in (
+                ('points', points), ('multipoints', multipoints),
+                ('lines', lines), ('shapes', shapes)
+            ):
+                shape_group = cast(List[BaseShape], shape_group)
                 if not shape_group:
                     continue
 
@@ -526,7 +529,7 @@ class ShapeCollection:
                     # Write out properties
                     props = shape.properties
                     writer.record(*[_convert_dt(props.get(k)) for k in typemap], idx)
-                    shape.to_pyshp(writer)
+                    shape.to_pyshp(writer)  # type: ignore
 
                 writer.close()
                 zip_file.write(writer.shx.name, writer.shx.name.split(os.sep)[-1])

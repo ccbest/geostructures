@@ -469,6 +469,7 @@ class GeoPolygon(ShapeBase):
         Returns:
             GeoPolygon
         """
+        properties = properties or {}
         if hasattr(shape, 'z'):
             properties['Z'] = shape.z
             warn_once(
@@ -1280,6 +1281,7 @@ class GeoLineString(BaseShape, LineLike):
         Returns:
             GeoLineString
         """
+        properties = properties or {}
         if hasattr(shape, 'z'):
             properties['Z'] = shape.z
             warn_once(
@@ -1535,6 +1537,7 @@ class GeoPoint(BaseShape, PointLike):
         Returns:
             GeoPoint
         """
+        properties = properties or {}
         if hasattr(shape, 'z'):
             properties['Z'] = shape.z
             warn_once(
