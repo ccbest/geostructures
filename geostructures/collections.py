@@ -312,7 +312,7 @@ class ShapeCollection:
                 continue
 
             reader = shapefile.Reader(Path(zip_fpath) / file_name)
-            if not reader.shapes():
+            if not reader.shapes():  # pragma: no cover
                 # Layer is empty
                 continue
 

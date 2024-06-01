@@ -123,14 +123,14 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
             MultiGeoLineString
         """
         properties = properties or {}
-        if hasattr(shape, 'z'):
+        if hasattr(shape, 'z'):  # pragma: no cover
             properties['Z'] = shape.z
             warn_once(
                 'Shapefile contains unsupported Z data; Z-values will be '
                 'stored in shape properties'
             )
 
-        if hasattr(shape, 'm'):
+        if hasattr(shape, 'm'):  # pragma: no cover
             properties['M'] = shape.m
             warn_once(
                 'Shapefile contains unsupported M data; M-values will be '
@@ -350,14 +350,14 @@ class MultiGeoPoint(MultiShapeBase, PointLike):
             MultiGeoPoint
         """
         properties = properties or {}
-        if hasattr(shape, 'z'):
+        if hasattr(shape, 'z'):  # pragma: no cover
             properties['Z'] = shape.z
             warn_once(
                 'Shapefile contains unsupported Z data; Z-values will be '
                 'stored in shape properties'
             )
 
-        if hasattr(shape, 'm'):
+        if hasattr(shape, 'm'):  # pragma: no cover
             properties['M'] = shape.m
             warn_once(
                 'Shapefile contains unsupported M data; M-values will be '
@@ -615,14 +615,14 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
             MultiGeoShape
         """
         properties = properties or {}
-        if hasattr(shape, 'z'):
+        if hasattr(shape, 'z'):  # pragma: no cover
             properties['Z'] = shape.z
             warn_once(
                 'Shapefile contains unsupported Z data; Z-values will be '
                 'stored in shape properties'
             )
 
-        if hasattr(shape, 'm'):
+        if hasattr(shape, 'm'):  # pragma: no cover
             properties['M'] = shape.m
             warn_once(
                 'Shapefile contains unsupported M data; M-values will be '

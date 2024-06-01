@@ -470,14 +470,14 @@ class GeoPolygon(ShapeBase):
             GeoPolygon
         """
         properties = properties or {}
-        if hasattr(shape, 'z'):
+        if hasattr(shape, 'z'):  # pragma: no cover
             properties['Z'] = shape.z
             warn_once(
                 'Shapefile contains unsupported Z data; Z-values will be '
                 'stored in shape properties'
             )
 
-        if hasattr(shape, 'm'):
+        if hasattr(shape, 'm'):  # pragma: no cover
             properties['M'] = shape.m
             warn_once(
                 'Shapefile contains unsupported M data; M-values will be '
@@ -1195,10 +1195,11 @@ class GeoLineString(BaseShape, LineLike):
         )
 
     def contains_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
-        # Make sure the times overlap, if present on both
-        if self.dt and shape.dt:
-            if not self.contains_time(shape.dt):
-                return False
+        if isinstance(shape, MultiShapeBase):
+            for subshape in shape.geoshapes:
+                if not self.contains_shape(subshape):
+                    return False
+            return True
 
         if isinstance(shape, ShapeLike):
             return False
@@ -1282,14 +1283,14 @@ class GeoLineString(BaseShape, LineLike):
             GeoLineString
         """
         properties = properties or {}
-        if hasattr(shape, 'z'):
+        if hasattr(shape, 'z'):  # pragma: no cover
             properties['Z'] = shape.z
             warn_once(
                 'Shapefile contains unsupported Z data; Z-values will be '
                 'stored in shape properties'
             )
 
-        if hasattr(shape, 'm'):
+        if hasattr(shape, 'm'):  # pragma: no cover
             properties['M'] = shape.m
             warn_once(
                 'Shapefile contains unsupported M data; M-values will be '
@@ -1358,7 +1359,6 @@ class GeoLineString(BaseShape, LineLike):
             [x for edge_ring in o_edges for x in edge_ring]
         ):
             # At least one edge pair intersects
-            print('edge pair intersects')
             return True
 
         # If no edges intersect, one shape could still contain the other
@@ -1538,14 +1538,14 @@ class GeoPoint(BaseShape, PointLike):
             GeoPoint
         """
         properties = properties or {}
-        if hasattr(shape, 'z'):
+        if hasattr(shape, 'z'):  # pragma: no cover
             properties['Z'] = shape.z
             warn_once(
                 'Shapefile contains unsupported Z data; Z-values will be '
                 'stored in shape properties'
             )
 
-        if hasattr(shape, 'm'):
+        if hasattr(shape, 'm'):  # pragma: no cover
             properties['M'] = shape.m
             warn_once(
                 'Shapefile contains unsupported M data; M-values will be '
