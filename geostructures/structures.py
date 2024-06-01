@@ -166,6 +166,15 @@ class ShapeBase(BaseShape, ShapeLike, ABC):
             **kwargs
         }
 
+    def to_pyshp(self, writer):
+        return writer.poly(
+            [
+                # ESRI defines right hand rule as opposite of GeoJSON
+                [list(coord.to_float()) for coord in ring[::-1]]
+                for ring in self.linear_rings()
+            ]
+        )
+
     def _to_shapely(self):
         """
         Converts the geoshape into a Shapely shape.
@@ -441,6 +450,48 @@ class GeoPolygon(ShapeBase):
         )
 
         return GeoPolygon(rings[0], holes=holes, dt=dt, properties=properties)
+
+    @classmethod
+    def from_pyshp(cls, shape, dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+        """
+        Create a GeoPolygon from a pyshyp polygon.
+
+        Args:
+            shape:
+                A polygon from the pyshp library
+
+            dt:
+                Optional time bounds (presented as a datetime or geostructures.TimeInterval)
+
+            properties:
+                Optional additional properties to associate to the shape
+
+        Returns:
+            GeoPolygon
+        """
+        if hasattr(shape, 'z'):
+            properties['Z'] = shape.z
+            warn_once(
+                'Shapefile contains unsupported Z data; Z-values will be '
+                'stored in shape properties'
+            )
+
+        if hasattr(shape, 'm'):
+            properties['M'] = shape.m
+            warn_once(
+                'Shapefile contains unsupported M data; M-values will be '
+                'stored in shape properties'
+            )
+
+        gp = GeoPolygon.from_geojson(
+            {
+                'type': 'Feature',
+                'geometry': shape.__geo_interface__,
+                'properties': properties
+            }
+        )
+        gp.set_dt(dt)
+        return gp
 
     @classmethod
     def from_shapely(
@@ -1212,6 +1263,48 @@ class GeoLineString(BaseShape, LineLike):
         return GeoLineString(coords, dt=dt, properties=properties)
 
     @classmethod
+    def from_pyshp(cls, shape, dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+        """
+        Create a GeoLineString from a pyshyp linestring.
+
+        Args:
+            shape:
+                A linestring from the pyshp library
+
+            dt:
+                Optional time bounds (presented as a datetime or geostructures.TimeInterval)
+
+            properties:
+                Optional additional properties to associate to the shape
+
+        Returns:
+            GeoLineString
+        """
+        if hasattr(shape, 'z'):
+            properties['Z'] = shape.z
+            warn_once(
+                'Shapefile contains unsupported Z data; Z-values will be '
+                'stored in shape properties'
+            )
+
+        if hasattr(shape, 'm'):
+            properties['M'] = shape.m
+            warn_once(
+                'Shapefile contains unsupported M data; M-values will be '
+                'stored in shape properties'
+            )
+
+        gls = GeoLineString.from_geojson(
+            {
+                'type': 'Feature',
+                'geometry': shape.__geo_interface__,
+                'properties': properties
+            }
+        )
+        gls.set_dt(dt)
+        return gls
+
+    @classmethod
     def from_shapely(cls, linestring) -> 'GeoLineString':
         """
         Creates a GeoLinestring from a shapely Linestring
@@ -1296,6 +1389,9 @@ class GeoLineString(BaseShape, LineLike):
             properties=copy.deepcopy(self._properties),
             dt=self.dt
         )
+
+    def to_pyshp(self, writer):
+        return writer.line([[list(x.to_float()) for x in self.vertices]])
 
     def _to_shapely(self):
         import shapely
@@ -1422,6 +1518,48 @@ class GeoPoint(BaseShape, PointLike):
         return GeoPoint(coord, dt=dt, properties=properties)
 
     @classmethod
+    def from_pyshp(cls, shape, dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+        """
+        Create a GeoPoint from a pyshyp point.
+
+        Args:
+            shape:
+                A point from the pyshp library
+
+            dt:
+                Optional time bounds (presented as a datetime or geostructures.TimeInterval)
+
+            properties:
+                Optional additional properties to associate to the shape
+
+        Returns:
+            GeoPoint
+        """
+        if hasattr(shape, 'z'):
+            properties['Z'] = shape.z
+            warn_once(
+                'Shapefile contains unsupported Z data; Z-values will be '
+                'stored in shape properties'
+            )
+
+        if hasattr(shape, 'm'):
+            properties['M'] = shape.m
+            warn_once(
+                'Shapefile contains unsupported M data; M-values will be '
+                'stored in shape properties'
+            )
+
+        gp = GeoPoint.from_geojson(
+            {
+                'type': 'Feature',
+                'geometry': shape.__geo_interface__,
+                'properties': properties
+            }
+        )
+        gp.set_dt(dt)
+        return gp
+
+    @classmethod
     def from_shapely(cls, point) -> 'GeoPoint':
         """
         Creates a GeoPoint from a shapely Point
@@ -1471,6 +1609,9 @@ class GeoPoint(BaseShape, PointLike):
             },
             **kwargs
         }
+
+    def to_pyshp(self, writer):
+        return writer.point(*self.centroid.to_float())
 
     def _to_shapely(self):
         import shapely

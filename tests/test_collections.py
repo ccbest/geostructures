@@ -411,13 +411,29 @@ def test_collection_to_from_shapefile(caplog):
         GeoCircle(
             Coordinate(0.0, 2.0),
             1000,
-            properties={'ID': 1},
+            properties={'ID': 2},
             holes=[GeoCircle(Coordinate(0.0, 2.0), 500)]
         ).to_polygon(),
         GeoLineString([Coordinate(0.0, 1.0), Coordinate(1.0, 0.0)], properties={'ID': 0}),
         GeoLineString([Coordinate(0.0, 2.0), Coordinate(2.0, 0.0)], properties={'ID': 1}),
         GeoPoint(Coordinate(1.0, 0.0), properties={'ID': 0}),
         GeoPoint(Coordinate(2.0, 0.0), properties={'ID': 1}),
+        MultiGeoPoint([GeoPoint(Coordinate(-1., 1.)), GeoPoint(Coordinate(-2, 1.))], properties={'ID': 0}),
+        MultiGeoLineString([
+            GeoLineString([Coordinate(0., 1.), Coordinate(1., 0.)]),
+            GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.)]),
+        ], properties={'ID': 2}),
+        MultiGeoShape(
+            [
+                GeoBox(
+                    Coordinate(0., 1.),
+                    Coordinate(1., 0.),
+                    holes=[GeoBox(Coordinate(0.25, 0.75), Coordinate(0.75, 0.25))]
+                ).to_polygon(),
+                GeoBox(Coordinate(1., 2.), Coordinate(2., 1.)).to_polygon(),
+            ],
+            properties={'ID': 2}
+        )
     ])
 
     with tempfile.TemporaryDirectory() as f:

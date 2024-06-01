@@ -21,6 +21,7 @@ from geostructures.calc import haversine_distance_meters
 from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, ShapeBase
 from geostructures.utils.functions import get_dt_from_geojson_props
+from geostructures.utils.logging import warn_once
 
 
 class MultiGeoLineString(MultiShapeBase, LineLike):
@@ -104,6 +105,48 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
         )
 
     @classmethod
+    def from_pyshp(cls, shape, dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+        """
+        Create a MultiGeoLineString from a pyshyp polyline.
+
+        Args:
+            shape:
+                A polygon from the pyshp library
+
+            dt:
+                Optional time bounds (presented as a datetime or geostructures.TimeInterval)
+
+            properties:
+                Optional additional properties to associate to the shape
+
+        Returns:
+            GeoPolygon
+        """
+        if hasattr(shape, 'z'):
+            properties['Z'] = shape.z
+            warn_once(
+                'Shapefile contains unsupported Z data; Z-values will be '
+                'stored in shape properties'
+            )
+
+        if hasattr(shape, 'm'):
+            properties['M'] = shape.m
+            warn_once(
+                'Shapefile contains unsupported M data; M-values will be '
+                'stored in shape properties'
+            )
+
+        mgls = MultiGeoLineString.from_geojson(
+            {
+                'type': 'Feature',
+                'geometry': shape.__geo_interface__,
+                'properties': properties
+            }
+        )
+        mgls.set_dt(dt)
+        return mgls
+
+    @classmethod
     def from_shapely(
         cls,
         shape
@@ -180,6 +223,11 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
             },
             **kwargs
         }
+
+    def to_pyshp(self, writer):
+        return writer.line(
+            [[list(vertex.to_float()) for vertex in shape.vertices] for shape in self.geoshapes]
+        )
 
     def _to_shapely(self, **kwargs):
         """
@@ -283,6 +331,48 @@ class MultiGeoPoint(MultiShapeBase, PointLike):
         )
 
     @classmethod
+    def from_pyshp(cls, shape, dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+        """
+        Create a MultiGeoPoint from a pyshyp multipoint.
+
+        Args:
+            shape:
+                A polygon from the pyshp library
+
+            dt:
+                Optional time bounds (presented as a datetime or geostructures.TimeInterval)
+
+            properties:
+                Optional additional properties to associate to the shape
+
+        Returns:
+            GeoPolygon
+        """
+        if hasattr(shape, 'z'):
+            properties['Z'] = shape.z
+            warn_once(
+                'Shapefile contains unsupported Z data; Z-values will be '
+                'stored in shape properties'
+            )
+
+        if hasattr(shape, 'm'):
+            properties['M'] = shape.m
+            warn_once(
+                'Shapefile contains unsupported M data; M-values will be '
+                'stored in shape properties'
+            )
+
+        mgp = MultiGeoPoint.from_geojson(
+            {
+                'type': 'Feature',
+                'geometry': shape.__geo_interface__,
+                'properties': properties
+            }
+        )
+        mgp.set_dt(dt)
+        return mgp
+
+    @classmethod
     def from_shapely(
         cls,
         multipoint
@@ -356,6 +446,9 @@ class MultiGeoPoint(MultiShapeBase, PointLike):
             },
             **kwargs
         }
+
+    def to_pyshp(self, writer):
+        return writer.multipoint([x.centroid.to_float() for x in self.geoshapes])
 
     def _to_shapely(self, **kwargs):
         """
@@ -502,6 +595,48 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
         )
 
     @classmethod
+    def from_pyshp(cls, shape, dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+        """
+        Create a MultiGeoShape from a pyshyp multipolygon.
+
+        Args:
+            shape:
+                A multipolygon from the pyshp library
+
+            dt:
+                Optional time bounds (presented as a datetime or geostructures.TimeInterval)
+
+            properties:
+                Optional additional properties to associate to the shape
+
+        Returns:
+            MultiGeoShape
+        """
+        if hasattr(shape, 'z'):
+            properties['Z'] = shape.z
+            warn_once(
+                'Shapefile contains unsupported Z data; Z-values will be '
+                'stored in shape properties'
+            )
+
+        if hasattr(shape, 'm'):
+            properties['M'] = shape.m
+            warn_once(
+                'Shapefile contains unsupported M data; M-values will be '
+                'stored in shape properties'
+            )
+
+        mgp = MultiGeoShape.from_geojson(
+            {
+                'type': 'Feature',
+                'geometry': shape.__geo_interface__,
+                'properties': properties
+            }
+        )
+        mgp.set_dt(dt)
+        return mgp
+
+    @classmethod
     def from_shapely(
         cls,
         multipolygon
@@ -609,6 +744,16 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
             },
             **kwargs
         }
+
+    def to_pyshp(self, writer):
+        return writer.poly(
+            [
+                # ESRI defines right hand rule as opposite of GeoJSON
+                [list(coord.to_float()) for coord in ring[::-1]]
+                for shape in self.geoshapes
+                for ring in shape.linear_rings()
+            ]
+        )
 
     def _to_shapely(self, **kwargs):
         """
