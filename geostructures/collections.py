@@ -268,6 +268,7 @@ class ShapeCollection:
         zip_fpath: Union[str, Path],
         time_start_field: str = 'datetime_s',
         time_end_field: str = 'datetime_e',
+        read_layers: Optional[List[str]] = None
     ):
         import shapefile
 
@@ -290,55 +291,47 @@ class ShapeCollection:
 
             return TimeInterval(dt_start, dt_end)
 
-        def _create_point(shape, dt, props):
-            return GeoPoint(Coordinate(*shape.points[0]), dt=dt, properties=props)
-
-        def _create_polygon(shape, dt, props):
-            """
-            Create a polygon out of a pyshyp polygon. Note that "points" are continuous across
-            the bounding vertices and holes, so if multiple "parts" are present we need to segment
-            the list of points. "parts" will only provide the indices for segmentation.
-            """
-            parts = list(shape.parts)
-            if parts == [0]:
-                return GeoPolygon([Coordinate(*x) for x in shape.points], dt=dt, properties=props)
-
-            rings = [
-                [Coordinate(*x) for x in shape.points[start: stop if stop > 0 else None]]
-                for start, stop in zip(shape.parts, [*shape.parts[1:], -1])
-            ]
-            holes = [GeoPolygon(x[::-1]) for x in rings[1:]]
-            return GeoPolygon(rings[0], holes=holes, dt=dt, properties=props)
-
-        def _create_linestring(shape, dt, props):
-            return GeoLineString([Coordinate(*x) for x in shape.points], dt=dt, properties=props)
+        conv_map = {
+            'Point': GeoPoint,
+            'LineString': GeoLineString,
+            'Polygon': GeoPolygon,
+            'MultiPoint': MultiGeoPoint,
+            'MultiLineString': MultiGeoLineString,
+            'MultiPolygon': MultiGeoShape,
+        }
 
         shapes = []
         with ZipFile(zip_fpath, 'r') as z:
             files_in_zip = z.namelist()
 
         for file_name in files_in_zip:
+            if read_layers and file_name.split('.')[0] not in read_layers:
+                continue
+
             if not file_name.endswith('.shp'):
                 continue
 
             reader = shapefile.Reader(Path(zip_fpath) / file_name)
-
-            type_map = {
-                'POLYLINE': _create_linestring,
-                'POINT': _create_point,
-                'POLYGON': _create_polygon,
-            }
-            shape_fn = type_map.get(reader.shapeTypeName)
-            if not shape_fn:  # pragma: no cover
-                raise ValueError(
-                    f'Shapefile contains unsupported shape type: {reader.shapeTypeName}'
-                )
+            if not reader.shapes():  # pragma: no cover
+                # Layer is empty
+                continue
 
             for shape, record in zip(reader.shapes(), reader.records()):
+                arc_type = shape.__geo_interface__.get('type')
+                if arc_type not in conv_map:  # pragma: no cover
+                    raise ValueError(
+                        f'Shapefile contains unsupported shape type: {reader.shapeTypeName}'
+                    )
+
+                geostructs_type = conv_map[arc_type]
+
                 props = record.as_dict()
                 dt = _get_dt(props)
                 props = {k: v for k, v in props.items() if k not in (time_start_field, time_end_field)}
-                shapes.append(shape_fn(shape, dt=dt, props=props))
+
+                shapes.append(
+                    geostructs_type.from_pyshp(shape, dt=dt, properties=props)  # type: ignore
+                )
 
         return cls(shapes)
 
@@ -472,21 +465,29 @@ class ShapeCollection:
                 return val.isoformat()
             return val
 
-        points: List[BaseShape] = []
-        lines: List[BaseShape] = []
-        shapes: List[BaseShape] = []
+        points: List[GeoPoint] = []
+        multipoints: List[MultiGeoPoint] = []
+        lines: List[LineLike] = []
+        shapes: List[ShapeLike] = []
         for shape in self.geoshapes:
             if isinstance(shape, GeoPoint):
                 points.append(shape)
 
-            elif isinstance(shape, GeoLineString):
+            elif isinstance(shape, MultiGeoPoint):
+                multipoints.append(shape)
+
+            elif isinstance(shape, LineLike):
                 lines.append(shape)
 
             else:
-                shapes.append(shape)
+                shapes.append(cast(ShapeLike, shape))
 
         with tempfile.TemporaryDirectory() as tempdir:
-            for shapetype, shape_group in (('points', points), ('lines', lines), ('shapes', shapes)):
+            for shapetype, shape_group in (
+                ('points', points), ('multipoints', multipoints),
+                ('lines', lines), ('shapes', shapes)
+            ):
+                shape_group = cast(List[BaseShape], shape_group)
                 if not shape_group:
                     continue
 
@@ -528,20 +529,7 @@ class ShapeCollection:
                     # Write out properties
                     props = shape.properties
                     writer.record(*[_convert_dt(props.get(k)) for k in typemap], idx)
-
-                    if isinstance(shape, PointLike):
-                        writer.point(*shape.centroid.to_float())
-
-                    elif isinstance(shape, LineLike):
-                        writer.line([[list(x.to_float()) for x in shape.vertices]])
-
-                    else:
-                        writer.poly(
-                            [
-                                [list(coord.to_float()) for coord in ring]
-                                for ring in cast(ShapeLike, shape).linear_rings()
-                            ]
-                        )
+                    shape.to_pyshp(writer)  # type: ignore
 
                 writer.close()
                 zip_file.write(writer.shx.name, writer.shx.name.split(os.sep)[-1])

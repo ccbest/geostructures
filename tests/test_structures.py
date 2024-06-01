@@ -1210,6 +1210,9 @@ def test_geolinestring_contains():
     point2 = GeoPoint(Coordinate(1., 0.))
     assert not ls.contains(point2)
 
+    assert ls.contains_shape(MultiGeoPoint([GeoPoint(Coordinate(0., 0.))]))
+    assert not ls.contains_shape(MultiGeoPoint([GeoPoint(Coordinate(5., 0.))]))
+
 
 def test_geolinestring_copy():
     linestring = GeoLineString([Coordinate(0., 1.), Coordinate(0., 1.)])
@@ -1257,6 +1260,15 @@ def test_geolinestring_intersects_shape():
     ls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)])
     circle = GeoCircle(Coordinate(0.0, 0.0), 5_000)
     assert ls.intersects_shape(circle)
+
+    ls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)])
+    assert ls.intersects_shape(ls)
+
+    # Contains point
+    assert ls.intersects_shape(GeoPoint(Coordinate(0., 0.)))
+
+    assert ls.intersects_shape(MultiGeoPoint([GeoPoint(Coordinate(0., 0.))]))
+    assert not ls.intersects_shape(MultiGeoPoint([GeoPoint(Coordinate(5., 0.))]))
 
 
 def test_geolinestring_to_geojson(geolinestring):
@@ -1390,6 +1402,13 @@ def test_geopoint_contains():
 def test_geopoint_contains_coordinate():
     assert GeoPoint(Coordinate(0., 0.)).contains_coordinate(Coordinate(0., 0.))
     assert not GeoPoint(Coordinate(0., 0.)).contains_coordinate(Coordinate(1., 0.))
+
+
+def test_geopoint_contains_shape():
+    assert GeoPoint(Coordinate(0., 0.)).contains_shape(GeoPoint(Coordinate(0., 0.)))
+    assert GeoPoint(Coordinate(0., 0.)).contains_shape(MultiGeoPoint([GeoPoint(Coordinate(0., 0.))]))
+    assert not GeoPoint(Coordinate(0., 0.)).contains_shape(GeoCircle(Coordinate(0., 0.), 10))
+    assert not GeoPoint(Coordinate(0., 0.)).contains_shape(MultiGeoPoint([GeoPoint(Coordinate(1., 0.))]))
 
 
 def test_geopoint_from_geojson():

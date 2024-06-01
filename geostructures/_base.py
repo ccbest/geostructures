@@ -279,6 +279,28 @@ class BaseShapeProtocol(Protocol):
 
         return self.dt.intersects(dt)
 
+    def set_dt(self, dt: Union[datetime, TimeInterval, None]) -> 'BaseShapeProtocol':
+        """
+        Sets time bounds on this geoshape
+
+        Args:
+            dt:
+
+        Returns:
+
+        """
+        if dt is None or isinstance(dt, TimeInterval):
+            self.dt = dt
+            return self
+
+        if isinstance(dt, datetime):
+            # Convert to a zero-second time interval
+            dt = default_to_zulu(dt)
+            self.dt: Optional[TimeInterval] = TimeInterval(dt, dt)
+            return self
+
+        raise ValueError(f'Unexpected dt value {dt}')
+
     def set_property(self, key: str, value: Any):
         """
         Sets the value of a property on this geoshape.
