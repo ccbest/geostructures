@@ -40,7 +40,8 @@ def test_rotate_coordinates():
         Coordinate('1.000', '0.000'),
         Coordinate('1.0', '0.000'),
     ]
-    assert rotate_coordinates(points, Coordinate(0.0, 0.0), 45, precision=3) == [
+    result = rotate_coordinates(points, Coordinate(0.0, 0.0), 45)
+    assert [Coordinate(round_half_up(x.longitude, 3), round_half_up(x.latitude, 3)) for x in result] == [
         Coordinate(0.707, 0.707),
         Coordinate(0.707, 0.707),
         Coordinate(0.707, 0.707),
@@ -51,7 +52,8 @@ def test_rotate_coordinates():
         Coordinate(-179, 0.),
         Coordinate(179, 0.)
     ]
-    assert rotate_coordinates(points, Coordinate(179.999, 0.), 135) == [
+    result = rotate_coordinates(points, Coordinate(179.999, 0.), 135)
+    assert [Coordinate(round_half_up(x.longitude, 7), round_half_up(x.latitude, 7)) for x in result] == [
         Coordinate(179.2911861, 0.7078139),
         Coordinate(-179.2946003, -0.7063997)
     ]
