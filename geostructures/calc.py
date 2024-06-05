@@ -145,7 +145,6 @@ def rotate_coordinates(
         coords: List[Coordinate],
         origin: Coordinate,
         degrees: float,
-        precision: int = 7,
 ) -> List[Coordinate]:
     """
     Rotate a set of coordinates around an origin. Returned Coordinate precision will be
@@ -161,9 +160,6 @@ def rotate_coordinates(
         degrees:
             The degrees of rotation to be applied
 
-        precision: (Default 7)
-            The decimal precision to round results to
-
     Returns:
         List[Coordinate]
     """
@@ -176,9 +172,6 @@ def rotate_coordinates(
     o = np.atleast_2d(origin.to_float())
     p = np.atleast_2d([x.to_float() for x in coords])
     return [
-        Coordinate(
-            round_half_up(coord[0], precision),
-            round_half_up(coord[1], precision)
-        )
+        Coordinate(*coord)
         for coord in (R @ (p.T - o.T) + o.T).T
     ]
