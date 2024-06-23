@@ -645,3 +645,11 @@ class MultiShapeBase(BaseShape, ABC):
             return False
 
         return False
+
+    def split(self) -> List[BaseShape]:
+        shapes = [shape.copy() for shape in self.geoshapes]
+        for shape in shapes:
+            shape._properties = self._properties.copy()
+            shape.dt = self.dt
+
+        return shapes
