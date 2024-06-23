@@ -306,3 +306,35 @@ def test_multigeobase_intersects_shape():
     )
 
     assert mls.intersects_shape(GeoLineString([Coordinate(0., 0.5), Coordinate(1.0, 0.5)]))
+
+
+def test_multigeobase_split():
+    mps = MultiGeoPoint(
+        [
+            GeoPoint(Coordinate(0., 0.)),
+            GeoPoint(Coordinate(1., 1.)),
+        ],
+        dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2)),
+        properties={
+            'test': 'prop'
+        }
+    )
+    actual = mps.split()
+    assert actual == [
+        GeoPoint(
+            Coordinate(0., 0.),
+            dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2)),
+            properties={
+                'test': 'prop'
+            }
+        ),
+        GeoPoint(
+            Coordinate(1., 1.),
+            dt=TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2)),
+            properties={
+                'test': 'prop'
+            }
+        ),
+    ]
+    actual[0].set_property('test', 'diff')
+    assert actual[0].properties['test'] != mps.properties['test']
