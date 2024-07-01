@@ -27,7 +27,7 @@ def convert_to_meters(distance, unit):
         return distance * conversion_factors[unit]
     else:
         raise ValueError(f"Unsupported unit: {unit}")
-    
+
 
 def convert_to_mps(speed, unit):
     """
@@ -50,6 +50,5 @@ def convert_to_mps(speed, unit):
     if unit in conversion_factors:
         return speed * conversion_factors[unit]
     else:
-        raise ValueError(f"Unsupported unit: {unit}")
-    
+        raise ValueError(f"Unsupported unit: {unit}")  
 
