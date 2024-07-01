@@ -29,7 +29,6 @@ def convert_to_meters(distance: float, unit: str):
         return distance * conversion_factors[unit]
 
 
-
 def convert_to_mps(speed: float, unit: str):
     """
     Converts speed from different units to meters per second (m/s).
@@ -51,4 +50,3 @@ def convert_to_mps(speed: float, unit: str):
 
     if unit in conversion_factors:
         return speed * conversion_factors[unit]
-
