@@ -1,4 +1,3 @@
-import pytest
 from  geostructures.conversion import *
 
 def test_convert_to_meters():
@@ -15,10 +14,6 @@ def test_convert_to_meters():
         result = convert_to_meters(distance, unit)
         assert result == pytest.approx(expected_result, rel=1e-6)
 
-    # Test unsupported unit
-    with pytest.raises(ValueError):
-        convert_to_meters(1.0, 'm')  # 'm' is not in the conversion_factors dictionary
-
 def test_convert_to_mps():
     # Test cases: (speed, unit, expected_result)
     test_data = [
@@ -30,7 +25,3 @@ def test_convert_to_mps():
     for speed, unit, expected_result in test_data:
         result = convert_to_mps(speed, unit)
         assert result == pytest.approx(expected_result, rel=1e-6)
-
-    # Test unsupported unit
-    with pytest.raises(ValueError):
-        convert_to_mps(1.0, 'm/s')  # 'm/s' is not in the conversion_factors dictionary

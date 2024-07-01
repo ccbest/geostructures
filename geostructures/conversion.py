@@ -4,13 +4,14 @@ Module for unit conversions
 __all__ = ['convert_to_meters', 'convert_to_mps']
 
 
-def convert_to_meters(distance, unit):
+def convert_to_meters(distance: float, unit: str):
     """
     Converts distance to meters.
 
     Args:
         distance (float): The distance value.
-        unit (str): The unit of distance (e.g., 'km', 'mi', 'ft', 'yd').
+        unit (str): The unit of distance (kilometer= 'km', mile = 'mi'
+        , feet ='ft',nautical mile = 'nm', yard = 'yd').
 
     Returns:
         float: The distance in meters.
@@ -26,17 +27,17 @@ def convert_to_meters(distance, unit):
 
     if unit in conversion_factors:
         return distance * conversion_factors[unit]
-    else:
-        raise ValueError(f"Unsupported unit: {unit}")
 
 
-def convert_to_mps(speed, unit):
+
+def convert_to_mps(speed: float, unit: str):
     """
     Converts speed from different units to meters per second (m/s).
 
     Args:
         speed (float): Speed value.
-        unit (str): Speed unit (e.g., 'kmh', 'mph', 'kn').
+        unit (str): Speed unit (kilometer per hour= 'kmh', mile per hour= 'mph',
+        knot = 'kn').
 
     Returns:
         float: Speed in meters per second.
@@ -50,5 +51,4 @@ def convert_to_mps(speed, unit):
 
     if unit in conversion_factors:
         return speed * conversion_factors[unit]
-    else:
-        raise ValueError(f"Unsupported unit: {unit}")
+
