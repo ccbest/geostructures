@@ -3,6 +3,7 @@ Module for unit conversions
 """
 __all__ = ['convert_to_meters', 'convert_to_mps']
 
+
 def convert_to_meters(distance, unit):
     """
     Converts distance to meters.
@@ -50,5 +51,4 @@ def convert_to_mps(speed, unit):
     if unit in conversion_factors:
         return speed * conversion_factors[unit]
     else:
-        raise ValueError(f"Unsupported unit: {unit}")  
-
+        raise ValueError(f"Unsupported unit: {unit}")
