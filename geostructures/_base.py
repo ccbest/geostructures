@@ -24,6 +24,10 @@ if TYPE_CHECKING:  # pragma: no cover
 _RE_COORD_STR = r'-?\d{1,3}(?:\.?\d*)?\s-?\d{1,3}(?:\.?\d*)?'
 _RE_COORD = re.compile(_RE_COORD_STR)
 
+# A wkt coordinate with more than two dimensions e.g. '-1.0 2.0 3.0'
+_RE_3D_COORD_STR = r'-?\d{1,3}(?:\.?\d*)?(?:\s-?\d{1,3}(?:\.?\d*)?){2,}'
+_RE_3D_COORD = re.compile(_RE_3D_COORD_STR)
+
 # A single linear ring, e.g. '(0.0 0.0, 1.0 1.0, ... )'
 _RE_LINEAR_RING_STR = r'\((?:\s?' + _RE_COORD_STR + r'\s?\,?)+\)'
 _RE_LINEAR_RING = re.compile(_RE_LINEAR_RING_STR)
@@ -33,6 +37,7 @@ _RE_LINEAR_RINGS_STR = r'(\((?:' + _RE_LINEAR_RING_STR + r'\,?\s?)+\))'
 _RE_LINEAR_RINGS = re.compile(_RE_LINEAR_RINGS_STR)
 
 _RE_POINT_WKT = re.compile(r'POINT\s?\(\s?' + _RE_COORD_STR + r'\s?\)')
+_RE_3DPOINT_WKT = re.compile(r'POINT\s?\(\s?' + _RE_3D_COORD_STR + r'\s?\)')
 _RE_POLYGON_WKT = re.compile(r'POLYGON\s?' + _RE_LINEAR_RINGS_STR)
 _RE_LINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_LINEAR_RING_STR)
 

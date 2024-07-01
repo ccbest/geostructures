@@ -19,7 +19,7 @@ import numpy as np
 
 from geostructures import LOGGER
 from geostructures._base import (
-    _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT,
+    _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_3DPOINT_WKT, _RE_POLYGON_WKT,
     _RE_LINESTRING_WKT, BaseShape, ShapeLike, LineLike, MultiShapeBase,
     PointLike, parse_wkt_linear_ring, ANY_SHAPE_TYPE
 )
@@ -1583,6 +1583,13 @@ class GeoPoint(BaseShape, PointLike):
         properties: Optional[Dict] = None
     ) -> 'GeoPoint':
         """Create a GeoPoint from a wkt string"""
+        if _RE_3DPOINT_WKT.match(wkt_str):  # pragma: no cover
+            properties['Z'] = shape.z
+            warn_once(
+                'Shapefile contains unsupported Z data; Z-values will be '
+                'stored in shape properties'
+            )
+
         _match = _RE_POINT_WKT.match(wkt_str)
         if not _match:
             raise ValueError(f'Invalid WKT Point: {wkt_str}')
