@@ -262,10 +262,7 @@ def niemeyer_to_geobox(
             Any additional properties to assign to the resulting GeoPolygon
 
     Return:
-        (float) center of geohash latitude
-        (float) center of geohash longitude
-        (float) height of the geohash in degrees latitude
-        (float) width of the geohash in degrees longitude
+        GeoBox
     """
     lon, lat, lon_error, lat_error = _decode_niemeyer(geohash, base)
     return GeoBox(
