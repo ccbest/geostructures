@@ -10,6 +10,8 @@ from geostructures.multistructures import *
 from geostructures.utils.functions import round_half_up
 from geostructures.time import TimeInterval
 
+from tests import assert_shape_equivalence
+
 
 default_test_datetime = datetime(1970, 1, 1, 0, 0, tzinfo=timezone.utc)
 
@@ -498,6 +500,39 @@ def test_geopolygon_from_geojson():
         GeoPolygon.from_geojson(bad_gjson)
 
 
+def test_geopolygon_from_h3_geohash():
+    geohash = "88754e6499fffff"
+    expected = GeoPolygon(
+        [
+            Coordinate(-0.000695, -0.005249),
+            Coordinate(0.001237, -0.001207),
+            Coordinate(-0.000777, 0.002231),
+            Coordinate(-0.004725, 0.001630),
+            Coordinate(-0.006658, -0.002410),
+            Coordinate(-0.004643, -0.005850),
+            Coordinate(-0.000695, -0.005249)
+        ]
+    )
+    assert_shape_equivalence(
+        GeoPolygon.from_h3_geohash(geohash),
+        expected,
+        5
+    )
+
+
+def test_geopolygon_from_niemeyer_geohash():
+    geohash = "3fffffff"
+    expected = GeoBox(
+        Coordinate(-0.005493, 0.0),
+        Coordinate(0.0, -0.005493)
+    ).to_polygon()
+    assert_shape_equivalence(
+        GeoPolygon.from_niemeyer_geohash(geohash, 16),
+        expected,
+        5
+    )
+
+
 def test_polygon_to_geojson(geopolygon):
     shapely.geometry.shape(geopolygon.to_geojson()['geometry'])
 
@@ -687,6 +722,19 @@ def test_geobox_contains_coordinate(geobox):
         holes=[GeoCircle(Coordinate(0.5, 0.5), 5_000)]
     )
     assert not box.contains_coordinate(Coordinate(0.5, 0.5))
+
+
+def test_geobox_from_niemeyer_geohash():
+    geohash = "3fffffff"
+    expected = GeoBox(
+        Coordinate(-0.005493, 0.0),
+        Coordinate(0.0, -0.005493)
+    )
+    assert_shape_equivalence(
+        GeoBox.from_niemeyer_geohash(geohash, 16),
+        expected,
+        5
+    )
 
 
 def test_geobox_linear_rings():
