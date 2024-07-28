@@ -21,13 +21,24 @@ Geostructures is available on PYPI
 $ pip install geostructures
 ```
 
-#### Optional Dependencies
-Geostructures does not require any of the below dependencies to function, however maintains optional features that use:
-* geopandas
-* H3
-* MGRS
-* scipy
-* shapely
+#### Requirements
+
+Geostructures only requires `numpy` to function.
+
+#### Optional Requirements
+
+* `pip install geostructures[df]`
+  * Add dataframe support for geopandas and pandas
+
+* `pip install geostructures[h3]`
+  * Add support for geohashing using Uber's H3 algorithm
+
+* `pip install geostructures[mgrs]`
+  * Add support for converting coordinates using the Military Grid Reference System (MGRS)  
+
+* `pip install geostructures[proj]`
+  * Add support for coordinate projection conversion
+
 
 ### Overview
 

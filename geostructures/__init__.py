@@ -15,13 +15,11 @@ from geostructures.utils.conditional_imports import ConditionalPackageIntercepto
 
 ConditionalPackageInterceptor.permit_packages(
     {
-        'geopandas': 'geopandas>=0.13,<1',
-        'h3': 'h3>=3.7,<4',
-        'mgrs': 'mgrs>=1.4.5,<2',
-        'pandas': 'pandas>=2,<3',
-        'plotly': 'plotly>=5,<6',
-        'pyproj': 'pyproj>=3.6,<4',
-        'scipy': 'scipy>=3.0.7,<4.0',
+        'geopandas': 'geostructures[df]',
+        'h3': 'geostructures[h3]',
+        'mgrs': 'geostructures[mgrs]',
+        'pandas': 'geostructures[df]',
+        'pyproj': 'geostructures[proj]',
     }
 )
 sys.meta_path.append(ConditionalPackageInterceptor)  # type: ignore
