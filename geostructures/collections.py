@@ -16,7 +16,7 @@ from zipfile import ZipFile
 import numpy as np
 
 from geostructures import Coordinate, LOGGER
-from geostructures._base import BaseShape, BaseShapeProtocol, LineLike, MultiShapeBase, PointLike, ShapeLike, ANY_SHAPE_TYPE
+from geostructures._base import BaseShape, LineLike, MultiShapeBase, PointLike, ShapeLike, ANY_SHAPE_TYPE
 from geostructures._geometry import convex_hull
 from geostructures.calc import haversine_distance_meters
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoShape
