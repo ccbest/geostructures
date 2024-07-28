@@ -31,8 +31,10 @@ from geostructures.calc import (
     haversine_distance_meters,
     bearing_degrees
 )
-from geostructures._geometry import circumscribing_circle_for_polygon, do_edges_intersect, find_line_intersection, \
-    is_counter_clockwise
+from geostructures._geometry import (
+    circumscribing_circle_for_polygon, do_edges_intersect,
+    find_line_intersection, is_counter_clockwise
+)
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
 
@@ -452,6 +454,66 @@ class GeoPolygon(ShapeBase):
         return GeoPolygon(rings[0], holes=holes, dt=dt, properties=properties)
 
     @classmethod
+    def from_h3_geohash(
+        cls,
+        geohash: str,
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ) -> 'GeoPolygon':
+        """
+        Create a GeoPolygon from a H3 geohash
+
+        Args:
+            geohash:
+                An H3 geohash, e.g. "88754e6499fffff"
+
+            dt:
+                Optional time bounds (presented as a datetime or geostructures.TimeInterval)
+
+            properties:
+                Optional additional properties to associate to the shape
+
+        Returns:
+            GeoPolygon
+        """
+        from geostructures.geohash import h3_to_geopolygon
+
+        return h3_to_geopolygon(geohash, dt, properties)
+
+    @classmethod
+    def from_niemeyer_geohash(
+        cls,
+        geohash: str,
+        base: int,
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
+        """
+        Convert a Niemeyer geohash to its representative rectangle (a centroid with
+        a corresponding error margin).
+
+        Args:
+            geohash:
+                A Niemeyer geohash
+
+            base:
+                the base of the geohash; one of 16, 32, 64
+
+            dt: (Default None)
+                The time bound to assign to the GeoPolygon. Use datetime for a time instant
+                or TimeInterval (from geostructures.time) for a span of time
+
+            properties: (Default None)
+                Any additional properties to assign to the resulting GeoPolygon
+
+        Returns:
+            GeoPolygon
+        """
+        from geostructures.geohash import niemeyer_to_geobox
+
+        return niemeyer_to_geobox(geohash, base, dt, properties).to_polygon()
+
+    @classmethod
     def from_pyshp(cls, shape, dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
         """
         Create a GeoPolygon from a pyshyp polygon.
@@ -653,6 +715,39 @@ class GeoBox(ShapeBase):
             dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self._properties)
         )
+
+    @classmethod
+    def from_niemeyer_geohash(
+            cls,
+            geohash: str,
+            base: int,
+            dt: Optional[GEOTIME_TYPE] = None,
+            properties: Optional[Dict] = None
+    ):
+        """
+        Convert a Niemeyer geohash to its representative rectangle (a centroid with
+        a corresponding error margin).
+
+        Args:
+            geohash:
+                A Niemeyer geohash
+
+            base:
+                the base of the geohash; one of 16, 32, 64
+
+            dt: (Default None)
+                The time bound to assign to the GeoPolygon. Use datetime for a time instant
+                or TimeInterval (from geostructures.time) for a span of time
+
+            properties: (Default None)
+                Any additional properties to assign to the resulting GeoPolygon
+
+        Returns:
+            GeoPolygon
+        """
+        from geostructures.geohash import niemeyer_to_geobox
+
+        return niemeyer_to_geobox(geohash, base, dt, properties)
 
     def to_polygon(self, **kwargs) -> GeoPolygon:
         outer_bound = self.bounding_coords(**kwargs)
