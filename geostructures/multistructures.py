@@ -144,7 +144,7 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
                 'properties': properties
             }
         )
-        mgls.set_dt(dt)
+        mgls.set_dt(dt, inplace=True)
         return mgls
 
     @classmethod
@@ -371,7 +371,7 @@ class MultiGeoPoint(MultiShapeBase, PointLike):
                 'properties': properties
             }
         )
-        mgp.set_dt(dt)
+        mgp.set_dt(dt, inplace=True)
         return mgp
 
     @classmethod
@@ -636,7 +636,7 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
                 'properties': properties
             }
         )
-        mgp.set_dt(dt)
+        mgp.set_dt(dt, inplace=True)
         return mgp
 
     @classmethod
