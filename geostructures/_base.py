@@ -279,48 +279,59 @@ class BaseShapeProtocol(Protocol):
 
         return self.dt.intersects(dt)
 
-    def set_dt(self, dt: Union[datetime, TimeInterval, None]) -> 'BaseShapeProtocol':
+    def set_dt(self, dt: Union[datetime, TimeInterval, None], inplace: bool = False) -> 'BaseShapeProtocol':
         """
-        Sets time bounds on this geoshape
+        Sets time bounds on this geoshape. Will not mutate unless inplace is True
 
         Args:
-            dt:
+            dt: (Union[datetime, TimeInterval, None])
+                A datetime or TimeInterval
+
+            inplace: (bool) (Default False)
+                If True, will mutate this object.
 
         Returns:
-
+            self type
         """
+        shape = self if inplace else self.copy()
+
         if dt is None or isinstance(dt, TimeInterval):
-            self.dt = dt
-            return self
+            shape.dt = dt
+            return shape
 
         if isinstance(dt, datetime):
             # Convert to a zero-second time interval
             dt = default_to_zulu(dt)
-            self.dt: Optional[TimeInterval] = TimeInterval(dt, dt)
-            return self
+            shape.dt = TimeInterval(dt, dt)
+            return shape
 
         raise ValueError(f'Unexpected dt value {dt}')
 
-    def set_property(self, key: str, value: Any):
+    def set_property(self, key: str, value: Any, inplace: bool = False):
         """
         Sets the value of a property on this geoshape.
 
         Args:
-            key:
+            key: (str)
                 The property name
 
-            value:
+            value: (Any)
                 The property value
 
-        Returns:
-            None
-        """
-        self._properties[key] = value
+            inplace: (bool) (Default False)
+                If True, will mutate this object.
 
-    def strip_dt(self: SHAPE_TYPE) -> SHAPE_TYPE:
-        _copy = self.copy()
-        _copy.dt = None
-        return _copy
+        Returns:
+            self type
+        """
+        shape = self if inplace else self.copy()
+        shape._properties[key] = value
+        return shape
+
+    def strip_dt(self: SHAPE_TYPE, inplace: bool = True) -> SHAPE_TYPE:
+        shape = self if inplace else self.copy()
+        shape.dt = None
+        return shape
 
     @abstractmethod
     def to_geojson(

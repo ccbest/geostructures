@@ -487,7 +487,6 @@ class ShapeCollection:
                 ('points', points), ('multipoints', multipoints),
                 ('lines', lines), ('shapes', shapes)
             ):
-                shape_group = cast(List[BaseShape], shape_group)
                 if not shape_group:
                     continue
 
@@ -525,7 +524,7 @@ class ShapeCollection:
                         )
 
                 # Write shapes to file
-                for idx, shape in enumerate(shape_group):
+                for idx, shape in enumerate(shape_group):  # type: ignore
                     # Write out properties
                     props = shape.properties
                     writer.record(*[_convert_dt(props.get(k)) for k in typemap], idx)

@@ -114,6 +114,20 @@ def test_baseshapeprotocol_intersects_time():
     assert not geopoint.intersects_time(TimeInterval(datetime(2020, 1, 1, 14), datetime(2020, 1, 1, 16)))
 
 
+def test_baseshapeprotocol_set_dt():
+    point = GeoPoint(Coordinate('0.0', '0.0'))
+    point2 = point.set_dt(datetime(2020, 1, 1))
+    assert point2 is not point
+    assert point2.dt == TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
+    assert point.dt is None
+
+    point.set_dt(datetime(2020, 1, 1), inplace=True)
+    assert point.dt == TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
+
+    with pytest.raises(ValueError):
+        point.set_dt('not a date')
+
+
 def test_baseshapeprotocol_set_property():
     point = GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 12))
     assert point.properties == {
@@ -121,7 +135,7 @@ def test_baseshapeprotocol_set_property():
         'datetime_end': datetime(2020, 1, 1, 12, tzinfo=timezone.utc)
     }
 
-    point.set_property('test_property', 1)
+    point.set_property('test_property', 1, inplace=True)
     assert point.properties == {
         'datetime_start': datetime(2020, 1, 1, 12, tzinfo=timezone.utc),
         'datetime_end': datetime(2020, 1, 1, 12, tzinfo=timezone.utc),
@@ -133,7 +147,6 @@ def test_baseshapeprotocol_strip_dt():
     point = GeoPoint(Coordinate('0.0', '0.0'), dt=datetime(2020, 1, 1, 12))
     expected = GeoPoint(Coordinate('0.0', '0.0'))
     assert point.strip_dt() == expected
-
 
 
 
@@ -336,5 +349,5 @@ def test_multigeobase_split():
             }
         ),
     ]
-    actual[0].set_property('test', 'diff')
+    actual[0].set_property('test', 'diff', inplace=True)
     assert actual[0].properties['test'] != mps.properties['test']

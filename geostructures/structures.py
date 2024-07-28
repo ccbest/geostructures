@@ -553,7 +553,7 @@ class GeoPolygon(ShapeBase):
                 'properties': properties
             }
         )
-        gp.set_dt(dt)
+        gp.set_dt(dt, inplace=True)
         return gp
 
     @classmethod
@@ -1399,7 +1399,7 @@ class GeoLineString(BaseShape, LineLike):
                 'properties': properties
             }
         )
-        gls.set_dt(dt)
+        gls.set_dt(dt, inplace=True)
         return gls
 
     @classmethod
@@ -1654,7 +1654,7 @@ class GeoPoint(BaseShape, PointLike):
                 'properties': properties
             }
         )
-        gp.set_dt(dt)
+        gp.set_dt(dt, inplace=True)
         return gp
 
     @classmethod
