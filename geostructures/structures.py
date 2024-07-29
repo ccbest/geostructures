@@ -779,7 +779,7 @@ class GeoCircle(ShapeBase):
     ):
         super().__init__(holes=holes, dt=dt, properties=properties)
         self.center = center
-        self.radius = radius
+        self.radius = float(radius)
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, GeoCircle):
@@ -885,9 +885,9 @@ class GeoEllipse(ShapeBase):
         super().__init__(holes=holes, dt=dt, properties=properties)
 
         self.center = center
-        self.semi_major = semi_major
-        self.semi_minor = semi_minor
-        self.rotation = rotation
+        self.semi_major = float(semi_major)
+        self.semi_minor = float(semi_minor)
+        self.rotation = float(rotation)
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, GeoEllipse):
@@ -1043,10 +1043,10 @@ class GeoRing(ShapeBase):
     ):
         super().__init__(holes=holes, dt=dt, properties=properties)
         self.center = center
-        self.inner_radius = inner_radius
-        self.outer_radius = outer_radius
-        self.angle_min = angle_min
-        self.angle_max = angle_max
+        self.inner_radius = float(inner_radius)
+        self.outer_radius = float(outer_radius)
+        self.angle_min = float(angle_min)
+        self.angle_max = float(angle_max)
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, GeoRing):
