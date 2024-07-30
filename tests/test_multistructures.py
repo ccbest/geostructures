@@ -337,7 +337,7 @@ def test_multigeopoint_to_wkt():
 
 
 def test_multigeoshape_repr():
-    mp = MultiGeoShape(
+    mp = MultiGeoPolygon(
         [
             GeoBox(Coordinate(0., 1.), Coordinate(1., 0.)),
             GeoBox(Coordinate(1., 2.), Coordinate(2., 1.)),
@@ -345,7 +345,7 @@ def test_multigeoshape_repr():
     )
     assert repr(mp) == "<MultiGeoShape of 2 shapes>"
 
-    mp = MultiGeoShape(
+    mp = MultiGeoPolygon(
         [
             GeoBox(Coordinate(0., 1.), Coordinate(1., 0.)),
         ]
@@ -354,7 +354,7 @@ def test_multigeoshape_repr():
 
 
 def test_multigeoshape_area():
-    mp = MultiGeoShape(
+    mp = MultiGeoPolygon(
         [
             GeoBox(Coordinate(0., 1.), Coordinate(1., 0.)),
             GeoBox(Coordinate(1., 2.), Coordinate(2., 1.)),
@@ -364,7 +364,7 @@ def test_multigeoshape_area():
 
 
 def test_multigeoshape_centroid():
-    mp = MultiGeoShape(
+    mp = MultiGeoPolygon(
         [
             GeoBox(Coordinate(0., 1.), Coordinate(1., 0.)),
             GeoBox(Coordinate(1., 2.), Coordinate(2., 1.)),
@@ -374,7 +374,7 @@ def test_multigeoshape_centroid():
 
 
 def test_multigeoshape_bounding_coords():
-    mp = MultiGeoShape(
+    mp = MultiGeoPolygon(
         [
             GeoBox(Coordinate(0., 1.), Coordinate(1., 0.)),
             GeoBox(Coordinate(1., 2.), Coordinate(2., 1.)),
@@ -387,7 +387,7 @@ def test_multigeoshape_bounding_coords():
 
 
 def test_multigeoshape_bounding_edges():
-    mp = MultiGeoShape(
+    mp = MultiGeoPolygon(
         [
             GeoBox(Coordinate(0., 1.), Coordinate(1., 0.)),
             GeoBox(Coordinate(1., 2.), Coordinate(2., 1.)),
@@ -400,7 +400,7 @@ def test_multigeoshape_bounding_edges():
 
 
 def test_multigeoshape_circumscribing_circle():
-    mp = MultiGeoShape(
+    mp = MultiGeoPolygon(
         [
             GeoBox(Coordinate(0., 1.), Coordinate(1., 0.)),
             GeoBox(Coordinate(1., 2.), Coordinate(2., 1.)),
@@ -410,7 +410,7 @@ def test_multigeoshape_circumscribing_circle():
 
 
 def test_multigeoshape_copy():
-    mp = MultiGeoShape([
+    mp = MultiGeoPolygon([
         GeoBox(Coordinate(0., 1.), Coordinate(0.5, 0.)),
         GeoBox(Coordinate(0.5, 1.), Coordinate(1., 0.))
     ])
@@ -422,7 +422,7 @@ def test_multigeoshape_copy():
 
 
 def test_multigeoshape_convex_hull():
-    mp = MultiGeoShape([
+    mp = MultiGeoPolygon([
         GeoBox(Coordinate(0., 1.), Coordinate(0.5, 0.)),
         GeoBox(Coordinate(0.5, 1.), Coordinate(1., 0.))
     ])
@@ -436,7 +436,7 @@ def test_multigeoshape_convex_hull():
 
 
 def test_multigeoshape_edges():
-    mp = MultiGeoShape(
+    mp = MultiGeoPolygon(
         [
             GeoBox(
                 Coordinate(0., 1.),
@@ -478,7 +478,7 @@ def test_multigeoshape_from_geojson():
         },
         "test_kwarg": "test_kwarg"
     }
-    mp = MultiGeoShape.from_geojson(gjson)
+    mp = MultiGeoPolygon.from_geojson(gjson)
     assert mp.geoshapes == [
         GeoPolygon(
             [
@@ -514,7 +514,7 @@ def test_multigeoshape_from_geojson():
                 "type": "test",
             }
         }
-        MultiGeoShape.from_geojson(gjson)
+        MultiGeoPolygon.from_geojson(gjson)
 
 
 def test_multigeoshape_from_shapely():
@@ -527,7 +527,7 @@ def test_multigeoshape_from_shapely():
             [[1.0, 2.0], [1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]
         ]
     ])
-    mp = MultiGeoShape.from_shapely(shapely_mp)
+    mp = MultiGeoPolygon.from_shapely(shapely_mp)
     assert mp.geoshapes == [
         GeoPolygon(
             [
@@ -557,7 +557,7 @@ def test_multigeoshape_from_shapely():
 
 def test_multigeoshape_from_wkt():
     wkt = "MULTIPOLYGON (((0 1, 0 0, 1 0, 1 1, 0 1), (0 1, 1 1, 1 0, 0 0, 0 1)), ((1 2, 1 1, 2 1, 2 2, 1 2)))"
-    mp = MultiGeoShape.from_wkt(wkt)
+    mp = MultiGeoPolygon.from_wkt(wkt)
     assert mp.geoshapes == [
         GeoPolygon(
             [
@@ -585,11 +585,11 @@ def test_multigeoshape_from_wkt():
     ]
 
     with pytest.raises(ValueError):
-        MultiGeoShape.from_wkt('test')
+        MultiGeoPolygon.from_wkt('test')
 
 
 def test_multigeoshape_linear_rings():
-    mp = MultiGeoShape(
+    mp = MultiGeoPolygon(
         [
             GeoBox(
                 Coordinate(0., 1.),
@@ -610,7 +610,7 @@ def test_multigeoshape_linear_rings():
 
 
 def test_multigeoshape_to_geojson():
-    mp = MultiGeoShape(
+    mp = MultiGeoPolygon(
         [
             GeoBox(
                 Coordinate(0., 1.),
@@ -646,7 +646,7 @@ def test_multigeoshape_to_geojson():
 
 
 def test_multigeoshape_to_shapely():
-    mp = MultiGeoShape(
+    mp = MultiGeoPolygon(
         [
             GeoBox(
                 Coordinate(0., 1.),
@@ -668,7 +668,7 @@ def test_multigeoshape_to_shapely():
 
 
 def test_multigeoshape_to_wkt():
-    mp = MultiGeoShape(
+    mp = MultiGeoPolygon(
         [
             GeoBox(
                 Coordinate(0., 1.),

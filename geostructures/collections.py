@@ -16,12 +16,12 @@ from zipfile import ZipFile
 import numpy as np
 
 from geostructures import Coordinate, LOGGER
-from geostructures._base import BaseShape, LineLike, MultiShapeBase, PointLike, ShapeLike, ANY_SHAPE_TYPE
 from geostructures._geometry import convex_hull
 from geostructures.calc import haversine_distance_meters
-from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoShape
+from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
+from geostructures.typing import *
 from geostructures.utils.functions import default_to_zulu
 
 
@@ -30,7 +30,7 @@ _COL_TYPE = TypeVar('_COL_TYPE', bound='ShapeCollection')
 
 class ShapeCollection:
 
-    def __init__(self, geoshapes: List[BaseShape]):
+    def __init__(self, geoshapes: List[GeoShape]):
         super().__init__()
         self.geoshapes = geoshapes
 
@@ -75,7 +75,7 @@ class ShapeCollection:
         def _get_vertices(shapes):
             vertices = []
             for shape in shapes:
-                if isinstance(shape, MultiShapeBase):
+                if isinstance(shape, MultiShape):
                     vertices += [
                         vertex
                         for _shape in shape.geoshapes
@@ -85,7 +85,7 @@ class ShapeCollection:
                     vertices.append(shape.centroid)
                 elif isinstance(shape, LineLike):
                     vertices += shape.vertices
-                elif isinstance(shape, ShapeLike):
+                elif isinstance(shape, PolygonLike):
                     vertices += shape.bounding_coords()
             return vertices
 
@@ -116,7 +116,7 @@ class ShapeCollection:
 
         raise ValueError(f"Unexpected dt object: {dt}")
 
-    def filter_by_intersection(self: _COL_TYPE, shape: ANY_SHAPE_TYPE) -> _COL_TYPE:
+    def filter_by_intersection(self: _COL_TYPE, shape: GeoShape) -> _COL_TYPE:
         """
         Filter the shape collection using an intersecting geoshape, which is optionally
         time-bounded.
@@ -167,10 +167,10 @@ class ShapeCollection:
             'Polygon': GeoPolygon,
             'MultiPoint': MultiGeoPoint,
             'MultiLineString': MultiGeoLineString,
-            'MultiPolygon': MultiGeoShape,
+            'MultiPolygon': MultiGeoPolygon,
         }
 
-        shapes: List[BaseShape] = []
+        shapes: List[GeoShape] = []
         for feature in gjson.get('features', []):
             geom_type = feature.get('geometry', {}).get('type')
             if geom_type not in conv_map:
@@ -221,7 +221,7 @@ class ShapeCollection:
             'Polygon': GeoPolygon,
             'MultiPoint': MultiGeoPoint,
             'MultiLineString': MultiGeoLineString,
-            'MultiPolygon': MultiGeoShape,
+            'MultiPolygon': MultiGeoPolygon,
         }
 
         def _get_dt(rec):
@@ -243,7 +243,7 @@ class ShapeCollection:
         prop_fields = [
             x for x in df.columns if x not in (time_start_field, time_end_field, 'geometry')
         ]
-        shapes: List[BaseShape] = []
+        shapes: List[GeoShape] = []
         for record in df.to_dict('records'):
             geom_type = record['geometry'].geom_type
             if geom_type not in conv_map:  # pragma: no cover
@@ -297,7 +297,7 @@ class ShapeCollection:
             'Polygon': GeoPolygon,
             'MultiPoint': MultiGeoPoint,
             'MultiLineString': MultiGeoLineString,
-            'MultiPolygon': MultiGeoShape,
+            'MultiPolygon': MultiGeoPolygon,
         }
 
         shapes = []
@@ -353,7 +353,7 @@ class ShapeCollection:
             'Polygon': GeoPolygon,
             'MultiPoint': MultiGeoPoint,
             'MultiLineString': MultiGeoLineString,
-            'MultiPolygon': MultiGeoShape,
+            'MultiPolygon': MultiGeoPolygon,
         }
 
         shapes = []
@@ -379,7 +379,7 @@ class ShapeCollection:
         bounds = self.bounds
         return bounds[0][1] - bounds[0][0] + bounds[1][1] - bounds[1][0]
 
-    def intersects(self, shape: ANY_SHAPE_TYPE):
+    def intersects(self, shape: GeoShape):
         """
         Boolean determination of whether any pings from the track exist inside the provided
         geostructure.
@@ -468,7 +468,7 @@ class ShapeCollection:
         points: List[GeoPoint] = []
         multipoints: List[MultiGeoPoint] = []
         lines: List[LineLike] = []
-        shapes: List[ShapeLike] = []
+        shapes: List[PolygonLike] = []
         for shape in self.geoshapes:
             if isinstance(shape, GeoPoint):
                 points.append(shape)
@@ -480,7 +480,7 @@ class ShapeCollection:
                 lines.append(shape)
 
             else:
-                shapes.append(cast(ShapeLike, shape))
+                shapes.append(cast(PolygonLike, shape))
 
         with tempfile.TemporaryDirectory() as tempdir:
             for shapetype, shape_group in (
@@ -602,7 +602,7 @@ class Track(ShapeCollection):
     A sequence of chronologically-ordered (by start time) GeoShapes
     """
 
-    def __init__(self, geoshapes: List[BaseShape]):
+    def __init__(self, geoshapes: List[GeoShape]):
         if not all(x.dt for x in geoshapes):
             raise ValueError('All track geoshapes must have an associated time value.')
 

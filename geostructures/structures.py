@@ -5,7 +5,7 @@ Geospatial shape representations, for use with earth-surface calculations
 
 __all__ = [
     'GeoBox', 'GeoCircle', 'GeoEllipse', 'GeoLineString', 'GeoPoint', 'GeoPolygon',
-    'GeoRing', 'ShapeBase'
+    'GeoRing', 'PolygonBase'
 ]
 
 from abc import ABC
@@ -13,15 +13,14 @@ import copy
 from functools import cached_property
 import math
 import statistics
-from typing import cast, Any, Dict, List, Optional, Tuple, Sequence
+from typing import cast, Any, Dict, List, Optional, Tuple, Sequence, TYPE_CHECKING
 
 import numpy as np
 
 from geostructures import LOGGER
 from geostructures._base import (
     _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT,
-    _RE_LINESTRING_WKT, BaseShape, ShapeLike, LineLike, MultiShapeBase,
-    PointLike, parse_wkt_linear_ring, ANY_SHAPE_TYPE
+    _RE_LINESTRING_WKT, BaseShape, LineLikeMixin, PointLikeMixin, PolygonLikeMixin, parse_wkt_linear_ring
 )
 from geostructures.time import GEOTIME_TYPE
 from geostructures.coordinates import Coordinate
@@ -38,12 +37,15 @@ from geostructures._geometry import (
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
 
+if TYPE_CHECKING:
+    from geostructures.typing import GeoShape, PolygonLike
 
-class ShapeBase(BaseShape, ShapeLike, ABC):
+
+class PolygonBase(BaseShape, PolygonLikeMixin, ABC):
 
     def __init__(
         self,
-        holes: Optional[Sequence[ShapeLike]] = None,
+        holes: Optional[Sequence['PolygonLike']] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -63,8 +65,10 @@ class ShapeBase(BaseShape, ShapeLike, ABC):
         bounding_coords = self.bounding_coords(**kwargs)
         return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
 
-    def contains_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
-        if isinstance(shape, MultiShapeBase):
+    def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+        from geostructures.typing import MultiShape, PointLike, SingleShape, PolygonLike, LineLike
+
+        if isinstance(shape, MultiShape):
             for subshape in shape.geoshapes:
                 if not self.contains_shape(subshape):
                     return False
@@ -74,7 +78,7 @@ class ShapeBase(BaseShape, ShapeLike, ABC):
             return self.contains_coordinate(shape.centroid)
 
         s_edges = self.edges(**kwargs)
-        o_edges = shape.edges(**kwargs) if isinstance(shape, ShapeLike) else [cast(LineLike, shape).segments]
+        o_edges = shape.edges(**kwargs) if isinstance(shape, PolygonLike) else [cast(LineLike, shape).segments]
         if do_edges_intersect(
             [x for edge_ring in s_edges for x in edge_ring],
             [x for edge_ring in o_edges for x in edge_ring]
@@ -115,8 +119,10 @@ class ShapeBase(BaseShape, ShapeLike, ABC):
             for ring in rings
         ]
 
-    def intersects_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
-        if isinstance(shape, MultiShapeBase):
+    def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+        from geostructures.typing import MultiShape, PointLike, PolygonLike, LineLike
+
+        if isinstance(shape, MultiShape):
             for subshape in shape.geoshapes:
                 if self.intersects_shape(subshape, **kwargs):
                     return True
@@ -127,7 +133,7 @@ class ShapeBase(BaseShape, ShapeLike, ABC):
             return shape in self
 
         s_edges = self.edges(**kwargs)
-        o_edges = shape.edges(**kwargs) if isinstance(shape, ShapeLike) else [cast(LineLike, shape).segments]
+        o_edges = shape.edges(**kwargs) if isinstance(shape, PolygonLike) else [cast(LineLike, shape).segments]
         if do_edges_intersect(
             [x for edge_ring in s_edges for x in edge_ring],
             [x for edge_ring in o_edges for x in edge_ring]
@@ -209,7 +215,7 @@ class ShapeBase(BaseShape, ShapeLike, ABC):
         return f'POLYGON({bbox_str})'
 
 
-class GeoPolygon(ShapeBase):
+class GeoPolygon(PolygonBase):
 
     """
     A Polygon, as expressed by an ordered list of Coordinates. The final Coordinate
@@ -233,7 +239,7 @@ class GeoPolygon(ShapeBase):
     def __init__(
         self,
         outline: List[Coordinate],
-        holes: Optional[Sequence[ShapeLike]] = None,
+        holes: Optional[Sequence['PolygonLike']] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
         _is_hole: bool = False,
@@ -432,6 +438,8 @@ class GeoPolygon(ShapeBase):
         Returns:
             GeoPolygon
         """
+        from geostructures.typing import PolygonLike
+
         geom = gjson.get('geometry', {})
         if not geom.get('type') == 'Polygon':
             raise ValueError(
@@ -439,7 +447,7 @@ class GeoPolygon(ShapeBase):
             )
 
         rings = [[Coordinate(x, y) for x, y in ring] for ring in geom.get('coordinates', [])]
-        holes: List[ShapeLike] = []
+        holes: List[PolygonLike] = []
         if len(rings) > 1:
             holes = [GeoPolygon(ring) for ring in rings[1:]]
 
@@ -581,12 +589,14 @@ class GeoPolygon(ShapeBase):
         properties: Optional[Dict] = None
     ) -> 'GeoPolygon':
         """Create a GeoPolygon from a wkt string"""
+        from geostructures.typing import PolygonLike
+
         if not _RE_POLYGON_WKT.match(wkt_str):
             raise ValueError(f'Invalid WKT Polygon: {wkt_str}')
 
         coord_groups = _RE_LINEAR_RING.findall(wkt_str)
         outline = parse_wkt_linear_ring(coord_groups[0])
-        holes: List[ShapeLike] = []
+        holes: List[PolygonLike] = []
         if len(coord_groups) > 1:
             holes = [
                 GeoPolygon(parse_wkt_linear_ring(coord_group))
@@ -613,7 +623,7 @@ class GeoPolygon(ShapeBase):
         return self
 
 
-class GeoBox(ShapeBase):
+class GeoBox(PolygonBase):
 
     """
     A Box (or Square), as expressed by the Northwest and Southeast corners.
@@ -631,7 +641,7 @@ class GeoBox(ShapeBase):
         self,
         nw_bound: Coordinate,
         se_bound: Coordinate,
-        holes: Optional[List[ShapeLike]] = None,
+        holes: Optional[List['PolygonLike']] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -754,7 +764,7 @@ class GeoBox(ShapeBase):
         return GeoPolygon(outer_bound, holes=self.holes, dt=self.dt)
 
 
-class GeoCircle(ShapeBase):
+class GeoCircle(PolygonBase):
 
     """
     A circle shape, as expressed by:
@@ -773,7 +783,7 @@ class GeoCircle(ShapeBase):
         self,
         center: Coordinate,
         radius: float,
-        holes: Optional[List[ShapeLike]] = None,
+        holes: Optional[List['PolygonLike']] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -848,7 +858,7 @@ class GeoCircle(ShapeBase):
         return GeoPolygon(self.bounding_coords(**kwargs), holes=self.holes, dt=self.dt)
 
 
-class GeoEllipse(ShapeBase):
+class GeoEllipse(PolygonBase):
 
     """
     An ellipsoid shape (or oval), represented by:
@@ -878,7 +888,7 @@ class GeoEllipse(ShapeBase):
         semi_major: float,
         semi_minor: float,
         rotation: float,
-        holes: Optional[List[ShapeLike]] = None,
+        holes: Optional[List['PolygonLike']] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -1000,7 +1010,7 @@ class GeoEllipse(ShapeBase):
         return GeoPolygon(self.bounding_coords(**kwargs), holes=self.holes, dt=self.dt)
 
 
-class GeoRing(ShapeBase):
+class GeoRing(PolygonBase):
 
     """
     A ring shape consisting of the area between two concentric circles, represented by:
@@ -1037,7 +1047,7 @@ class GeoRing(ShapeBase):
         outer_radius: float,
         angle_min: float = 0.0,
         angle_max: float = 360.0,
-        holes: Optional[List[ShapeLike]] = None,
+        holes: Optional[List['PolygonLike']] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -1229,7 +1239,7 @@ class GeoRing(ShapeBase):
         return super().to_wkt(**kwargs)
 
 
-class GeoLineString(BaseShape, LineLike):
+class GeoLineString(BaseShape, LineLikeMixin):
 
     """
     A LineString (or more colloquially, a path) consisting of a series of
@@ -1289,14 +1299,16 @@ class GeoLineString(BaseShape, LineLike):
             dt=self.dt,
         )
 
-    def contains_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
-        if isinstance(shape, MultiShapeBase):
+    def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+        from geostructures.typing import MultiShape, PolygonLike, PointLike, LineLike
+
+        if isinstance(shape, MultiShape):
             for subshape in shape.geoshapes:
                 if not self.contains_shape(subshape):
                     return False
             return True
 
-        if isinstance(shape, ShapeLike):
+        if isinstance(shape, PolygonLike):
             return False
 
         if isinstance(shape, PointLike):
@@ -1436,8 +1448,10 @@ class GeoLineString(BaseShape, LineLike):
             properties=properties
         )
 
-    def intersects_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
-        if isinstance(shape, MultiShapeBase):
+    def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+        from geostructures.typing import MultiShape, PolygonLike, PointLike, LineLike
+
+        if isinstance(shape, MultiShape):
             for subshape in shape.geoshapes:
                 if self.intersects_shape(subshape, **kwargs):
                     return True
@@ -1448,7 +1462,7 @@ class GeoLineString(BaseShape, LineLike):
             return shape in self
 
         s_edges = [self.segments]
-        o_edges = shape.edges(**kwargs) if isinstance(shape, ShapeLike) else [cast(LineLike, shape).segments]
+        o_edges = shape.edges(**kwargs) if isinstance(shape, PolygonLike) else [cast(LineLike, shape).segments]
         if do_edges_intersect(
             [x for edge_ring in s_edges for x in edge_ring],
             [x for edge_ring in o_edges for x in edge_ring]
@@ -1499,7 +1513,7 @@ class GeoLineString(BaseShape, LineLike):
         return f'LINESTRING{bbox_str}'
 
 
-class GeoPoint(BaseShape, PointLike):
+class GeoPoint(BaseShape, PointLikeMixin):
 
     """
     A Coordinate with an associated timestamp. This is the only shape which
@@ -1545,8 +1559,10 @@ class GeoPoint(BaseShape, PointLike):
     def contains_coordinate(self, coord: Coordinate) -> bool:
         return coord == self.centroid
 
-    def contains_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
-        if isinstance(shape, MultiShapeBase):
+    def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+        from geostructures.typing import MultiShape, PointLike
+
+        if isinstance(shape, MultiShape):
             for subshape in shape.geoshapes:
                 if not self.contains_shape(subshape):
                     return False
@@ -1564,7 +1580,7 @@ class GeoPoint(BaseShape, PointLike):
             properties=copy.deepcopy(self._properties)
         )
 
-    def intersects_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
+    def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
         if isinstance(shape, GeoPoint):
             return self == shape
         return self in shape

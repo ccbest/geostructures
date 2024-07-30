@@ -299,7 +299,7 @@ def test_collection_from_geojson():
             GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0)]),
             GeoLineString([Coordinate(1.0, 1.0), Coordinate(2.0, 0.0)]),
         ]),
-        MultiGeoShape([
+        MultiGeoPolygon([
             GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)]),
             GeoPolygon([Coordinate(0.0, 0.0), Coordinate(1.0, -1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)]),
         ])
@@ -423,7 +423,7 @@ def test_collection_to_from_shapefile(caplog):
             GeoLineString([Coordinate(0., 1.), Coordinate(1., 0.)]),
             GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.)]),
         ], properties={'ID': 2}),
-        MultiGeoShape(
+        MultiGeoPolygon(
             [
                 GeoBox(
                     Coordinate(0., 1.),

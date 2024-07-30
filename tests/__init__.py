@@ -1,10 +1,10 @@
 
 from geostructures import Coordinate
 from geostructures.utils.functions import round_half_up
-from geostructures._base import BaseShape, ShapeLike, LineLike, PointLike, MultiShapeBase
+from geostructures.typing import GeoShape, PolygonLike, LineLike, PointLike, MultiShape
 
 
-def _assert_shapelike_equivalence(shape1: ShapeLike, shape2: ShapeLike, precision: int = 7):
+def _assert_shapelike_equivalence(shape1: PolygonLike, shape2: PolygonLike, precision: int = 7):
     shape1_coords = [
         Coordinate(round_half_up(x.longitude, precision), round_half_up(x.latitude, precision))
         for x in shape1.bounding_coords()
@@ -40,17 +40,17 @@ def _assert_pointlike_equivalence(shape1: PointLike, shape2: PointLike, precisio
     return shape1_coord == shape2_coord and shape1.dt == shape2.dt
 
 
-def assert_shape_equivalence(shape1: BaseShape, shape2: BaseShape, precision: int = 7):
+def assert_shape_equivalence(shape1: GeoShape, shape2: GeoShape, precision: int = 7):
     if not type(shape1) == type(shape2):
         return False
 
-    if isinstance(shape1, MultiShapeBase):
+    if isinstance(shape1, MultiShape):
         return all(
             assert_shape_equivalence(x, y, precision)
             for x, y in zip(shape1.geoshapes, shape2.geoshapes)
         )
 
-    if isinstance(shape1, ShapeLike):
+    if isinstance(shape1, PolygonLike):
         return _assert_shapelike_equivalence(shape1, shape2, precision)
 
     if isinstance(shape1, LineLike):
