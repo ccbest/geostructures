@@ -15,11 +15,11 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, TypedDict, Union, cast
 
 from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint, GeoPolygon
-from geostructures._base import BaseShape, PointLike, ShapeLike, LineLike, MultiShapeBase
 from geostructures._geometry import find_line_intersection
 from geostructures.collections import ShapeCollection
 from geostructures.multistructures import MultiGeoPoint
 from geostructures.time import TimeInterval
+from geostructures.typing import GeoShape, LineLike, MultiShape, PointLike, PolygonLike, SinglePolygon
 
 
 _NIEMEYER_CONFIG_TYPE = TypedDict(
@@ -308,7 +308,7 @@ class HasherBase(abc.ABC):
     @abc.abstractmethod
     def hash_shape(
         self,
-        shape: BaseShape,
+        shape: GeoShape,
         **kwargs
     ) -> Set[str]:
         """
@@ -342,7 +342,7 @@ class H3Hasher(HasherBase):
         self.resolution = resolution
 
     @staticmethod
-    def _hash_polygon(polygon: BaseShape, resolution: int) -> Set[str]:
+    def _hash_polygon(polygon: GeoShape, resolution: int) -> Set[str]:
         """
         Returns all geohashes contained by a polygon. Uses H3's polyfill function
 
@@ -463,7 +463,7 @@ class H3Hasher(HasherBase):
             raise ValueError('You must pass a H3 resolution.')
 
         agg_fn = kwargs.get('agg_fn', len)
-        hash_dict: Dict[str, List[BaseShape]] = defaultdict(list)
+        hash_dict: Dict[str, List[GeoShape]] = defaultdict(list)
         for shape in collection.geoshapes:
             for hash in self.hash_shape(shape, resolution=resolution):
                 hash_dict[hash].append(shape)
@@ -496,7 +496,7 @@ class H3Hasher(HasherBase):
             hash_dict[self._hash_point(coordinate, resolution=resolution).pop()].append(coordinate)
         return {h: agg_fn(coord_list) for h, coord_list in hash_dict.items()}
 
-    def hash_shape(self, shape: BaseShape, **kwargs):
+    def hash_shape(self, shape: GeoShape, **kwargs):
         """
         Hashes a singular shape and returns the list of underlying h3 geohashes
 
@@ -585,7 +585,7 @@ class NiemeyerHasher(HasherBase):
         Returns:
             A set of geohashes
         """
-        if isinstance(linestring, MultiShapeBase):
+        if isinstance(linestring, MultiShape):
             return {
                 geohash
                 for _line in linestring.geoshapes
@@ -604,7 +604,7 @@ class NiemeyerHasher(HasherBase):
                     continue
 
                 checked.add(near_gh)
-                if niemeyer_to_geobox(near_gh, self.base).intersects_shape(linestring):
+                if niemeyer_to_geobox(near_gh, self.base).intersects_shape(cast(GeoLineString, linestring)):
                     valid.add(near_gh)
                     queue.add(near_gh)
 
@@ -635,7 +635,7 @@ class NiemeyerHasher(HasherBase):
 
     def _hash_polygon(
         self,
-        polygon: ShapeLike
+        polygon: PolygonLike
     ) -> Set[str]:
         """
         Find all geohashes that cover the polygon.
@@ -646,7 +646,7 @@ class NiemeyerHasher(HasherBase):
         Returns:
             (Set[str]) the geohashes that cover the polygon
         """
-        if isinstance(polygon, MultiShapeBase):
+        if isinstance(polygon, MultiShape):
             return {
                 geohash
                 for _polygon in polygon.geoshapes
@@ -665,7 +665,7 @@ class NiemeyerHasher(HasherBase):
                     continue
 
                 checked.add(near_gh)
-                if niemeyer_to_geobox(near_gh, self.base).intersects_shape(polygon):
+                if niemeyer_to_geobox(near_gh, self.base).intersects_shape(cast(SinglePolygon, polygon)):
                     valid.add(near_gh)
                     queue.add(near_gh)
 
@@ -695,7 +695,7 @@ class NiemeyerHasher(HasherBase):
             aggregation function
         """
         agg_fn = kwargs.get('agg_fn', len)
-        hash_dict: Dict[str, List[BaseShape]] = defaultdict(list)
+        hash_dict: Dict[str, List[GeoShape]] = defaultdict(list)
         for shape in collection.geoshapes:
             for geohash in self.hash_shape(shape):
                 hash_dict[geohash].append(shape)
@@ -725,7 +725,7 @@ class NiemeyerHasher(HasherBase):
             hash_dict[_coord_to_niemeyer(coordinate, self.length, self.base)].append(coordinate)
         return {h: agg_fn(coord_list) for h, coord_list in hash_dict.items()}
 
-    def hash_shape(self, shape: BaseShape, **_):
+    def hash_shape(self, shape: GeoShape, **_):
         """
         Converts a geoshape into a set of geohashes that make up the shape.
 
@@ -738,9 +738,9 @@ class NiemeyerHasher(HasherBase):
         """
 
         if isinstance(shape, PointLike):
-            return self._hash_point(shape)
+            return self._hash_point(cast(PointLike, shape))
 
         if isinstance(shape, LineLike):
-            return self._hash_linestring(shape)
+            return self._hash_linestring(cast(LineLike, shape))
 
-        return self._hash_polygon(cast(ShapeLike, shape))
+        return self._hash_polygon(cast(PolygonLike, shape))

@@ -18,6 +18,7 @@ from geostructures.utils.functions import default_to_zulu, sanitize_json
 
 if TYPE_CHECKING:  # pragma: no cover
     from geostructures import GeoCircle, GeoBox
+    from geostructures.typing import GeoShape, PolygonLike
 
 
 # A wkt coordinate, e.g. '-1.0 2.0'
@@ -41,8 +42,7 @@ _RE_MULTIPOLYGON_WKT = re.compile(r'MULTIPOLYGON\s?\((' + _RE_LINEAR_RINGS_STR +
 _RE_MULTILINESTRING_WKT = re.compile(r'MULTILINESTRING\s?' + _RE_LINEAR_RINGS_STR)
 
 
-SHAPE_TYPE = TypeVar('SHAPE_TYPE', bound='BaseShapeProtocol')
-MULTI_SHAPE_TYPE = TypeVar('MULTI_SHAPE_TYPE', bound='MultiShapeBase')
+SHAPE_VAR = TypeVar('SHAPE_VAR', bound='BaseShapeProtocol')
 
 
 def parse_wkt_linear_ring(group: str) -> List[Coordinate]:
@@ -59,7 +59,7 @@ class BaseShapeProtocol(Protocol):
     _properties: Dict
     to_shapely: Callable
 
-    def __contains__(self, other: Union['ShapeLike', 'LineLike', 'PointLike', Coordinate]):
+    def __contains__(self, other: Union['GeoShape', Coordinate]):
         return self.contains(other)  # pragma: no cover
 
     @abstractmethod
@@ -136,10 +136,10 @@ class BaseShapeProtocol(Protocol):
         return f'({",".join(" ".join(coord.to_str()) for coord in ring)})'
 
     def buffer_dt(
-        self: SHAPE_TYPE,
+        self: SHAPE_VAR,
         buffer: timedelta,
         inplace: bool = False
-    ) -> SHAPE_TYPE:
+    ) -> SHAPE_VAR:
         """
         Adds a timedelta buffer to the beginning and end of dt.
 
@@ -160,7 +160,7 @@ class BaseShapeProtocol(Protocol):
 
         return shp
 
-    def contains(self, shape: Union['ShapeLike', 'LineLike', 'PointLike', Coordinate], **kwargs) -> bool:
+    def contains(self, shape: Union['GeoShape', Coordinate], **kwargs) -> bool:
         """Test whether a coordinate or GeoShape is contained within this geoshape"""
         if isinstance(shape, Coordinate):
             return self.contains_coordinate(shape)
@@ -185,7 +185,7 @@ class BaseShapeProtocol(Protocol):
         """
 
     @abstractmethod
-    def contains_shape(self, shape: 'ANY_SHAPE_TYPE', **kwargs) -> bool:
+    def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
         """
         Tests whether this shape fully contains another one.
 
@@ -219,10 +219,10 @@ class BaseShapeProtocol(Protocol):
         return dt in self.dt
 
     @abstractmethod
-    def copy(self: SHAPE_TYPE) -> SHAPE_TYPE:
+    def copy(self: SHAPE_VAR) -> SHAPE_VAR:
         """Produces a copy of the geoshape."""
 
-    def intersects(self, shape: 'ANY_SHAPE_TYPE', **kwargs) -> bool:
+    def intersects(self, shape: 'GeoShape', **kwargs) -> bool:
         """
         Tests whether another shape intersects this one along both the spatial and time axes.
 
@@ -246,7 +246,7 @@ class BaseShapeProtocol(Protocol):
         return self.intersects_shape(shape, **kwargs)
 
     @abstractmethod
-    def intersects_shape(self, shape: 'ANY_SHAPE_TYPE', **kwargs) -> bool:
+    def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
         """
         Tests whether another shape intersects this one along its spatial axes.
 
@@ -328,7 +328,7 @@ class BaseShapeProtocol(Protocol):
         shape._properties[key] = value
         return shape
 
-    def strip_dt(self: SHAPE_TYPE, inplace: bool = True) -> SHAPE_TYPE:
+    def strip_dt(self: SHAPE_VAR, inplace: bool = True) -> SHAPE_VAR:
         shape = self if inplace else self.copy()
         shape.dt = None
         return shape
@@ -400,14 +400,14 @@ class BaseShape(BaseShapeProtocol, ABC):
         self.to_shapely = lru_cache(maxsize=1)(self._to_shapely)
 
 
-class ShapeLike(BaseShapeProtocol, ABC):
+class PolygonLikeMixin(BaseShapeProtocol, ABC):
 
     """
     Mixin for shapes, singular or multi, that is enclosed by a line, e.g.
     boxes, ellipses, etc.
     """
 
-    holes: List['ShapeLike']
+    holes: List['PolygonLike']
 
     @property
     @abstractmethod
@@ -547,7 +547,7 @@ class ShapeLike(BaseShapeProtocol, ABC):
         """
 
 
-class LineLike(BaseShapeProtocol, ABC):
+class LineLikeMixin(BaseShapeProtocol, ABC):
 
     vertices: List[Coordinate]
 
@@ -589,16 +589,13 @@ class LineLike(BaseShapeProtocol, ABC):
         )
 
 
-class PointLike(BaseShapeProtocol, ABC):
+class PointLikeMixin(BaseShapeProtocol, ABC):
     """
     Class for point-like objects (GeoPoints and MultiPoints).
 
     There are no defining methods of points; this mixin class merely
     delineates for typing purposes.
     """
-
-
-ANY_SHAPE_TYPE = Union[LineLike, PointLike, ShapeLike]
 
 
 class MultiShapeBase(BaseShape, ABC):
@@ -630,7 +627,7 @@ class MultiShapeBase(BaseShape, ABC):
 
         return False
 
-    def contains_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
+    def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
         if isinstance(shape, MultiShapeBase):
             if all(self.contains_shape(subshape, **kwargs) for subshape in shape.geoshapes):
                 return True
@@ -642,7 +639,7 @@ class MultiShapeBase(BaseShape, ABC):
 
         return False
 
-    def intersects_shape(self, shape: ANY_SHAPE_TYPE, **kwargs) -> bool:
+    def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
         if isinstance(shape, MultiShapeBase):
             for subshape in shape.geoshapes:
                 if self.intersects_shape(subshape, **kwargs):
@@ -664,3 +661,7 @@ class MultiShapeBase(BaseShape, ABC):
             shape.dt = self.dt
 
         return shapes
+
+
+class SingleShapeBase(BaseShape, ABC):
+    pass

@@ -147,11 +147,12 @@ point.set_property(
 #### Creating MultiShapes
 Multishapes are treated as lists of GeoShapes (of their corresponding type) and can be assigned 
 properties/holes/time bounds in the same way.
+
 ```python
 from geostructures import *
 
 # Multipolygons 
-multipolygon = MultiGeoShape(
+multipolygon = MultiGeoPolygon(
     [
         GeoCircle(Coordinate(-0.131092, 51.509865), 500),
         GeoBox(Coordinate(-0.154092, 51.539865), Coordinate(-0.140592, 51.505665))
@@ -162,7 +163,7 @@ multipolygon = MultiGeoShape(
 
 multipoint = MultiGeoPoint(
     [
-        GeoPoint(Coordinate(-0.154092, 51.539865)), 
+        GeoPoint(Coordinate(-0.154092, 51.539865)),
         GeoPoint(Coordinate(-0.140592, 51.505665))
     ],
     dt=...,
@@ -182,20 +183,22 @@ multilinestring = MultiGeoLineString(
 #### Geometric Operations
 Geostructures isn't a replacement for shapely (see conversion to shapely below), however supports 
 many geometric operations.
+
 ```python
 from datetime import datetime
 from geostructures import *
 
 circle = GeoCircle(Coordinate(-0.131092, 51.509865), radius=500, dt=datetime(2020, 1, 1))
-ellipse = GeoEllipse(Coordinate(-0.093092, 51.529865), semi_major=1_000, semi_minor=250, rotation=45, dt=datetime(2020, 1, 1))
+ellipse = GeoEllipse(Coordinate(-0.093092, 51.529865), semi_major=1_000, semi_minor=250, rotation=45,
+                     dt=datetime(2020, 1, 1))
 
 # True/False, do these shapes intersect?
-circle.intersects(ellipse)          # Both temporally and spatially
-circle.intersects_shape(ellipse)    # Only spatially
+circle.intersects(ellipse)  # Both temporally and spatially
+circle.intersects_shape(ellipse)  # Only spatially
 
 # True/False, does the circle fully contain the ellipse?
-circle.contains(ellipse)            # Both temporally and spatially
-circle.contains_shape(ellipse)      # Only spatially
+circle.contains(ellipse)  # Both temporally and spatially
+circle.contains_shape(ellipse)  # Only spatially
 
 # Return the rectangle that circumscribes this shape (as a GeoBox)
 circle.circumscribing_rectangle()
@@ -213,15 +216,15 @@ circle.area
 circle.volume
 
 # Get the coordinates that define this shapes outer shell
-circle.bounding_coords()        # default 36 bounding points
-circle.bounding_coords(k=360)   # or define the number of points to increase/decrease precision
+circle.bounding_coords()  # default 36 bounding points
+circle.bounding_coords(k=360)  # or define the number of points to increase/decrease precision
 
 # Get a list of all the linear rings that comprise this shape (includes holes)
-circle.linear_rings()           # Also accepts k
+circle.linear_rings()  # Also accepts k
 
 # Return the convex hull as a GeoPolygon (only for multi-shapes and collections)
-multishape = MultiGeoShape([circle, ellipse])
-multishape.convex_hull()        # Also accepts k
+multishape = MultiGeoPolygon([circle, ellipse])
+multishape.convex_hull()  # Also accepts k
 ```
 
 #### Converting Between Formats

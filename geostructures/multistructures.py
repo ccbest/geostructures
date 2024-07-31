@@ -1,6 +1,6 @@
 
 
-__all__ = ['MultiGeoShape', 'MultiGeoLineString', 'MultiGeoPoint']
+__all__ = ['MultiGeoPolygon', 'MultiGeoLineString', 'MultiGeoPoint']
 
 
 import copy
@@ -12,19 +12,19 @@ import numpy as np
 from geostructures._base import (
     _RE_MULTIPOLYGON_WKT, _RE_MULTIPOINT_WKT,
     _RE_MULTILINESTRING_WKT, _RE_LINEAR_RING, _RE_LINEAR_RINGS,
-    ShapeLike, MultiShapeBase, parse_wkt_linear_ring,
-    PointLike, LineLike
+    PolygonLikeMixin, MultiShapeBase, parse_wkt_linear_ring,
+    PointLikeMixin, LineLikeMixin
 )
 from geostructures.time import GEOTIME_TYPE
 from geostructures._geometry import convex_hull
 from geostructures.calc import haversine_distance_meters
 from geostructures.coordinates import Coordinate
-from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, ShapeBase
+from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, PolygonBase
 from geostructures.utils.functions import get_dt_from_geojson_props
 from geostructures.utils.logging import warn_once
 
 
-class MultiGeoLineString(MultiShapeBase, LineLike):
+class MultiGeoLineString(MultiShapeBase, LineLikeMixin):
 
     def __init__(
         self,
@@ -258,7 +258,7 @@ class MultiGeoLineString(MultiShapeBase, LineLike):
         return f'MULTILINESTRING({", ".join(lines)})'
 
 
-class MultiGeoPoint(MultiShapeBase, PointLike):
+class MultiGeoPoint(MultiShapeBase, PointLikeMixin):
 
     def __init__(
         self,
@@ -477,11 +477,11 @@ class MultiGeoPoint(MultiShapeBase, PointLike):
         return f'MULTIPOINT({", ".join(points)})'
 
 
-class MultiGeoShape(MultiShapeBase, ShapeLike):
+class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin):
 
     def __init__(
         self,
-        geoshapes: Sequence[ShapeBase],
+        geoshapes: Sequence[PolygonBase],
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -528,8 +528,8 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
             ])
         )
 
-    def copy(self) -> 'MultiGeoShape':
-        return MultiGeoShape(
+    def copy(self) -> 'MultiGeoPolygon':
+        return MultiGeoPolygon(
             [x.copy() for x in self.geoshapes],
             dt=self.dt,
             properties=copy.deepcopy(self._properties)
@@ -590,7 +590,7 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
             time_end_property,
             time_format
         )
-        return MultiGeoShape(
+        return MultiGeoPolygon(
             shapes,
             dt=dt,
             properties=properties
@@ -629,7 +629,7 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
                 'stored in shape properties'
             )
 
-        mgp = MultiGeoShape.from_geojson(
+        mgp = MultiGeoPolygon.from_geojson(
             {
                 'type': 'Feature',
                 'geometry': shape.__geo_interface__,
@@ -662,7 +662,7 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
         wkt_str: str,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
-    ) -> 'MultiGeoShape':
+    ) -> 'MultiGeoPolygon':
         """Create a GeoPolygon from a wkt string"""
         if not _RE_MULTIPOLYGON_WKT.match(wkt_str):
             raise ValueError(f'Invalid WKT MultiPolygon: {wkt_str}')
@@ -680,7 +680,7 @@ class MultiGeoShape(MultiShapeBase, ShapeLike):
 
             shapes.append(GeoPolygon(shell, holes=holes))
 
-        return MultiGeoShape(
+        return MultiGeoPolygon(
             shapes,
             dt=dt,
             properties=properties

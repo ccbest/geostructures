@@ -234,7 +234,7 @@ def test_niemeyer_hash_shape():
         '3ffffffd', '3ffffffe', '3fffffff', '6aaaaaa8', '6aaaaaaa', '6aaaaaab',
         '95555554', '95555555', '95555557', 'c0000000', 'c0000001', 'c0000002'
     }
-    shape = MultiGeoShape([
+    shape = MultiGeoPolygon([
         GeoCircle(Coordinate(0.0001, 0.0001), 5),
         GeoCircle(Coordinate(1.0001, 1.0001), 5)
     ])
