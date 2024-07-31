@@ -8,7 +8,7 @@ __all__ = [
 from geostructures._base import (
     BaseShape,
     MultiShapeBase,
-    SingleShape,
+    SingleShapeBase,
     LineLikeMixin,
     PointLikeMixin,
     PolygonLikeMixin,
@@ -19,7 +19,7 @@ from geostructures.structures import PolygonBase
 GeoShape = BaseShape
 
 # Individual and Multi-Shapes
-SingleShape = SingleShape  # Union[PolygonBase, GeoLineString, GeoPoint]
+SingleShape = SingleShapeBase  # Union[PolygonBase, GeoLineString, GeoPoint]
 MultiShape = MultiShapeBase  # Union[MultiGeoPolygon, MultiGeoLineString, MultiGeoPoint]
 
 # All Single Polygon Shapes, e.g. GeoBox
