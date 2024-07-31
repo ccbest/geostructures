@@ -5,7 +5,7 @@ __all__ = ['MultiGeoPolygon', 'MultiGeoLineString', 'MultiGeoPoint']
 
 import copy
 from functools import cached_property
-from typing import Any, Dict, List, Optional, Tuple, Sequence, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, Sequence
 
 import numpy as np
 

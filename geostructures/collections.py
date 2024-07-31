@@ -21,7 +21,7 @@ from geostructures.calc import haversine_distance_meters
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
-from geostructures.typing import *
+from geostructures.typing import GeoShape, MultiShape, LineLike, PointLike, PolygonLike
 from geostructures.utils.functions import default_to_zulu
 
 

@@ -66,7 +66,7 @@ class PolygonBase(BaseShape, PolygonLikeMixin, ABC):
         return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
 
     def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
-        from geostructures.typing import MultiShape, PointLike, SingleShape, PolygonLike, LineLike
+        from geostructures.typing import MultiShape, PointLike, PolygonLike, LineLike
 
         if isinstance(shape, MultiShape):
             for subshape in shape.geoshapes:
