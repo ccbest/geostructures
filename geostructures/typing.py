@@ -5,26 +5,25 @@ __all__ = [
     'PolygonLike', 'SingleShape', 'SinglePolygon'
 ]
 
-from typing import Union
-
 from geostructures._base import (
     BaseShape,
     MultiShapeBase,
+    SingleShape,
     LineLikeMixin,
     PointLikeMixin,
     PolygonLikeMixin,
 )
-from geostructures.structures import PolygonBase, GeoLineString, GeoPoint
+from geostructures.structures import PolygonBase
 
 # Any Shape
 GeoShape = BaseShape
 
 # Individual and Multi-Shapes
-SingleShape = Union[PolygonBase, GeoLineString, GeoPoint]
-MultiShape = MultiShapeBase
+SingleShape = SingleShape  # Union[PolygonBase, GeoLineString, GeoPoint]
+MultiShape = MultiShapeBase  # Union[MultiGeoPolygon, MultiGeoLineString, MultiGeoPoint]
 
 # All Single Polygon Shapes, e.g. GeoBox
-SinglePolygon = PolygonBase
+SinglePolygon = PolygonBase  # Union[GeoPolygon, GeoBox, GeoCircle, ... ]
 
 # isinstance with type aliases only supported in Python 3.10+, have to use mixins
 LineLike = LineLikeMixin  # Union[GeoLineString, MultiGeoLinestring]

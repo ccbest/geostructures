@@ -661,3 +661,7 @@ class MultiShapeBase(BaseShape, ABC):
             shape.dt = self.dt
 
         return shapes
+
+
+class SingleShapeBase(BaseShape, ABC):
+    pass

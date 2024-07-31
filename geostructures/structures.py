@@ -20,7 +20,8 @@ import numpy as np
 from geostructures import LOGGER
 from geostructures._base import (
     _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT,
-    _RE_LINESTRING_WKT, BaseShape, LineLikeMixin, PointLikeMixin, PolygonLikeMixin, parse_wkt_linear_ring
+    _RE_LINESTRING_WKT, BaseShape, LineLikeMixin, PointLikeMixin, PolygonLikeMixin,
+    SingleShapeBase, parse_wkt_linear_ring
 )
 from geostructures.time import GEOTIME_TYPE
 from geostructures.coordinates import Coordinate
@@ -41,7 +42,7 @@ if TYPE_CHECKING:
     from geostructures.typing import GeoShape, PolygonLike
 
 
-class PolygonBase(BaseShape, PolygonLikeMixin, ABC):
+class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
 
     def __init__(
         self,
@@ -1239,7 +1240,7 @@ class GeoRing(PolygonBase):
         return super().to_wkt(**kwargs)
 
 
-class GeoLineString(BaseShape, LineLikeMixin):
+class GeoLineString(SingleShapeBase, LineLikeMixin):
 
     """
     A LineString (or more colloquially, a path) consisting of a series of
@@ -1513,7 +1514,7 @@ class GeoLineString(BaseShape, LineLikeMixin):
         return f'LINESTRING{bbox_str}'
 
 
-class GeoPoint(BaseShape, PointLikeMixin):
+class GeoPoint(SingleShapeBase, PointLikeMixin):
 
     """
     A Coordinate with an associated timestamp. This is the only shape which
