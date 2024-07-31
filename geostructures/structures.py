@@ -20,7 +20,7 @@ import numpy as np
 from geostructures import LOGGER
 from geostructures._base import (
     _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT,
-    _RE_LINESTRING_WKT, BaseShape, LineLikeMixin, PointLikeMixin, PolygonLikeMixin,
+    _RE_LINESTRING_WKT, LineLikeMixin, PointLikeMixin, PolygonLikeMixin,
     SingleShapeBase, parse_wkt_linear_ring
 )
 from geostructures.time import GEOTIME_TYPE
