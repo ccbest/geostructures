@@ -126,6 +126,30 @@ class Coordinate:
             round_half_up(convert(lat[0], *lat_dms), 6)
         )
 
+    def reproject(self, from_crs: str, to_crs: str):
+        """
+        Reproject a coordinate from one projection system to another.
+        
+        Args:
+           from_crs:
+           A string representing the source EPSG code. 
+           For example, WGS84 (EPSG:4326)
+
+           to_crs:
+           A string representing the target EPSG code.
+
+        Return: A coordinate in the target projection system.  
+        """
+        from pyproj import Transformer
+        transformer = Transformer.from_crs(from_crs, to_crs)
+        x, y = transformer.transform(self.latitude, self.longitude)
+        
+        return Coordinate(
+            round_half_up(y, 6),
+            round_half_up(x, 6),
+            _bounded = False
+        )
+
     def to_dms(self) -> Tuple[Tuple[int, int, float, str], Tuple[int, int, float, str]]:
         """
         Convert a value (latitude or longitude) in decimal degrees to a tuple of
