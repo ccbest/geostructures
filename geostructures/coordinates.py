@@ -109,13 +109,13 @@ class Coordinate:
         in a different projection than WGS84
         Args:
             lon:
-                The longitude, 
+                The longitude
 
             lat:
                 The latitude
-            crs: 
-                A string representing the target EPSG code. e.g EPSG:3857  
- 
+            crs:
+                A string representing the target EPSG code. e.g EPSG:3857
+
         """
         from pyproj import Transformer
         transformer = Transformer.from_crs(crs, 'EPSG:4326')
@@ -125,7 +125,6 @@ class Coordinate:
             round_half_up(y, 6),
             round_half_up(x, 6),
         )
-
 
     @classmethod
     def from_qdms(cls, lon: str, lat: str):
@@ -150,7 +149,7 @@ class Coordinate:
             round_half_up(convert(lon[0], *lon_dms), 6),
             round_half_up(convert(lat[0], *lat_dms), 6)
         )
-      
+
     def to_dms(self) -> Tuple[Tuple[int, int, float, str], Tuple[int, int, float, str]]:
         """
         Convert a value (latitude or longitude) in decimal degrees to a tuple of
@@ -195,11 +194,11 @@ class Coordinate:
         from pyproj import Transformer
         transformer = Transformer.from_crs('EPSG:4326', crs)
         x, y = transformer.transform(self.latitude, self.longitude)
-        
+
         return Coordinate(
             round_half_up(y, 6),
             round_half_up(x, 6),
-            _bounded = False
+            False
         )
 
     def to_qdms(self) -> Tuple[str, str]:
