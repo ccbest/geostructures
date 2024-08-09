@@ -120,7 +120,7 @@ class Coordinate:
         from pyproj import Transformer
         transformer = Transformer.from_crs(crs, 'EPSG:4326')
         x, y = transformer.transform(lat, lon)
-        
+
         return Coordinate(
             round_half_up(y, 6),
             round_half_up(x, 6),
@@ -183,13 +183,13 @@ class Coordinate:
     def to_projection(self, crs: str):
         """
         Reproject a coordinate from the WGS84 projection to another.
-        
+
         Args:
            crs:
            A string representing the target EPSG code e,g EPSG:3857.
 
-        Return: 
-            A coordinate in the target projection system.  
+        Return:
+            A coordinate in the target projection system.
         """
         from pyproj import Transformer
         transformer = Transformer.from_crs('EPSG:4326', crs)
