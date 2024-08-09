@@ -63,6 +63,12 @@ def test_coordinate_to_mgrs():
 def test_coordinate_from_mgrs():
     assert [round(x, 5) for x in Coordinate.from_mgrs('31NAA6602100000').to_float()] == [0., 0.]
 
+def test_coordinate_from_projection():
+    assert Coordinate.from_projection(2000,3000,'EPSG:3857') == Coordinate(0.026949,0.017966)
+
+def test_coordinate_to_projection():
+    assert Coordinate(0.026949,0.017966).to_projection('EPSG:3857') == Coordinate(1999.966004, 2999.948957, False)
+
 
 def test_coordinate_to_dms():
     assert Coordinate(-0.118092, 51.509865).to_dms() == ((0, 7, 5.1312, 'W'), (51, 30, 35.514, 'N'))
