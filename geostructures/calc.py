@@ -175,3 +175,74 @@ def rotate_coordinates(
         Coordinate(*coord)
         for coord in (R @ (p.T - o.T) + o.T).T
     ]
+
+
+def vincenty_distance_meters(
+    coord1: Coordinate,
+    coord2: Coordinate,
+    max_iter: int = 1000,
+    tolerance: float = 1e-11
+) -> float:
+    """
+
+    Args:
+        coord1:
+        coord2:
+        max_iter:
+        tolerance:
+
+    Returns:
+
+    """
+    a = 6_378_137.0  # radius at equator in meters (WGS-84)
+    f = 1 / 298.257_223_563  # flattening of the ellipsoid (WGS-84)
+    b = (1 - f) * a
+
+    lon1, lat1 = coord1.to_float()
+    lon2, lat2 = coord2.to_float()
+
+    u_1 = math.atan((1 - f) * math.tan(math.radians(lat1)))
+    u_2 = math.atan((1 - f) * math.tan(math.radians(lat2)))
+
+    lon_diff = math.radians(lon2 - lon1)
+    lambda_current = lon_diff
+
+    sin_u1 = math.sin(u_1)
+    cos_u1 = math.cos(u_1)
+    sin_u2 = math.sin(u_2)
+    cos_u2 = math.cos(u_2)
+
+    for i in range(0, max_iter):
+
+        cos_lambda = math.cos(lambda_current)
+        sin_lambda = math.sin(lambda_current)
+        sin_sigma = math.sqrt(
+            (cos_u2 * math.sin(lambda_current)) ** 2 +
+            (cos_u1 * sin_u2 - sin_u1 * cos_u2 * cos_lambda) ** 2
+        )
+        cos_sigma = sin_u1 * sin_u2 + cos_u1 * cos_u2 * cos_lambda
+        sigma = math.atan2(sin_sigma, cos_sigma)
+        sin_alpha = (cos_u1 * cos_u2 * sin_lambda) / sin_sigma
+        cos_sq_alpha = 1 - sin_alpha ** 2
+        cos2_sigma_m = cos_sigma - ((2 * sin_u1 * sin_u2) / cos_sq_alpha)
+        _c = (f / 16) * cos_sq_alpha * (4 + f * (4 - 3 * cos_sq_alpha))
+        lambda_prev = lambda_current
+        lambda_current = lon_diff + (1 - _c) * f * sin_alpha * (sigma + _c * sin_sigma * (
+                    cos2_sigma_m + _c * cos_sigma * (-1 + 2 * cos2_sigma_m ** 2)))
+
+        # successful convergence
+        diff = abs(lambda_prev - lambda_current)
+        if diff <= tolerance:
+            break
+
+    u_sq = cos_sq_alpha * ((a ** 2 - b ** 2) / b ** 2)
+    _a = 1 + (u_sq / 16384) * (4096 + u_sq * (-768 + u_sq * (320 - 175 * u_sq)))
+    _b = (u_sq / 1024) * (256 + u_sq * (-128 + u_sq * (74 - 47 * u_sq)))
+    delta_sig = _b * sin_sigma * (
+            cos2_sigma_m + 0.25 * _b * (
+            cos_sigma * (-1 + 2 * cos2_sigma_m ** 2) - (1 / 6) * _b * cos2_sigma_m *
+            (-3 + 4 * sin_sigma ** 2) * (-3 + 4 * cos2_sigma_m ** 2)
+        )
+    )
+
+    return b * _a * (sigma - delta_sig)
