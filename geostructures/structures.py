@@ -586,7 +586,7 @@ class GeoPolygon(PolygonBase):
             linear_rings.append(
                 [
                     Coordinate(
-                        *cast(Tuple[float, float],x),
+                        *cast(Tuple[float, float], x),
                         z=z.pop(0) if z else None,
                         m=m.pop(0) if m else None,
                     ) for x in linear_ring
@@ -1443,7 +1443,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
         return GeoLineString(
             [
                 Coordinate(
-                    *cast(Tuple[float, float],x),
+                    *cast(Tuple[float, float], x),
                     z=z.pop(0) if z else None,
                     m=m.pop(0) if m else None,
                 ) for x in shape.__geo_interface__.get('coordinates', [])
