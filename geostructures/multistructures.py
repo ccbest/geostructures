@@ -5,7 +5,7 @@ __all__ = ['MultiGeoPolygon', 'MultiGeoLineString', 'MultiGeoPoint']
 
 import copy
 from functools import cached_property
-from typing import Any, Dict, List, Optional, Tuple, Sequence
+from typing import Any, Dict, List, Optional, Tuple, Sequence, cast
 
 import numpy as np
 
@@ -21,7 +21,6 @@ from geostructures.calc import haversine_distance_meters
 from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, PolygonBase
 from geostructures.utils.functions import get_dt_from_geojson_props
-from geostructures.utils.logging import warn_once
 
 
 class MultiGeoLineString(MultiShapeBase, LineLikeMixin):
@@ -47,6 +46,14 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin):
             axis=0
         )
         return Coordinate(lon, lat)
+
+    @property
+    def has_m(self) -> bool:
+        return any(y.m for x in self.geoshapes for y in x.vertices)
+
+    @property
+    def has_z(self) -> bool:
+        return any(y.z for x in self.geoshapes for y in x.vertices)
 
     @property
     def segments(self) -> List[List[Tuple[Coordinate, Coordinate]]]:
@@ -128,30 +135,23 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin):
         Returns:
             MultiGeoLineString
         """
-        properties = properties or {}
-        if hasattr(shape, 'z'):  # pragma: no cover
-            properties['Z'] = shape.z
-            warn_once(
-                'Shapefile contains unsupported Z data; Z-values will be '
-                'stored in shape properties'
+        linestrings = []
+        z = shape.z if hasattr(shape, 'z') else None
+        m = shape.m if hasattr(shape, 'm') else None
+        for linestring in shape.__geo_interface__.get('coordinates', []):
+            linestrings.append(
+                GeoLineString(
+                    [
+                        Coordinate(
+                            *cast(Tuple[float, float], coord),
+                            z=z.pop(0) if z else None,
+                            m=m.pop(0) if m else None,
+                        ) for coord in linestring
+                    ]
+                )
             )
 
-        if hasattr(shape, 'm'):  # pragma: no cover
-            properties['M'] = shape.m
-            warn_once(
-                'Shapefile contains unsupported M data; M-values will be '
-                'stored in shape properties'
-            )
-
-        mgls = MultiGeoLineString.from_geojson(
-            {
-                'type': 'Feature',
-                'geometry': shape.__geo_interface__,
-                'properties': properties
-            }
-        )
-        mgls.set_dt(dt, inplace=True)
-        return mgls
+        return MultiGeoLineString(linestrings, dt=dt, properties=properties)
 
     @classmethod
     def from_shapely(
@@ -232,9 +232,15 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin):
         }
 
     def to_pyshp(self, writer):
-        return writer.line(
-            [[list(vertex.to_float()) for vertex in shape.vertices] for shape in self.geoshapes]
-        )
+        formatted = [
+            [list(vertex.to_float()) for vertex in shape.vertices]
+            for shape in self.geoshapes
+        ]
+        if self.has_m and not self.has_z:
+            return writer.linem(formatted)
+        if self.has_z:
+            return writer.linez(formatted)
+        return writer.line(formatted)
 
     def _to_shapely(self, **kwargs):
         """
@@ -288,6 +294,14 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin):
             np.array([point.centroid.to_float() for point in self.geoshapes]),
             axis=0
         ))
+
+    @property
+    def has_m(self) -> bool:
+        return any(x.centroid.m for x in self.geoshapes)
+
+    @property
+    def has_z(self) -> bool:
+        return any(x.centroid.z for x in self.geoshapes)
 
     def circumscribing_circle(self) -> 'GeoCircle':
         centroid = self.centroid
@@ -362,25 +376,21 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin):
         Returns:
             MultiGeoPoint
         """
-        coord_parts = list(zip(*shape.__geo_interface__.get('coordinates', [])))
-        parts = ['longitude', 'latitude']
-        if hasattr(shape, 'z'):
-            coord_parts.append(shape.z)
-            parts.append('z')
+        points = []
+        z = shape.z if hasattr(shape, 'z') else None
+        m = shape.m if hasattr(shape, 'm') else None
+        for point in shape.__geo_interface__.get('coordinates', []):
+            points.append(
+                GeoPoint(
+                    Coordinate(
+                        *cast(Tuple[float, float], point),
+                        z=z.pop(0) if z else None,
+                        m=m.pop(0) if m else None,
+                    )
+                )
+            )
 
-        if hasattr(shape, 'm'):
-            coord_parts.append(shape.m)
-            parts.append('m')
-
-        coords = [
-            GeoPoint(Coordinate(**dict(zip(parts, x))))
-            for x in zip(*coord_parts)
-        ]
-        return MultiGeoPoint(
-            coords,
-            dt=dt,
-            properties=properties
-        )
+        return MultiGeoPoint(points, dt=dt, properties=properties)
 
     @classmethod
     def from_shapely(
@@ -459,7 +469,12 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin):
         }
 
     def to_pyshp(self, writer):
-        return writer.multipoint([x.centroid.to_float() for x in self.geoshapes])
+        formatted = [x.centroid.to_float() for x in self.geoshapes]
+        if self.has_m and not self.has_z:
+            return writer.multipointm(formatted)
+        if self.has_z:
+            return writer.multipointz(formatted)
+        return writer.multipoint(formatted)
 
     def _to_shapely(self, **kwargs):
         """
@@ -626,30 +641,28 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin):
         Returns:
             MultiGeoShape
         """
-        properties = properties or {}
-        if hasattr(shape, 'z'):  # pragma: no cover
-            properties['Z'] = shape.z
-            warn_once(
-                'Shapefile contains unsupported Z data; Z-values will be '
-                'stored in shape properties'
+        shapes = []
+        z = shape.z if hasattr(shape, 'z') else None
+        m = shape.m if hasattr(shape, 'm') else None
+        for shape in shape.__geo_interface__.get('coordinates', []):
+            linear_rings = [
+                [
+                    Coordinate(
+                        *cast(Tuple[float, float], coord),
+                        z=z.pop(0) if z else None,
+                        m=m.pop(0) if m else None,
+                    ) for coord in linear_ring
+                ] for linear_ring in shape
+            ]
+            holes = [GeoPolygon(x) for x in linear_rings[1:]] if len(linear_rings) > 1 else None
+            shapes.append(
+                GeoPolygon(
+                    linear_rings[0],
+                    holes=holes
+                )
             )
 
-        if hasattr(shape, 'm'):  # pragma: no cover
-            properties['M'] = shape.m
-            warn_once(
-                'Shapefile contains unsupported M data; M-values will be '
-                'stored in shape properties'
-            )
-
-        mgp = MultiGeoPolygon.from_geojson(
-            {
-                'type': 'Feature',
-                'geometry': shape.__geo_interface__,
-                'properties': properties
-            }
-        )
-        mgp.set_dt(dt, inplace=True)
-        return mgp
+        return MultiGeoPolygon(shapes, dt=dt, properties=properties)
 
     @classmethod
     def from_shapely(
@@ -761,14 +774,17 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin):
         }
 
     def to_pyshp(self, writer):
-        return writer.poly(
-            [
-                # ESRI defines right hand rule as opposite of GeoJSON
-                [list(coord.to_float()) for coord in ring[::-1]]
-                for shape in self.geoshapes
-                for ring in shape.linear_rings()
-            ]
-        )
+        # Note: ESRI defines right hand rule as opposite of GeoJSON
+        formatted = [
+            [list(coord.to_float()) for coord in ring[::-1]]
+            for shape in self.geoshapes
+            for ring in shape.linear_rings()
+        ]
+        if self.has_m and not self.has_z:
+            return writer.polym(formatted)
+        if self.has_z:
+            return writer.polyz(formatted)
+        return writer.poly(formatted)
 
     def _to_shapely(self, **kwargs):
         """

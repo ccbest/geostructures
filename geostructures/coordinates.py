@@ -6,7 +6,7 @@ __all__ = ['Coordinate']
 
 from functools import cached_property
 import math
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, cast
 
 from geostructures.utils.functions import round_half_up
 from geostructures.utils.logging import warn_once
@@ -50,15 +50,14 @@ class Coordinate:
         return (
             self.latitude == other.latitude and
             self.longitude == other.longitude and
-            self.z == other.z and
-            self.m == other.m
+            self.z == other.z
         )
 
     def __hash__(self):
         return hash((self.longitude, self.latitude, self.z, self.m))
 
     def __repr__(self):
-        parts = filter(bool, (self.longitude, self.latitude, self.z, self.m))
+        parts = filter(lambda x: x is not None, (self.longitude, self.latitude, self.z, self.m))
         return f'<Coordinate({", ".join(map(str, parts))})>'
 
     @cached_property
@@ -189,7 +188,7 @@ class Coordinate:
             )
             zm = dict(zip(list(zm_order.lower()), map(float, parts[2:])))
 
-        return Coordinate(*parts[:2], **zm)
+        return Coordinate(*cast(Tuple[float, float], parts[:2]), z=zm.get('z'), m=zm.get('m'))
 
     def to_dms(self) -> Tuple[Tuple[int, int, float, str], Tuple[int, int, float, str]]:
         """

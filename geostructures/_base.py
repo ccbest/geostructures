@@ -97,6 +97,16 @@ class BaseShapeProtocol(Protocol):
         return self.dt.end
 
     @property
+    @abstractmethod
+    def has_z(self) -> bool:
+        """Determines whether any coordinates in the shape have associated Z values"""
+
+    @property
+    @abstractmethod
+    def has_m(self) -> bool:
+        """Determines whether any coordinates in the shape have associated M values"""
+
+    @property
     def properties(self):
         props = self._properties.copy()
         if self.dt:
@@ -644,6 +654,14 @@ class MultiShapeBase(BaseShape, ABC):
             zip(*[[x for pair in shape.bounds for x in pair] for shape in self.geoshapes])
         )
         return (min(min_lons), max(max_lons)), (min(min_lats), max(max_lats))
+
+    @property
+    def has_m(self) -> bool:
+        return any(x.has_m for x in self.geoshapes)
+
+    @property
+    def has_z(self) -> bool:
+        return any(x.has_z for x in self.geoshapes)
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         for shape in self.geoshapes:

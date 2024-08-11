@@ -100,16 +100,16 @@ def test_multigeolinestring_from_geojson():
 def test_multigeolinestring_from_pyshp():
     class MockShape:
         def __init__(self):
-            self.z = [1., 2.]
-            self.m = [3., 4.]
+            self.z = [10., 12., 14., 16.]
+            self.m = [11., 13., 15., 17.]
 
         @property
         def __geo_interface__(self):
             return {
                 'type': 'MultiLineString',
                 'coordinates': [
-                    [[0.0, 1.0, 10., 11.], [1.0, 1.0, 12., 13.]],
-                    [[1.0, 1.0, 14., 15.], [2.0, 2.0, 16., 17.]]
+                    [[0.0, 1.0], [1.0, 1.0]],
+                    [[1.0, 1.0], [2.0, 2.0]]
                 ]
             }
 
@@ -352,7 +352,7 @@ def test_multigeopoint_to_geojson():
     }
 
 
-def test_multigeoshape_to_pyshp():
+def test_multigeopoint_to_pyshp():
     class MockShape:
         def __init__(self):
             self.z = [1., 2.]
