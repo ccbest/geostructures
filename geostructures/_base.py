@@ -419,11 +419,8 @@ class BaseShape(BaseShapeProtocol, ABC):
             self,
             dt: Optional[GEOTIME_TYPE] = None,
             properties: Optional[Dict] = None,
-            **kwargs
     ):
         super().__init__()
-        if kwargs:
-            LOGGER.warning('Unrecognized kwargs: %s', ', '.join(kwargs.keys()))
         if isinstance(dt, datetime):
             # Convert to a zero-second time interval
             dt = default_to_zulu(dt)
