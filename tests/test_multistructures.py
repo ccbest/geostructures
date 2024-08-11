@@ -97,6 +97,40 @@ def test_multigeolinestring_from_geojson():
         MultiGeoLineString.from_geojson(gjson)
 
 
+def test_multigeolinestring_from_pyshp():
+    class MockShape:
+        def __init__(self):
+            self.z = [1., 2.]
+            self.m = [3., 4.]
+
+        @property
+        def __geo_interface__(self):
+            return {
+                'type': 'MultiLineString',
+                'coordinates': [
+                    [[0.0, 1.0, 10., 11.], [1.0, 1.0, 12., 13.]],
+                    [[1.0, 1.0, 14., 15.], [2.0, 2.0, 16., 17.]]
+                ]
+            }
+
+    actual = MultiGeoLineString.from_pyshp(
+        MockShape(),
+        dt=datetime(2020, 1, 1),
+        properties={'test': 'prop'}
+    )
+    expected = MultiGeoLineString(
+        [
+            GeoLineString([Coordinate(0., 1., z=10., m=11.), Coordinate(1., 1., z=12., m=13.)]),
+            GeoLineString([Coordinate(1., 1., z=14., m=15.), Coordinate(2., 2., z=16., m=17.)])
+        ],
+        dt=datetime(2020, 1, 1),
+        properties={'test': 'prop'}
+    )
+
+    assert actual == expected
+    assert actual.properties == expected.properties
+
+
 def test_multigeolinestring_from_shapely():
     smls = shapely.MultiLineString([[[0, 0], [1, 2]], [[4, 4], [5, 6]]])
     mls = MultiGeoLineString.from_shapely(smls)
@@ -316,6 +350,30 @@ def test_multigeopoint_to_geojson():
         },
         "test_kwarg": "test_kwarg"
     }
+
+
+def test_multigeoshape_to_pyshp():
+    class MockShape:
+        def __init__(self):
+            self.z = [1., 2.]
+            self.m = [3., 4.]
+
+        @property
+        def __geo_interface__(self):
+            return {'type': 'MultiPoint', 'coordinates': [[0.0, 1.0], [1.0, 1.0]]}
+
+    actual = MultiGeoPoint.from_pyshp(
+        MockShape(),
+        dt=datetime(2020, 1, 1),
+        properties={'test': 'prop'}
+    )
+    expected = MultiGeoPoint(
+        [GeoPoint(Coordinate(0., 1., z=1., m=3.)), GeoPoint(Coordinate(1., 1., z=2., m=4.))],
+        dt=datetime(2020, 1, 1),
+        properties={'test': 'prop'}
+    )
+    assert actual == expected
+    assert actual.properties == expected.properties
 
 
 def test_multigeopoint_to_shapely():

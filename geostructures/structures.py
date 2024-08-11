@@ -21,7 +21,7 @@ from geostructures import LOGGER
 from geostructures._base import (
     _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT,
     _RE_LINESTRING_WKT, LineLikeMixin, PointLikeMixin, PolygonLikeMixin,
-    SingleShapeBase, parse_wkt_linear_ring
+    SingleShapeBase
 )
 from geostructures.time import GEOTIME_TYPE
 from geostructures.coordinates import Coordinate
@@ -447,7 +447,12 @@ class GeoPolygon(PolygonBase):
                 f'Geometry represents a {geom.get("type")}; expected Polygon.'
             )
 
-        rings = [[Coordinate(x, y) for x, y in ring] for ring in geom.get('coordinates', [])]
+        rings = []
+        for ring in geom.get('coordinates', []):
+            rings.append(
+                [Coordinate(**dict(zip(('longitude', 'latitude', 'z'), x))) for x in ring]
+            )
+
         holes: List[PolygonLike] = []
         if len(rings) > 1:
             holes = [GeoPolygon(ring) for ring in rings[1:]]
@@ -523,7 +528,12 @@ class GeoPolygon(PolygonBase):
         return niemeyer_to_geobox(geohash, base, dt, properties).to_polygon()
 
     @classmethod
-    def from_pyshp(cls, shape, dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+    def from_pyshp(
+        cls,
+        shape,
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
         """
         Create a GeoPolygon from a pyshyp polygon.
 
@@ -590,21 +600,20 @@ class GeoPolygon(PolygonBase):
         properties: Optional[Dict] = None
     ) -> 'GeoPolygon':
         """Create a GeoPolygon from a wkt string"""
-        from geostructures.typing import PolygonLike
-
         if not _RE_POLYGON_WKT.match(wkt_str):
             raise ValueError(f'Invalid WKT Polygon: {wkt_str}')
 
-        coord_groups = _RE_LINEAR_RING.findall(wkt_str)
-        outline = parse_wkt_linear_ring(coord_groups[0])
-        holes: List[PolygonLike] = []
-        if len(coord_groups) > 1:
+        linear_rings = _RE_LINEAR_RING.findall(wkt_str)
+        coords = cls._parse_wkt_linear_ring(wkt_str, linear_rings[0])
+
+        holes = []
+        if len(linear_rings) > 1:
             holes = [
-                GeoPolygon(parse_wkt_linear_ring(coord_group))
-                for coord_group in coord_groups[1:]
+                GeoPolygon(cls._parse_wkt_linear_ring(wkt_str, linear_ring))
+                for linear_ring in linear_rings[1:]
             ]
 
-        return GeoPolygon(outline, holes=holes, dt=dt, properties=properties)
+        return GeoPolygon(coords, holes=holes or None, dt=dt, properties=properties)
 
     def to_wkt(self, **kwargs) -> str:
         """
@@ -1247,10 +1256,10 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
     """
 
     def __init__(
-            self,
-            vertices: List[Coordinate],
-            dt: Optional[GEOTIME_TYPE] = None,
-            properties: Optional[Dict] = None
+        self,
+        vertices: List[Coordinate],
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None,
     ):
         super().__init__(dt=dt, properties=properties)
         self.vertices = vertices
@@ -1362,7 +1371,10 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
                 f'Geometry represents a {geom.get("type")}; expected LineString.'
             )
 
-        coords = [Coordinate(x, y) for x, y in geom.get('coordinates', [])]
+        coords = [
+            Coordinate(**dict(zip(('longitude', 'latitude', 'z'), x)))
+            for x in geom.get('coordinates', [])
+        ]
         properties = gjson.get('properties', {})
         dt = get_dt_from_geojson_props(
             properties,
@@ -1439,14 +1451,11 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
         if not _RE_LINESTRING_WKT.match(wkt_str):
             raise ValueError(f'Invalid WKT LineString: {wkt_str}')
 
-        coord_groups = _RE_LINEAR_RING.findall(wkt_str)
-        if not len(coord_groups) == 1:
-            raise ValueError(f'Invalid WKT LineString: {wkt_str}')
-
+        linear_rings = _RE_LINEAR_RING.findall(wkt_str)
         return GeoLineString(
-            parse_wkt_linear_ring(coord_groups[0]),
+            cls._parse_wkt_linear_ring(wkt_str, linear_rings[0]),
             dt=dt,
-            properties=properties
+            properties=properties,
         )
 
     def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
@@ -1529,7 +1538,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin):
         self,
         coordinate: Coordinate,
         dt: Optional[GEOTIME_TYPE] = None,
-        properties: Optional[Dict] = None
+        properties: Optional[Dict] = None,
     ):
         super().__init__(dt=dt, properties=properties)
         self.coordinate = coordinate
@@ -1619,8 +1628,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin):
                 f'Geometry represents a {geom.get("type")}; expected Point.'
             )
 
-        coordinates = geom['coordinates']
-        coord = Coordinate(coordinates[0], coordinates[1])
+        coord = Coordinate(**dict(zip(('longitude', 'latitude', 'z'), geom['coordinates'])))
         properties = gjson.get('properties', {})
         dt = get_dt_from_geojson_props(
             properties,
@@ -1699,12 +1707,11 @@ class GeoPoint(SingleShapeBase, PointLikeMixin):
         if not _match:
             raise ValueError(f'Invalid WKT Point: {wkt_str}')
 
-        coords = _RE_COORD.findall(wkt_str)[0]
-
+        coords = cls._parse_wkt_linear_ring(wkt_str, _RE_COORD.findall(wkt_str)[0])
         return GeoPoint(
-            Coordinate(*coords.split(' ')),
+            coords[0],
             dt=dt,
-            properties=properties
+            properties=properties,
         )
 
     def to_geojson(

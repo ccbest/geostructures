@@ -6,9 +6,10 @@ __all__ = ['Coordinate']
 
 from functools import cached_property
 import math
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 from geostructures.utils.functions import round_half_up
+from geostructures.utils.logging import warn_once
 
 
 class Coordinate:
@@ -18,7 +19,9 @@ class Coordinate:
         self,
         longitude: Union[float, int, str],
         latitude: Union[float, int, str],
-        _bounded: bool = True
+        z: Optional[float] = None,
+        m: Optional[float] = None,
+        _bounded: bool = True,
     ):
         lon, lat = float(longitude), float(latitude)
         if _bounded:
@@ -37,18 +40,26 @@ class Coordinate:
 
         self.longitude = lon
         self.latitude = lat
+        self.z = z
+        self.m = m
 
     def __eq__(self, other):
         if not isinstance(other, Coordinate):
             return False
 
-        return self.latitude == other.latitude and self.longitude == other.longitude
+        return (
+            self.latitude == other.latitude and
+            self.longitude == other.longitude and
+            self.z == other.z and
+            self.m == other.m
+        )
 
     def __hash__(self):
-        return hash((self.longitude, self.latitude))
+        return hash((self.longitude, self.latitude, self.z, self.m))
 
     def __repr__(self):
-        return f'<Coordinate({self.longitude}, {self.latitude})>'
+        parts = filter(bool, (self.longitude, self.latitude, self.z, self.m))
+        return f'<Coordinate({", ".join(map(str, parts))})>'
 
     @cached_property
     def xyz(self):
@@ -150,6 +161,36 @@ class Coordinate:
             round_half_up(convert(lat[0], *lat_dms), 6)
         )
 
+    @classmethod
+    def from_wkt(cls, wkt_str: str, zm_order: str = 'ZM'):
+        """
+        Create a Coordinate from a WKT substring, eg. "1.0 2.0". Note that
+        this is NOT the same as a WKT POINT, which should be instanced via
+        GeoPoint.from_wkt()
+
+        This method will also parse optional Z and M values, which
+        will be stored in corresponding properties.
+
+        Args:
+            wkt_str:
+                A WKT-represented coordinate.
+
+            zm_order:
+                The order of Z and M values in the coordinate, if present. Can
+                accept both or only one value.
+
+        Returns:
+            Coordinate
+        """
+        parts, zm = wkt_str.split(' '), {}
+        if len(parts) > 2:
+            warn_once(
+                'Z/M values are not supported for geometric operations and will be ignored.'
+            )
+            zm = dict(zip(list(zm_order.lower()), map(float, parts[2:])))
+
+        return Coordinate(*parts[:2], **zm)
+
     def to_dms(self) -> Tuple[Tuple[int, int, float, str], Tuple[int, int, float, str]]:
         """
         Convert a value (latitude or longitude) in decimal degrees to a tuple of
@@ -169,9 +210,18 @@ class Coordinate:
             (*convert(self.latitude), 'N' if self.latitude >= 0 else 'S'),
         )
 
-    def to_float(self) -> Tuple[float, float]:
-        """Converts the coordinate to a 2-tuple of floats (longitude, latitude)"""
-        return self.longitude, self.latitude
+    def to_float(self) -> Tuple:
+        """
+        Converts the coordinate to a tuple of strings (longitude, latitude).
+        If the Coordinate contains Z and/or M datapoints, the tuple will be extended
+        to include both (in that order)
+        """
+        out = [self.longitude, self.latitude]
+        if self.z:
+            out.append(self.z)
+        if self.m:
+            out.append(self.m)
+        return tuple(out)
 
     def to_mgrs(self) -> str:
         """Convert this coordinate to a MGRS string"""
@@ -227,6 +277,15 @@ class Coordinate:
 
         return f'{lon[3]}{"".join(_lon)}', f'{lat[3]}{"".join(_lat)}'
 
-    def to_str(self) -> Tuple[str, str]:
-        """Converts the coordinate to a 2-tuple of strings (longitude, latitude)"""
-        return str(self.longitude), str(self.latitude)
+    def to_str(self) -> Tuple:
+        """
+        Converts the coordinate to a tuple of strings (longitude, latitude).
+        If the Coordinate contains Z and/or M datapoints, the tuple will be extended
+        to include both (in that order)
+        """
+        out = [str(self.longitude), str(self.latitude)]
+        if self.z:
+            out.append(str(self.z))
+        if self.m:
+            out.append(str(self.m))
+        return tuple(out)

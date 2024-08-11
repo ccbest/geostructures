@@ -628,6 +628,35 @@ def test_geopolygon_from_wkt():
         ])]
     )
 
+    wkt_str = 'POLYGON ZM ((30.123 10 1 2, 40 40 1 2, 20 40 1 2, 10.123 20 1 2, 30.123 10 1 2))'
+    poly = GeoPolygon.from_wkt(wkt_str)
+    assert [x.z for x in poly.outline] == [1., 1., 1., 1., 1.]
+    assert [x.m for x in poly.outline] == [2., 2., 2., 2., 2.]
+
+    # Test varying the ZM order
+    wkt_str = 'POLYGON MZ ((30.123 10 1 2, 40 40 1 2, 20 40 1 2, 10.123 20 1 2, 30.123 10 1 2))'
+    poly = GeoPolygon.from_wkt(wkt_str)
+    assert [x.m for x in poly.outline] == [1., 1., 1., 1., 1.]
+    assert [x.z for x in poly.outline] == [2., 2., 2., 2., 2.]
+
+    # Test missing ZM
+    wkt_str = 'POLYGON ((30.123 10 1 2, 40 40 1 2, 20 40 1 2, 10.123 20 1 2, 30.123 10 1 2))'
+    poly = GeoPolygon.from_wkt(wkt_str)
+    assert [x.z for x in poly.outline] == [1., 1., 1., 1., 1.]
+    assert [x.m for x in poly.outline] == [2., 2., 2., 2., 2.]
+
+    # Test only Z
+    wkt_str = 'POLYGON Z ((30.123 10 1, 40 40 1, 20 40 1, 10.123 20 1, 30.123 10 1))'
+    poly = GeoPolygon.from_wkt(wkt_str)
+    assert [x.z for x in poly.outline] == [1., 1., 1., 1., 1.]
+    assert [x.m for x in poly.outline] == [None, None, None, None, None]
+
+    # Test only M
+    wkt_str = 'POLYGON M ((30.123 10 1, 40 40 1, 20 40 1, 10.123 20 1, 30.123 10 1))'
+    poly = GeoPolygon.from_wkt(wkt_str)
+    assert [x.m for x in poly.outline] == [1., 1., 1., 1., 1.]
+    assert [x.z for x in poly.outline] == [None, None, None, None, None]
+
     with pytest.raises(ValueError):
         _ = GeoPolygon.from_wkt('NOT A POLYGON')
 

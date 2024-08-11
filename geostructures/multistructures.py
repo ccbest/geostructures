@@ -12,7 +12,7 @@ import numpy as np
 from geostructures._base import (
     _RE_MULTIPOLYGON_WKT, _RE_MULTIPOINT_WKT,
     _RE_MULTILINESTRING_WKT, _RE_LINEAR_RING, _RE_LINEAR_RINGS,
-    PolygonLikeMixin, MultiShapeBase, parse_wkt_linear_ring,
+    PolygonLikeMixin, MultiShapeBase,
     PointLikeMixin, LineLikeMixin
 )
 from geostructures.time import GEOTIME_TYPE
@@ -88,8 +88,9 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin):
             )
 
         lines = [
-            GeoLineString([Coordinate(*coord) for coord in line])
-            for line in geom.get('coordinates', [])
+            GeoLineString(
+                [Coordinate(**dict(zip(('longitude', 'latitude', 'z'), x))) for x in line]
+            ) for line in geom.get('coordinates', [])
         ]
         properties = gjson.get('properties', {})
         dt = get_dt_from_geojson_props(
@@ -105,7 +106,12 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin):
         )
 
     @classmethod
-    def from_pyshp(cls, shape, dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+    def from_pyshp(
+        cls,
+        shape,
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
         """
         Create a MultiGeoLineString from a pyshyp polyline.
 
@@ -175,10 +181,10 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin):
         if not _RE_MULTILINESTRING_WKT.match(wkt_str):
             raise ValueError(f'Invalid WKT MultiLineString: {wkt_str}')
 
-        lines = [
-            GeoLineString(parse_wkt_linear_ring(line))
-            for line in _RE_LINEAR_RING.findall(wkt_str)
-        ]
+        lines = []
+        for linear_ring in _RE_LINEAR_RING.findall(wkt_str):
+            coords = cls._parse_wkt_linear_ring(wkt_str, linear_ring)
+            lines.append(GeoLineString(coords))
 
         return MultiGeoLineString(
             lines,
@@ -316,8 +322,10 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin):
             raise ValueError(
                 f'Geometry represents a {geom.get("type")}; expected MultiPoint.'
             )
-
-        points = [GeoPoint(Coordinate(*coord)) for coord in geom.get('coordinates', [])]
+        points = [
+            GeoPoint(Coordinate(**dict(zip(('longitude', 'latitude', 'z'), coord))))
+            for coord in geom.get('coordinates', [])
+        ]
         properties = gjson.get('properties', {})
         dt = get_dt_from_geojson_props(
             properties,
@@ -332,7 +340,12 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin):
         )
 
     @classmethod
-    def from_pyshp(cls, shape, dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+    def from_pyshp(
+        cls,
+        shape,
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
         """
         Create a MultiGeoPoint from a pyshyp multipoint.
 
@@ -349,30 +362,25 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin):
         Returns:
             MultiGeoPoint
         """
-        properties = properties or {}
-        if hasattr(shape, 'z'):  # pragma: no cover
-            properties['Z'] = shape.z
-            warn_once(
-                'Shapefile contains unsupported Z data; Z-values will be '
-                'stored in shape properties'
-            )
+        coord_parts = list(zip(*shape.__geo_interface__.get('coordinates', [])))
+        parts = ['longitude', 'latitude']
+        if hasattr(shape, 'z'):
+            coord_parts.append(shape.z)
+            parts.append('z')
 
-        if hasattr(shape, 'm'):  # pragma: no cover
-            properties['M'] = shape.m
-            warn_once(
-                'Shapefile contains unsupported M data; M-values will be '
-                'stored in shape properties'
-            )
+        if hasattr(shape, 'm'):
+            coord_parts.append(shape.m)
+            parts.append('m')
 
-        mgp = MultiGeoPoint.from_geojson(
-            {
-                'type': 'Feature',
-                'geometry': shape.__geo_interface__,
-                'properties': properties
-            }
+        coords = [
+            GeoPoint(Coordinate(**dict(zip(parts, x))))
+            for x in zip(*coord_parts)
+        ]
+        return MultiGeoPoint(
+            coords,
+            dt=dt,
+            properties=properties
         )
-        mgp.set_dt(dt, inplace=True)
-        return mgp
 
     @classmethod
     def from_shapely(
@@ -402,12 +410,13 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin):
         if not _RE_MULTIPOINT_WKT.match(wkt_str):
             raise ValueError(f'Invalid WKT MultiPoint: {wkt_str}')
 
-        points = [
-            GeoPoint(coord) for coord in parse_wkt_linear_ring(_RE_LINEAR_RING.findall(wkt_str)[0])
+        coords = cls._parse_wkt_linear_ring(wkt_str, _RE_LINEAR_RING.findall(wkt_str)[0])
+        shapes = [
+            GeoPoint(coord) for coord in coords
         ]
 
         return MultiGeoPoint(
-            points,
+            shapes,
             dt=dt,
             properties=properties
         )
@@ -576,7 +585,10 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin):
 
         shapes = []
         for shape in geom.get('coordinates', []):
-            rings = [[Coordinate(x, y) for x, y in ring] for ring in shape]
+            rings = [
+                [Coordinate(**dict(zip(('longitude', 'latitude', 'z'), x))) for x in ring]
+                for ring in shape
+            ]
             shell, holes = rings[0], None
             if len(rings) > 1:
                 holes = [GeoPolygon(list(reversed(ring))) for ring in rings[1:]]
@@ -669,16 +681,16 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin):
 
         shapes = []
         for shape in _RE_LINEAR_RINGS.findall(wkt_str):
-            coord_groups = _RE_LINEAR_RING.findall(shape)
-            shell, holes = parse_wkt_linear_ring(coord_groups[0]), None
+            linear_rings = _RE_LINEAR_RING.findall(shape)
+            coords = cls._parse_wkt_linear_ring(wkt_str, linear_rings[0])
 
-            if len(coord_groups) > 1:
-                holes = [
-                    GeoPolygon(list(reversed(parse_wkt_linear_ring(coord_group))))
-                    for coord_group in coord_groups[1:]
-                ]
+            holes = []
+            if len(linear_rings) > 1:
+                for hole in linear_rings[1:]:
+                    coords = cls._parse_wkt_linear_ring(wkt_str, hole)
+                    holes.append(GeoPolygon(coords))
 
-            shapes.append(GeoPolygon(shell, holes=holes))
+            shapes.append(GeoPolygon(coords, holes=holes or None))
 
         return MultiGeoPolygon(
             shapes,
