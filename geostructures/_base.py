@@ -14,7 +14,6 @@ from typing import (
 from geostructures.coordinates import Coordinate
 from geostructures.time import TimeInterval, GEOTIME_TYPE
 from geostructures.utils.functions import default_to_zulu, sanitize_json
-from geostructures.utils.logging import LOGGER
 
 
 if TYPE_CHECKING:  # pragma: no cover
