@@ -6,7 +6,7 @@ __all__ = [
 ]
 
 import math
-from typing import List
+from typing import List, Tuple, cast
 
 import numpy as np
 
@@ -109,6 +109,8 @@ def inverse_haversine_radians(
     Given a start location, a direction of travel in radians), and a distance of travel, returns
     the finish location.
 
+    Coordinate Z values will be preserved, however M values will not.
+
     Args:
         start: (Coordinate)
             The starting location
@@ -138,7 +140,7 @@ def inverse_haversine_radians(
     final_lat = round_half_up(final_lat * 180 / math.pi, 7)
     final_lon = round_half_up(final_lon * 180 / math.pi, 7)
 
-    return Coordinate(final_lon, final_lat)
+    return Coordinate(final_lon, final_lat, z=start.z)
 
 
 def rotate_coordinates(
@@ -149,6 +151,8 @@ def rotate_coordinates(
     """
     Rotate a set of coordinates around an origin. Returned Coordinate precision will be
     determined by the respective Coordinate's least significant precision.
+
+    Coordinate Z values will be preserved, however M values will not.
 
     Args:
         coords:
@@ -169,9 +173,10 @@ def rotate_coordinates(
         [np.cos(angle), -np.sin(angle)],
         [np.sin(angle), np.cos(angle)]
     ])
-    o = np.atleast_2d(origin.to_float())
-    p = np.atleast_2d([x.to_float() for x in coords])
+    z = (x.z for x in coords)
+    o = np.atleast_2d(origin.to_float()[:2])
+    p = np.atleast_2d([x.to_float()[:2] for x in coords])
     return [
-        Coordinate(*coord)
-        for coord in (R @ (p.T - o.T) + o.T).T
+        Coordinate(*cast(Tuple[float, float], coord), zval)
+        for coord, zval in zip((R @ (p.T - o.T) + o.T).T, z)
     ]

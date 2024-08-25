@@ -47,6 +47,13 @@ def test_rotate_coordinates():
         Coordinate(0.707, 0.707),
     ]
 
+    # Preserve Z values
+    points = [
+        Coordinate(1.0, 0.0, z=5.),
+    ]
+    result = rotate_coordinates(points, Coordinate(0.0, 0.0), 45)
+    assert result[0].z == 5.
+
     # Antimeridian test
     points = [
         Coordinate(-179, 0.),

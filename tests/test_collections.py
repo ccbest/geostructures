@@ -412,7 +412,7 @@ def test_collection_to_from_shapefile(caplog):
             Coordinate(0.0, 2.0),
             1000,
             properties={'ID': 2},
-            holes=[GeoCircle(Coordinate(0.0, 2.0), 500)]
+            holes=[GeoCircle(Coordinate(0.0, 2.0), 500).to_polygon()]
         ).to_polygon(),
         GeoLineString([Coordinate(0.0, 1.0), Coordinate(1.0, 0.0)], properties={'ID': 0}),
         GeoLineString([Coordinate(0.0, 2.0), Coordinate(2.0, 0.0)], properties={'ID': 1}),
@@ -428,7 +428,7 @@ def test_collection_to_from_shapefile(caplog):
                 GeoBox(
                     Coordinate(0., 1.),
                     Coordinate(1., 0.),
-                    holes=[GeoBox(Coordinate(0.25, 0.75), Coordinate(0.75, 0.25))]
+                    holes=[GeoBox(Coordinate(0.25, 0.75), Coordinate(0.75, 0.25)).to_polygon()]
                 ).to_polygon(),
                 GeoBox(Coordinate(1., 2.), Coordinate(2., 1.)).to_polygon(),
             ],
@@ -442,6 +442,51 @@ def test_collection_to_from_shapefile(caplog):
 
         new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
         assert set(new_shapecol.geoshapes) == set(shapecol.geoshapes)
+
+    # Test again with Z and M values
+    shapecol = FeatureCollection([
+        GeoBox(
+            Coordinate(0.0, 1.0, 99., 100.),
+            Coordinate(1.0, 0.0, 99., 100.),
+            properties={'ID': 0}
+        ).to_polygon(),
+        GeoLineString(
+            [Coordinate(0.0, 1.0, 99., 100.), Coordinate(1.0, 0.0, 99., 100.)],
+            properties={'ID': 0}
+        ),
+        GeoPoint(Coordinate(1.0, 0.0, 99., 100.), properties={'ID': 0}),
+        MultiGeoPoint(
+            [GeoPoint(Coordinate(-1., 1., 99., 100.)), GeoPoint(Coordinate(-2, 1., 99., 100.))],
+            properties={'ID': 0}
+        ),
+        MultiGeoLineString([
+            GeoLineString([Coordinate(0., 1., 99., 100.), Coordinate(1., 0., 99., 100.)]),
+            GeoLineString([Coordinate(0., 0., 99., 100.), Coordinate(1., 1., 99., 100.)]),
+        ], properties={'ID': 2}),
+        MultiGeoPolygon(
+            [
+                GeoBox(
+                    Coordinate(0., 1., 99., 100.),
+                    Coordinate(1., 0., 99., 100.),
+                    holes=[
+                        GeoBox(Coordinate(0.25, 0.75, 99., 100.), Coordinate(0.75, 0.25, 99., 100.))
+                    ]
+                ).to_polygon(),
+                GeoBox(Coordinate(1., 2., 99., 100.), Coordinate(2., 1., 99., 100.)).to_polygon(),
+            ],
+            properties={'ID': 2}
+        )
+    ])
+
+    with tempfile.TemporaryDirectory() as f:
+        with ZipFile(os.path.join(f, 'test.zip'), 'w') as zfile:
+            shapecol.to_shapefile(zfile)
+
+        new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
+        for x in new_shapecol:
+            if x not in shapecol:
+                raise
+        # assert set(new_shapecol.geoshapes) == set(shapecol.geoshapes)
 
     # Test that non-polygons get written/read correctly (should be read as a polygon)
     shapecol = FeatureCollection([

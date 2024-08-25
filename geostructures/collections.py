@@ -327,7 +327,9 @@ class ShapeCollection:
 
                 props = record.as_dict()
                 dt = _get_dt(props)
-                props = {k: v for k, v in props.items() if k not in (time_start_field, time_end_field)}
+                props = {
+                    k: v for k, v in props.items() if k not in (time_start_field, time_end_field)
+                }
 
                 shapes.append(
                     geostructs_type.from_pyshp(shape, dt=dt, properties=props)  # type: ignore
@@ -479,8 +481,11 @@ class ShapeCollection:
             elif isinstance(shape, LineLike):
                 lines.append(shape)
 
+            elif isinstance(shape, PolygonLike):
+                shapes.append(shape)
+
             else:
-                shapes.append(cast(PolygonLike, shape))
+                raise ValueError(f'Unrecognized shape type {type(shape)}')
 
         with tempfile.TemporaryDirectory() as tempdir:
             for shapetype, shape_group in (
@@ -494,7 +499,8 @@ class ShapeCollection:
 
                 # 2-Tuples of properties and their datatypes
                 _types = set(
-                    (_key, type(_val)) for x in shape_group
+                    (_key, type(_val))
+                    for x in shape_group
                     for _key, _val in x.properties.items()
                     if (not include_properties) or _key in include_properties
                 )

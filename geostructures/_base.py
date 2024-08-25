@@ -21,8 +21,8 @@ if TYPE_CHECKING:  # pragma: no cover
     from geostructures.typing import GeoShape, PolygonLike
 
 
-# A wkt coordinate, e.g. '-1.0 2.0'
-_RE_COORD_STR = r'-?\d{1,3}(?:\.?\d*)?\s-?\d{1,3}(?:\.?\d*)?'
+# A wkt coordinate, e.g. '-1.0 2.0', that can be up to 4 numbers long (can include Z and M)
+_RE_COORD_STR = r'(?:-?\d{1,3}(?:\.?\d*)?\s?){2,4}\s?'
 _RE_COORD = re.compile(_RE_COORD_STR)
 
 # A single linear ring, e.g. '(0.0 0.0, 1.0 1.0, ... )'
@@ -33,24 +33,21 @@ _RE_LINEAR_RING = re.compile(_RE_LINEAR_RING_STR)
 _RE_LINEAR_RINGS_STR = r'(\((?:' + _RE_LINEAR_RING_STR + r'\,?\s?)+\))'
 _RE_LINEAR_RINGS = re.compile(_RE_LINEAR_RINGS_STR)
 
-_RE_POINT_WKT = re.compile(r'POINT\s?\(\s?' + _RE_COORD_STR + r'\s?\)')
-_RE_POLYGON_WKT = re.compile(r'POLYGON\s?' + _RE_LINEAR_RINGS_STR)
-_RE_LINESTRING_WKT = re.compile(r'LINESTRING\s?' + _RE_LINEAR_RING_STR)
+_RE_ZM_STR = r'\s?([ZM]{0,2})\s?'  # Presence is optional - for matching whole WKT
+_RE_ZM = re.compile(r'\s?([ZM]{1,2})\s?')  # Presence is required - for matching ZM specifically
 
-_RE_MULTIPOINT_WKT = re.compile(r'MULTIPOINT\s?' + _RE_LINEAR_RING_STR)
-_RE_MULTIPOLYGON_WKT = re.compile(r'MULTIPOLYGON\s?\((' + _RE_LINEAR_RINGS_STR + r',?\s?)+\)')
-_RE_MULTILINESTRING_WKT = re.compile(r'MULTILINESTRING\s?' + _RE_LINEAR_RINGS_STR)
+_RE_POINT_WKT = re.compile(r'^POINT' + _RE_ZM_STR + r'\(\s?' + _RE_COORD_STR + r'\s?\)$')
+_RE_POLYGON_WKT = re.compile(r'^POLYGON' + _RE_ZM_STR + _RE_LINEAR_RINGS_STR + '$')
+_RE_LINESTRING_WKT = re.compile(r'^LINESTRING' + _RE_ZM_STR + _RE_LINEAR_RING_STR + '$')
+
+_RE_MULTIPOINT_WKT = re.compile(r'^MULTIPOINT' + _RE_ZM_STR + _RE_LINEAR_RING_STR + '$')
+_RE_MULTIPOLYGON_WKT = re.compile(
+    r'^MULTIPOLYGON' + _RE_ZM_STR + r'\((' + _RE_LINEAR_RINGS_STR + r',?\s?)+\)$'
+)
+_RE_MULTILINESTRING_WKT = re.compile(r'^MULTILINESTRING' + _RE_ZM_STR + _RE_LINEAR_RINGS_STR + '$')
 
 
 SHAPE_VAR = TypeVar('SHAPE_VAR', bound='BaseShapeProtocol')
-
-
-def parse_wkt_linear_ring(group: str) -> List[Coordinate]:
-    """Parse wkt coordinate list into Coordinate objects"""
-    return [
-        Coordinate(*coord.strip().split(' '))  # type: ignore
-        for coord in group.strip('()').split(',') if coord
-    ]
 
 
 class BaseShapeProtocol(Protocol):
@@ -99,6 +96,16 @@ class BaseShapeProtocol(Protocol):
         return self.dt.end
 
     @property
+    @abstractmethod
+    def has_z(self) -> bool:
+        """Determines whether any coordinates in the shape have associated Z values"""
+
+    @property
+    @abstractmethod
+    def has_m(self) -> bool:
+        """Determines whether any coordinates in the shape have associated M values"""
+
+    @property
     def properties(self):
         props = self._properties.copy()
         if self.dt:
@@ -134,6 +141,30 @@ class BaseShapeProtocol(Protocol):
             The wkt-formatted string,
         """
         return f'({",".join(" ".join(coord.to_str()) for coord in ring)})'
+
+    @staticmethod
+    def _parse_wkt_linear_ring(wkt_str: str, wkt_coords: str):
+        """
+        Parses a WKT coordinate string, e.g. "1.0 2.0, 3.0 4.0, ..." into
+        geostructures Coordinates. If Z/M values are present, inserts them into
+        the dictionary returned in the second element.
+
+        This method assumes the WKT string has already been validated.
+
+        Args:
+            wkt_str:
+                A WKT geometry, in its entirety.
+
+            wkt_coords:
+                A WKT coordinate list
+
+        Returns:
+            List of Coordinates
+        """
+        coords = _RE_COORD.findall(wkt_coords)
+        zm = _RE_ZM.findall(wkt_str) or ['ZM']
+        parsed_coords = [Coordinate.from_wkt(coord, zm_order=zm[0]) for coord in coords]
+        return parsed_coords
 
     def buffer_dt(
         self: SHAPE_VAR,
@@ -386,7 +417,7 @@ class BaseShape(BaseShapeProtocol, ABC):
     def __init__(
             self,
             dt: Optional[GEOTIME_TYPE] = None,
-            properties: Optional[Dict] = None
+            properties: Optional[Dict] = None,
     ):
         super().__init__()
         if isinstance(dt, datetime):
@@ -619,6 +650,14 @@ class MultiShapeBase(BaseShape, ABC):
             zip(*[[x for pair in shape.bounds for x in pair] for shape in self.geoshapes])
         )
         return (min(min_lons), max(max_lons)), (min(min_lats), max(max_lats))
+
+    @property
+    def has_m(self) -> bool:
+        return any(x.has_m for x in self.geoshapes)
+
+    @property
+    def has_z(self) -> bool:
+        return any(x.has_z for x in self.geoshapes)
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         for shape in self.geoshapes:

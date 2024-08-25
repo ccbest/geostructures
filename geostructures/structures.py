@@ -21,7 +21,7 @@ from geostructures import LOGGER
 from geostructures._base import (
     _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT,
     _RE_LINESTRING_WKT, LineLikeMixin, PointLikeMixin, PolygonLikeMixin,
-    SingleShapeBase, parse_wkt_linear_ring
+    SingleShapeBase
 )
 from geostructures.time import GEOTIME_TYPE
 from geostructures.coordinates import Coordinate
@@ -61,6 +61,16 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
         geod = Geod(ellps="WGS84")
         area, _ = geod.geometry_area_perimeter(self.to_shapely())
         return area
+
+    @property
+    def has_m(self) -> bool:
+        # Default behavior - derived coordinates do not inherit M. Overriden in GeoPolygon
+        return False
+
+    @property
+    def has_z(self) -> bool:
+        # If the centroid has a Z value, any derived coordinates should as well
+        return bool(self.centroid.z)
 
     def bounding_edges(self, **kwargs) -> List[Tuple[Coordinate, Coordinate]]:
         bounding_coords = self.bounding_coords(**kwargs)
@@ -176,13 +186,16 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
         }
 
     def to_pyshp(self, writer):
-        return writer.poly(
-            [
-                # ESRI defines right hand rule as opposite of GeoJSON
-                [list(coord.to_float()) for coord in ring[::-1]]
-                for ring in self.linear_rings()
-            ]
-        )
+        # Note: ESRI defines right hand rule as opposite of GeoJSON
+        formatted = [
+            [list(coord.to_float()) for coord in ring[::-1]]
+            for ring in self.linear_rings()
+        ]
+        if self.has_m and not self.has_z:
+            return writer.polym(formatted)
+        if self.has_z:
+            return writer.polyz(formatted)
+        return writer.poly(formatted)
 
     def _to_shapely(self):
         """
@@ -326,8 +339,24 @@ class GeoPolygon(PolygonBase):
         poly2 = np.roll(poly1, -1, axis=0)
         # Find signed area of each triangle
         signed_areas = 0.5 * np.cross(poly1, poly2)
-        # Return average of triangle centroids, weighted by area
-        return Coordinate(*np.average((poly1 + poly2) / 3, axis=0, weights=signed_areas))
+
+        z = None
+        if self.has_z:
+            z = next(x.z for x in self.outline)
+
+        return Coordinate(
+            # Return average of triangle centroids, weighted by area
+            *np.average((poly1 + poly2) / 3, axis=0, weights=signed_areas),
+            z=z
+        )
+
+    @property
+    def has_m(self) -> bool:
+        return any(x.m for x in self.outline)
+
+    @property
+    def has_z(self) -> bool:
+        return any(x.z for x in self.outline)
 
     @staticmethod
     def _point_in_polygon(
@@ -447,7 +476,12 @@ class GeoPolygon(PolygonBase):
                 f'Geometry represents a {geom.get("type")}; expected Polygon.'
             )
 
-        rings = [[Coordinate(x, y) for x, y in ring] for ring in geom.get('coordinates', [])]
+        rings = []
+        for ring in geom.get('coordinates', []):
+            rings.append(
+                [Coordinate(**dict(zip(('longitude', 'latitude', 'z'), x))) for x in ring]
+            )
+
         holes: List[PolygonLike] = []
         if len(rings) > 1:
             holes = [GeoPolygon(ring) for ring in rings[1:]]
@@ -523,7 +557,12 @@ class GeoPolygon(PolygonBase):
         return niemeyer_to_geobox(geohash, base, dt, properties).to_polygon()
 
     @classmethod
-    def from_pyshp(cls, shape, dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+    def from_pyshp(
+        cls,
+        shape,
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
         """
         Create a GeoPolygon from a pyshyp polygon.
 
@@ -540,30 +579,26 @@ class GeoPolygon(PolygonBase):
         Returns:
             GeoPolygon
         """
-        properties = properties or {}
-        if hasattr(shape, 'z'):  # pragma: no cover
-            properties['Z'] = shape.z
-            warn_once(
-                'Shapefile contains unsupported Z data; Z-values will be '
-                'stored in shape properties'
+        z = shape.z if hasattr(shape, 'z') else None
+        m = shape.m if hasattr(shape, 'm') else None
+        linear_rings = []
+        for linear_ring in shape.__geo_interface__.get('coordinates', []):
+            linear_rings.append(
+                [
+                    Coordinate(
+                        *cast(Tuple[float, float], x),
+                        z=z.pop(0) if z else None,
+                        m=m.pop(0) if m else None,
+                    ) for x in linear_ring
+                ]
             )
-
-        if hasattr(shape, 'm'):  # pragma: no cover
-            properties['M'] = shape.m
-            warn_once(
-                'Shapefile contains unsupported M data; M-values will be '
-                'stored in shape properties'
-            )
-
-        gp = GeoPolygon.from_geojson(
-            {
-                'type': 'Feature',
-                'geometry': shape.__geo_interface__,
-                'properties': properties
-            }
+        holes = None if len(linear_rings) == 1 else [GeoPolygon(x) for x in linear_rings[1:]]
+        return GeoPolygon(
+            linear_rings[0],
+            holes=holes,
+            dt=dt,
+            properties=properties
         )
-        gp.set_dt(dt, inplace=True)
-        return gp
 
     @classmethod
     def from_shapely(
@@ -590,21 +625,20 @@ class GeoPolygon(PolygonBase):
         properties: Optional[Dict] = None
     ) -> 'GeoPolygon':
         """Create a GeoPolygon from a wkt string"""
-        from geostructures.typing import PolygonLike
-
         if not _RE_POLYGON_WKT.match(wkt_str):
             raise ValueError(f'Invalid WKT Polygon: {wkt_str}')
 
-        coord_groups = _RE_LINEAR_RING.findall(wkt_str)
-        outline = parse_wkt_linear_ring(coord_groups[0])
-        holes: List[PolygonLike] = []
-        if len(coord_groups) > 1:
+        linear_rings = _RE_LINEAR_RING.findall(wkt_str)
+        coords = cls._parse_wkt_linear_ring(wkt_str, linear_rings[0])
+
+        holes = []
+        if len(linear_rings) > 1:
             holes = [
-                GeoPolygon(parse_wkt_linear_ring(coord_group))
-                for coord_group in coord_groups[1:]
+                GeoPolygon(cls._parse_wkt_linear_ring(wkt_str, linear_ring))
+                for linear_ring in linear_rings[1:]
             ]
 
-        return GeoPolygon(outline, holes=holes, dt=dt, properties=properties)
+        return GeoPolygon(coords, holes=holes or None, dt=dt, properties=properties)
 
     def to_wkt(self, **kwargs) -> str:
         """
@@ -677,21 +711,24 @@ class GeoBox(PolygonBase):
     def centroid(self) -> Coordinate:
         _nw = self.nw_bound.to_float()
         _se = self.se_bound.to_float()
+        z = self.nw_bound.z or self.se_bound.z or None
         return Coordinate(
             round_half_up(statistics.mean([_nw[0], _se[0]]), 7),
             round_half_up(statistics.mean([_nw[1], _se[1]]), 7),
+            z=z
         )
 
     def bounding_coords(self, **kwargs) -> List[Coordinate]:
         _nw = self.nw_bound.to_float()
         _se = self.se_bound.to_float()
+        z = self.nw_bound.z or self.se_bound.z or None
 
         # Is self-closing
         return [
             self.nw_bound,
-            Coordinate(_nw[0], _se[1]),
+            Coordinate(_nw[0], _se[1], z=z),
             self.se_bound,
-            Coordinate(_se[0], _nw[1]),
+            Coordinate(_se[0], _nw[1], z=z),
             self.nw_bound,
         ]
 
@@ -1247,10 +1284,10 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
     """
 
     def __init__(
-            self,
-            vertices: List[Coordinate],
-            dt: Optional[GEOTIME_TYPE] = None,
-            properties: Optional[Dict] = None
+        self,
+        vertices: List[Coordinate],
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None,
     ):
         super().__init__(dt=dt, properties=properties)
         self.vertices = vertices
@@ -1282,6 +1319,14 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
             for x in zip(*[y.to_float() for y in self.vertices])
         ]
         return Coordinate(lon, lat)
+
+    @property
+    def has_m(self) -> bool:
+        return any(x.m for x in self.vertices)
+
+    @property
+    def has_z(self) -> bool:
+        return any(x.z for x in self.vertices)
 
     @property
     def segments(self) -> List[Tuple[Coordinate, Coordinate]]:
@@ -1362,7 +1407,10 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
                 f'Geometry represents a {geom.get("type")}; expected LineString.'
             )
 
-        coords = [Coordinate(x, y) for x, y in geom.get('coordinates', [])]
+        coords = [
+            Coordinate(**dict(zip(('longitude', 'latitude', 'z'), x)))
+            for x in geom.get('coordinates', [])
+        ]
         properties = gjson.get('properties', {})
         dt = get_dt_from_geojson_props(
             properties,
@@ -1390,30 +1438,19 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
         Returns:
             GeoLineString
         """
-        properties = properties or {}
-        if hasattr(shape, 'z'):  # pragma: no cover
-            properties['Z'] = shape.z
-            warn_once(
-                'Shapefile contains unsupported Z data; Z-values will be '
-                'stored in shape properties'
-            )
-
-        if hasattr(shape, 'm'):  # pragma: no cover
-            properties['M'] = shape.m
-            warn_once(
-                'Shapefile contains unsupported M data; M-values will be '
-                'stored in shape properties'
-            )
-
-        gls = GeoLineString.from_geojson(
-            {
-                'type': 'Feature',
-                'geometry': shape.__geo_interface__,
-                'properties': properties
-            }
+        z = shape.z if hasattr(shape, 'z') else None
+        m = shape.m if hasattr(shape, 'm') else None
+        return GeoLineString(
+            [
+                Coordinate(
+                    *cast(Tuple[float, float], x),
+                    z=z.pop(0) if z else None,
+                    m=m.pop(0) if m else None,
+                ) for x in shape.__geo_interface__.get('coordinates', [])
+            ],
+            dt=dt,
+            properties=properties
         )
-        gls.set_dt(dt, inplace=True)
-        return gls
 
     @classmethod
     def from_shapely(cls, linestring) -> 'GeoLineString':
@@ -1439,14 +1476,11 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
         if not _RE_LINESTRING_WKT.match(wkt_str):
             raise ValueError(f'Invalid WKT LineString: {wkt_str}')
 
-        coord_groups = _RE_LINEAR_RING.findall(wkt_str)
-        if not len(coord_groups) == 1:
-            raise ValueError(f'Invalid WKT LineString: {wkt_str}')
-
+        linear_rings = _RE_LINEAR_RING.findall(wkt_str)
         return GeoLineString(
-            parse_wkt_linear_ring(coord_groups[0]),
+            cls._parse_wkt_linear_ring(wkt_str, linear_rings[0]),
             dt=dt,
-            properties=properties
+            properties=properties,
         )
 
     def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
@@ -1503,7 +1537,12 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
         )
 
     def to_pyshp(self, writer):
-        return writer.line([[list(x.to_float()) for x in self.vertices]])
+        formatted = [[list(x.to_float()) for x in self.vertices]]
+        if self.has_m and not self.has_z:
+            return writer.linem(formatted)
+        if self.has_z:
+            return writer.linez(formatted)
+        return writer.line(formatted)
 
     def _to_shapely(self):
         import shapely
@@ -1529,7 +1568,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin):
         self,
         coordinate: Coordinate,
         dt: Optional[GEOTIME_TYPE] = None,
-        properties: Optional[Dict] = None
+        properties: Optional[Dict] = None,
     ):
         super().__init__(dt=dt, properties=properties)
         self.coordinate = coordinate
@@ -1556,6 +1595,14 @@ class GeoPoint(SingleShapeBase, PointLikeMixin):
     @property
     def centroid(self) -> Coordinate:
         return self.coordinate
+
+    @property
+    def has_m(self) -> bool:
+        return bool(self.centroid.m)
+
+    @property
+    def has_z(self) -> bool:
+        return bool(self.centroid.z)
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         return coord == self.centroid
@@ -1619,8 +1666,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin):
                 f'Geometry represents a {geom.get("type")}; expected Point.'
             )
 
-        coordinates = geom['coordinates']
-        coord = Coordinate(coordinates[0], coordinates[1])
+        coord = Coordinate(**dict(zip(('longitude', 'latitude', 'z'), geom['coordinates'])))
         properties = gjson.get('properties', {})
         dt = get_dt_from_geojson_props(
             properties,
@@ -1649,30 +1695,15 @@ class GeoPoint(SingleShapeBase, PointLikeMixin):
         Returns:
             GeoPoint
         """
-        properties = properties or {}
-        if hasattr(shape, 'z'):  # pragma: no cover
-            properties['Z'] = shape.z
-            warn_once(
-                'Shapefile contains unsupported Z data; Z-values will be '
-                'stored in shape properties'
-            )
-
-        if hasattr(shape, 'm'):  # pragma: no cover
-            properties['M'] = shape.m
-            warn_once(
-                'Shapefile contains unsupported M data; M-values will be '
-                'stored in shape properties'
-            )
-
-        gp = GeoPoint.from_geojson(
-            {
-                'type': 'Feature',
-                'geometry': shape.__geo_interface__,
-                'properties': properties
-            }
+        return GeoPoint(
+            Coordinate(
+                *cast(Tuple[float, float], shape.__geo_interface__.get('coordinates', [])),
+                z=shape.z[0] if hasattr(shape, 'z') else None,
+                m=shape.m[0] if hasattr(shape, 'm') else None,
+            ),
+            dt=dt,
+            properties=properties
         )
-        gp.set_dt(dt, inplace=True)
-        return gp
 
     @classmethod
     def from_shapely(cls, point) -> 'GeoPoint':
@@ -1699,12 +1730,11 @@ class GeoPoint(SingleShapeBase, PointLikeMixin):
         if not _match:
             raise ValueError(f'Invalid WKT Point: {wkt_str}')
 
-        coords = _RE_COORD.findall(wkt_str)[0]
-
+        coords = cls._parse_wkt_linear_ring(wkt_str, _RE_COORD.findall(wkt_str)[0])
         return GeoPoint(
-            Coordinate(*coords.split(' ')),
+            coords[0],
             dt=dt,
-            properties=properties
+            properties=properties,
         )
 
     def to_geojson(
@@ -1726,6 +1756,10 @@ class GeoPoint(SingleShapeBase, PointLikeMixin):
         }
 
     def to_pyshp(self, writer):
+        if self.has_m and not self.has_z:
+            return writer.pointm(*self.centroid.to_float())
+        if self.has_z:
+            return writer.pointz(*self.centroid.to_float())
         return writer.point(*self.centroid.to_float())
 
     def _to_shapely(self):
