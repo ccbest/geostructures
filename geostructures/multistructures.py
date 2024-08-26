@@ -34,6 +34,18 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin):
         super().__init__(dt, properties)
         self.geoshapes: List[GeoLineString] = geoshapes
 
+    @property
+    def __geo_interface__(self):
+        return {
+            'type': 'MultiLineString',
+            'coordinates': [
+                [
+                    list(vertex.to_float()) for vertex in shape.vertices
+                ]
+                for shape in self.geoshapes
+            ]
+        }
+
     def __repr__(self):
         pl = "s" if len(self.geoshapes) != 1 else ""
         return f'<MultiGeoLineString of {len(self.geoshapes)} linestring{pl}>'
@@ -192,43 +204,10 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin):
             properties=properties
         )
 
-    def to_geojson(
-        self,
-        properties: Optional[Dict] = None,
-        **kwargs
-    ) -> Dict:
-        """
-        Convert the shape to geojson format.
-
-        Optional Args:
-            k: (int)
-                For shapes with smooth curves, defines the number of points
-                generated along the curve.
-
-            properties: (dict)
-                Any number of properties to be included in the geojson properties. These
-                values will be unioned with the shape's already defined properties (and
-                override them where keys conflict)
-
-        Returns:
-            (dict)
-        """
+    def to_geo_interface(self, **kwargs):
         return {
-            'type': 'Feature',
-            'geometry': {
-                'type': 'MultiLineString',
-                'coordinates': [
-                    [
-                        list(vertex.to_float()) for vertex in shape.vertices
-                    ]
-                    for shape in self.geoshapes
-                ]
-            },
-            'properties': {
-                **self._properties_json,
-                **(properties or {})
-            },
-            **kwargs
+            **self.__geo_interface__,
+            **({'bbox': self.bounds if kwargs.get('include_bbox') else {}})
         }
 
     def to_pyshp(self, writer):
@@ -280,6 +259,16 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin):
     ):
         super().__init__(dt, properties)
         self.geoshapes: List[GeoPoint] = geoshapes
+
+    @property
+    def __geo_interface__(self):
+        return {
+            'type': 'MultiPoint',
+            'coordinates': [
+                list(point.centroid.to_float())
+                for point in self.geoshapes
+            ]
+        }
 
     def __hash__(self) -> int:
         return hash(tuple(hash(x) for x in self.geoshapes))
@@ -431,41 +420,10 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin):
             properties=properties
         )
 
-    def to_geojson(
-        self,
-        properties: Optional[Dict] = None,
-        **kwargs
-    ) -> Dict:
-        """
-        Convert the shape to geojson format.
-
-        Optional Args:
-            k: (int)
-                For shapes with smooth curves, defines the number of points
-                generated along the curve.
-
-            properties: (dict)
-                Any number of properties to be included in the geojson properties. These
-                values will be unioned with the shape's already defined properties (and
-                override them where keys conflict)
-
-        Returns:
-            (dict)
-        """
+    def to_geo_interface(self, **kwargs):
         return {
-            'type': 'Feature',
-            'geometry': {
-                'type': 'MultiPoint',
-                'coordinates': [
-                    list(point.centroid.to_float())
-                    for point in self.geoshapes
-                ]
-            },
-            'properties': {
-                **self._properties_json,
-                **(properties or {})
-            },
-            **kwargs
+            **self.__geo_interface__,
+            **({'bbox': self.bounds if kwargs.get('include_bbox') else {}})
         }
 
     def to_pyshp(self, writer):
@@ -511,6 +469,20 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin):
     ):
         super().__init__(dt, properties)
         self.geoshapes = list(geoshapes)
+
+    @property
+    def __geo_interface__(self):
+        return {
+            'type': 'MultiPolygon',
+            'coordinates': [
+                [
+                    [
+                        list(coord.to_float()) for coord in ring
+                    ] for ring in shape
+                ]
+                for shape in self.linear_rings()
+            ]
+        }
 
     def __repr__(self):
         pl = "s" if len(self.geoshapes) != 1 else ""
@@ -732,45 +704,18 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin):
             poly.linear_rings(**kwargs) for poly in self.geoshapes
         ]
 
-    def to_geojson(
-        self,
-        properties: Optional[Dict] = None,
-        **kwargs
-    ) -> Dict:
-        """
-        Convert the shape to geojson format.
-
-        Optional Args:
-            k: (int)
-                For shapes with smooth curves, defines the number of points
-                generated along the curve.
-
-            properties: (dict)
-                Any number of properties to be included in the geojson properties. These
-                values will be unioned with the shape's already defined properties (and
-                override them where keys conflict)
-
-        Returns:
-            (dict)
-        """
+    def to_geo_interface(self, **kwargs):
         return {
-            'type': 'Feature',
-            'geometry': {
-                'type': 'MultiPolygon',
-                'coordinates': [
+            'type': 'MultiPolygon',
+            'coordinates': [
+                [
                     [
-                        [
-                            list(coord.to_float()) for coord in ring
-                        ] for ring in shape
-                    ]
-                    for shape in self.linear_rings(k=kwargs.pop('k', None))
+                        list(coord.to_float()) for coord in ring
+                    ] for ring in shape
                 ]
-            },
-            'properties': {
-                **self._properties_json,
-                **(properties or {})
-            },
-            **kwargs
+                for shape in self.linear_rings(k=kwargs.pop('k', None))
+            ],
+            **({'bbox': self.bounds if kwargs.get('include_bbox') else {}})
         }
 
     def to_pyshp(self, writer):

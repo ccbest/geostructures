@@ -252,7 +252,7 @@ def test_multigeobase_bounds():
             GeoLineString([Coordinate(2., 1.), Coordinate(0.5, 0.5), Coordinate(0., 0.)]),
         ],
     )
-    assert mls.bounds == ((0., 2.), (0., 1.))
+    assert mls.bounds == (0., 0., 2., 1.)
 
 
 def test_multigeobase_contains_coordinate():

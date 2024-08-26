@@ -55,6 +55,16 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
         if any(x.holes for x in self.holes):
             raise ValueError('Holes cannot themselves contain holes.')
 
+    @property
+    def __geo_interface__(self):
+        return {
+            'type': 'Polygon',
+            'coordinates': [
+                [list(coord.to_float()) for coord in ring]
+                for ring in self.linear_rings()
+            ]
+        }
+
     @cached_property
     def area(self):
         from pyproj import Geod
@@ -163,26 +173,14 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
             *[list(reversed(shape.bounding_coords())) for shape in self.holes]
         ]
 
-    def to_geojson(
-        self,
-        properties: Optional[Dict] = None,
-        **kwargs
-    ) -> Dict:
-        k = kwargs.pop('k', None)
+    def to_geo_interface(self, **kwargs):
         return {
-            'type': 'Feature',
-            'geometry': {
-                'type': 'Polygon',
-                'coordinates': [
-                    [list(coord.to_float()) for coord in ring]
-                    for ring in self.linear_rings(k=k)
-                ]
-            },
-            'properties': {
-                **self._properties_json,
-                **(properties or {})
-            },
-            **kwargs
+            'type': 'Polygon',
+            'coordinates': [
+                [list(coord.to_float()) for coord in ring]
+                for ring in self.linear_rings(k=kwargs.get('k'))
+            ],
+            **({'bbox': self.bounds if kwargs.get('include_bbox') else {}})
         }
 
     def to_pyshp(self, writer):
@@ -325,12 +323,12 @@ class GeoPolygon(PolygonBase):
         return f'<GeoPolygon of {len(self.outline) - 1} coordinates>'
 
     @cached_property
-    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+    def bounds(self) -> Tuple[float, float, float, float]:
         lons, lats = cast(
             Tuple[List[float], List[float]],
             zip(*[y.to_float() for y in self.outline])
         )
-        return (min(lons), max(lons)), (min(lats), max(lats))
+        return min(lons), min(lats), max(lons), max(lats)
 
     @cached_property
     def centroid(self):
@@ -415,10 +413,10 @@ class GeoPolygon(PolygonBase):
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         # First see if the point even falls inside the circumscribing rectangle
-        lon_bounds, lat_bounds = self.bounds
+        min_lon, min_lat, max_lon, max_lat = self.bounds
         if not (
-            lon_bounds[0] <= coord.longitude <= lon_bounds[1] and
-            lat_bounds[0] <= coord.latitude <= lat_bounds[1]
+            min_lon <= coord.longitude <= max_lon and
+            min_lat <= coord.latitude <= max_lat
         ):
             # Falls outside rectangle - not in polygon
             return False
@@ -701,10 +699,10 @@ class GeoBox(PolygonBase):
         return f'<GeoBox {self.nw_bound.to_float()} - {self.se_bound.to_float()}>'
 
     @property
-    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+    def bounds(self) -> Tuple[float, float, float, float]:
         return (
-            (self.nw_bound.longitude, self.se_bound.longitude),
-            (self.se_bound.latitude, self.nw_bound.latitude)
+            self.nw_bound.longitude, self.se_bound.latitude,
+            self.se_bound.longitude, self.nw_bound.latitude
         )
 
     @property
@@ -846,14 +844,14 @@ class GeoCircle(PolygonBase):
         return f'<GeoCircle at {self.centroid.to_float()}; radius {self.radius} meters>'
 
     @cached_property
-    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+    def bounds(self) -> Tuple[float, float, float, float]:
         nw_bound = inverse_haversine_degrees(
             self.center, 315, self.radius * math.sqrt(2)
         )
         se_bound = inverse_haversine_degrees(
             self.center, 135, self.radius * math.sqrt(2)
         )
-        return (nw_bound.longitude, se_bound.longitude), (se_bound.latitude, nw_bound.latitude)
+        return nw_bound.longitude, se_bound.latitude, se_bound.longitude, nw_bound.latitude
 
     @property
     def centroid(self) -> Coordinate:
@@ -962,7 +960,7 @@ class GeoEllipse(PolygonBase):
         )
 
     @cached_property
-    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+    def bounds(self) -> Tuple[float, float, float, float]:
         rot_rad = math.radians(self.rotation)
         cos_rot_sq = math.cos(rot_rad)**2
         sin_rot_sq = math.sin(rot_rad)**2
@@ -972,12 +970,12 @@ class GeoEllipse(PolygonBase):
         dx = math.sqrt(semi_major_sq * sin_rot_sq + semi_minor_sq * cos_rot_sq)
         dy = math.sqrt(semi_major_sq * cos_rot_sq + semi_minor_sq * sin_rot_sq)
 
-        _, max_lat = inverse_haversine_degrees(self.centroid, 0, dy).to_float()
-        max_lon, _ = inverse_haversine_degrees(self.centroid, 90, dx).to_float()
-        _, min_lat = inverse_haversine_degrees(self.centroid, 180, dy).to_float()
-        min_lon, _ = inverse_haversine_degrees(self.centroid, 270, dx).to_float()
+        max_lat = inverse_haversine_degrees(self.centroid, 0, dy).latitude
+        max_lon = inverse_haversine_degrees(self.centroid, 90, dx).longitude
+        min_lat = inverse_haversine_degrees(self.centroid, 180, dy).latitude
+        min_lon = inverse_haversine_degrees(self.centroid, 270, dx).longitude
 
-        return (min_lon, max_lon), (min_lat, max_lat)
+        return min_lon, min_lat, max_lon, max_lat
 
     @property
     def centroid(self) -> Coordinate:
@@ -1129,7 +1127,7 @@ class GeoRing(PolygonBase):
         )
 
     @cached_property
-    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+    def bounds(self) -> Tuple[float, float, float, float]:
         if self.angle_max - self.angle_min >= 360:
             nw_bound = inverse_haversine_degrees(
                 self.center, 315, self.outer_radius * math.sqrt(2)
@@ -1137,13 +1135,13 @@ class GeoRing(PolygonBase):
             se_bound = inverse_haversine_degrees(
                 self.center, 135, self.outer_radius * math.sqrt(2)
             )
-            return (nw_bound.longitude, se_bound.longitude), (se_bound.latitude, nw_bound.latitude)
+            return nw_bound.longitude, se_bound.latitude, se_bound.longitude, nw_bound.latitude
 
         lons, lats = cast(
             Tuple[List[float], List[float]],
             zip(*[y.to_float() for y in self.bounding_coords()])
         )
-        return (min(lons), max(lons)), (min(lats), max(lats))
+        return min(lons), min(lats), max(lons), max(lats)
 
     @property
     def centroid(self) -> Coordinate:
@@ -1298,6 +1296,13 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
 
         return self.vertices == other.vertices and self.dt == other.dt
 
+    @property
+    def __geo_interface__(self):
+        return {
+            'type': 'LineString',
+            'coordinates': [list(x.to_float()) for x in self.vertices],
+        }
+
     def __hash__(self) -> int:
         return hash((tuple(self.vertices), self.dt))
 
@@ -1305,12 +1310,12 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
         return f'<GeoLineString with {len(self.vertices)} points>'
 
     @cached_property
-    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+    def bounds(self) -> Tuple[float, float, float, float]:
         lons, lats = cast(
             Tuple[List[float], List[float]],
             zip(*[y.to_float() for y in self.vertices])
         )
-        return (min(lons), max(lons)), (min(lats), max(lats))
+        return min(lons), min(lats), max(lons), max(lats)
 
     @cached_property
     def centroid(self) -> Coordinate:
@@ -1510,23 +1515,10 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
         # because the centroid may fall in a hole
         return o_edges[0][0][0] in self or s_edges[0][0][0] in shape
 
-    def to_geojson(
-            self,
-            properties: Optional[Dict] = None,
-            **kwargs
-    ) -> Dict:
+    def to_geo_interface(self, **kwargs):
         return {
-            'type': 'Feature',
-            'geometry': {
-                'type': 'LineString',
-                'coordinates': [list(x.to_float()) for x in self.vertices],
-            },
-            'properties': {
-                **self._properties_json,
-                **(properties or {})
-            },
-            **kwargs
-
+            **self.__geo_interface__,
+            **({'bbox': self.bounds if kwargs.get('include_bbox') else {}})
         }
 
     def to_polygon(self, **_):
@@ -1579,6 +1571,13 @@ class GeoPoint(SingleShapeBase, PointLikeMixin):
 
         return self.coordinate == other.coordinate and self.dt == other.dt
 
+    @property
+    def __geo_interface__(self):
+        return {
+            'type': 'Point',
+            'coordinates': list(self.coordinate.to_float()),
+        }
+
     def __hash__(self) -> int:
         return hash((self.coordinate, self.dt))
 
@@ -1586,10 +1585,10 @@ class GeoPoint(SingleShapeBase, PointLikeMixin):
         return f'<GeoPoint at {self.coordinate.to_float()}>'
 
     @property
-    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+    def bounds(self) -> Tuple[float, float, float, float]:
         return (
-            (self.coordinate.longitude, self.coordinate.longitude),
-            (self.coordinate.latitude, self.coordinate.latitude)
+            self.coordinate.longitude, self.coordinate.latitude,
+            self.coordinate.longitude, self.coordinate.latitude
         )
 
     @property
@@ -1737,22 +1736,10 @@ class GeoPoint(SingleShapeBase, PointLikeMixin):
             properties=properties,
         )
 
-    def to_geojson(
-            self,
-            properties: Optional[Dict] = None,
-            **kwargs
-    ) -> Dict:
+    def to_geo_interface(self, **kwargs):
         return {
-            'type': 'Feature',
-            'geometry': {
-                'type': 'Point',
-                'coordinates': list(self.coordinate.to_float()),
-            },
-            'properties': {
-                **self._properties_json,
-                **(properties or {})
-            },
-            **kwargs
+            **self.__geo_interface__,
+            **({'bbox': self.bounds if kwargs.get('include_bbox') else {}})
         }
 
     def to_pyshp(self, writer):
