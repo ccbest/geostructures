@@ -631,10 +631,10 @@ class LineLikeMixin(BaseShapeProtocol, ABC):
         """
         from geostructures.structures import GeoBox
 
-        lon_bounds, lat_bounds = self.bounds
+        min_lon, min_lat, max_lon, max_lat = self.bounds
         return GeoBox(
-            Coordinate(lon_bounds[0], lat_bounds[1]),
-            Coordinate(lon_bounds[1], lat_bounds[0]),
+            Coordinate(min_lon, max_lat),
+            Coordinate(max_lon, min_lat),
             dt=self.dt,
         )
 
