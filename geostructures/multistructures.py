@@ -207,7 +207,7 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin):
     def to_geo_interface(self, **kwargs):
         return {
             **self.__geo_interface__,
-            **({'bbox': self.bounds if kwargs.get('include_bbox') else {}})
+            **({'bbox': self.bounds} if kwargs.get('include_bbox') else {})
         }
 
     def to_pyshp(self, writer):
@@ -423,7 +423,7 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin):
     def to_geo_interface(self, **kwargs):
         return {
             **self.__geo_interface__,
-            **({'bbox': self.bounds if kwargs.get('include_bbox') else {}})
+            **({'bbox': self.bounds} if kwargs.get('include_bbox') else {})
         }
 
     def to_pyshp(self, writer):
@@ -715,7 +715,7 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin):
                 ]
                 for shape in self.linear_rings(k=kwargs.pop('k', None))
             ],
-            **({'bbox': self.bounds if kwargs.get('include_bbox') else {}})
+            **({'bbox': self.bounds} if kwargs.get('include_bbox') else {})
         }
 
     def to_pyshp(self, writer):

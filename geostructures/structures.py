@@ -180,7 +180,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
                 [list(coord.to_float()) for coord in ring]
                 for ring in self.linear_rings(k=kwargs.get('k'))
             ],
-            **({'bbox': self.bounds if kwargs.get('include_bbox') else {}})
+            **({'bbox': self.bounds} if kwargs.get('include_bbox') else {})
         }
 
     def to_pyshp(self, writer):
@@ -1518,7 +1518,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
     def to_geo_interface(self, **kwargs):
         return {
             **self.__geo_interface__,
-            **({'bbox': self.bounds if kwargs.get('include_bbox') else {}})
+            **({'bbox': self.bounds} if kwargs.get('include_bbox') else {})
         }
 
     def to_polygon(self, **_):
@@ -1739,7 +1739,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin):
     def to_geo_interface(self, **kwargs):
         return {
             **self.__geo_interface__,
-            **({'bbox': self.bounds if kwargs.get('include_bbox') else {}})
+            **({'bbox': self.bounds} if kwargs.get('include_bbox') else {})
         }
 
     def to_pyshp(self, writer):
