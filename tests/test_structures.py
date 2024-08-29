@@ -427,7 +427,7 @@ def test_geopolygon_bounds():
             Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
         ],
     )
-    assert poly.bounds == ((0., 1.), (0., 1.))
+    assert poly.bounds == (0., 0., 1., 1.)
 
 
 def test_geopolygon_bounding_coords(geopolygon):
@@ -718,7 +718,7 @@ def test_geobox_repr(geobox):
 
 def test_geobox_bounds():
     box = GeoBox(Coordinate(0., 1.), Coordinate(1., 0.))
-    assert box.bounds == ((0., 1.), (0., 1.))
+    assert box.bounds == (0., 0., 1., 1.)
 
 
 def test_geobox_bounding_coords(geobox):
@@ -847,7 +847,7 @@ def test_geocircle_repr(geocircle):
 
 def test_geocircle_bounds():
     assert GeoCircle(Coordinate(0.0, 0.0), 1000).bounds == (
-        (-0.0089932, 0.0089932), (-0.0089932, 0.0089932)
+        -0.0089932, -0.0089932, 0.0089932, 0.0089932
     )
 
 
@@ -962,7 +962,7 @@ def test_geoellipse_repr(geoellipse):
 
 def test_geoellipse_bounds():
     assert GeoEllipse(Coordinate(0.0, 0.0), 1000, 500, 45).bounds == (
-        (-0.0071098, 0.0071098), (-0.0071098, 0.0071098)
+        -0.0071098, -0.0071098, 0.0071098, 0.0071098
     )
 
 
@@ -1086,12 +1086,12 @@ def test_georing_repr(geowedge, georing):
 def test_georing_bounds():
     ring = GeoRing(Coordinate(0., 0.), 1000, 5000)
     assert ring.bounds == (
-        (-0.0449661, 0.0449661), (-0.0449661, 0.0449661)
+        -0.0449661, -0.0449661, 0.0449661, 0.0449661
     )
 
     wedge = GeoRing(Coordinate(0., 0.), 1000, 5000, 90, 180)
     assert wedge.bounds == (
-        (0., 0.0449661), (-0.0449661, 0.)
+        0., -0.0449661, 0.0449661, 0.
     )
 
 
@@ -1262,7 +1262,7 @@ def test_geolinestring_repr(geolinestring):
 def test_geolinestring_bounds():
     ls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)])
     assert ls.bounds == (
-        (0., 1.), (0., 1.)
+        0., 0., 1., 1.
     )
 
 
@@ -1459,7 +1459,7 @@ def test_geopoint_repr(geopoint):
 
 def test_geopoint_bounds():
     point = GeoPoint(Coordinate(0., 0.))
-    assert point.bounds == ((0., 0.), (0., 0.))
+    assert point.bounds == (0., 0., 0., 0.)
 
 
 def test_geopoint_copy():

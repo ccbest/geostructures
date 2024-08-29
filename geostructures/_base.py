@@ -59,6 +59,11 @@ class BaseShapeProtocol(Protocol):
     def __contains__(self, other: Union['GeoShape', Coordinate]):
         return self.contains(other)  # pragma: no cover
 
+    @property
+    @abstractmethod
+    def __geo_interface__(self):
+        pass
+
     @abstractmethod
     def __hash__(self) -> int:
         """Create unique hash of this object"""
@@ -69,7 +74,7 @@ class BaseShapeProtocol(Protocol):
 
     @property
     @abstractmethod
-    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+    def bounds(self) -> Tuple[float, float, float, float]:
         """
         The longitude and latitude min/max bounds of the shape.
 
@@ -365,6 +370,9 @@ class BaseShapeProtocol(Protocol):
         return shape
 
     @abstractmethod
+    def to_geo_interface(self, **kwargs) -> Dict:
+        pass
+
     def to_geojson(
         self,
         properties: Optional[Dict] = None,
@@ -374,8 +382,6 @@ class BaseShapeProtocol(Protocol):
         Convert the shape to geojson format.
 
         Args:
-
-
             properties: (dict)
                 Any number of properties to be included in the geojson properties. These
                 values will be unioned with the shape's already defined properties (and
@@ -389,6 +395,19 @@ class BaseShapeProtocol(Protocol):
         Returns:
             (dict)
         """
+
+        return {
+            'type': 'Feature',
+            'geometry': self.to_geo_interface(
+                k=kwargs.pop('k', None),
+                include_bbox=kwargs.pop('include_bbox', None),
+            ),
+            'properties': {
+                **self._properties_json,
+                **(properties or {})
+            },
+            ** kwargs
+        }
 
     @abstractmethod
     def _to_shapely(self):
@@ -526,10 +545,10 @@ class PolygonLikeMixin(BaseShapeProtocol, ABC):
         """
         from geostructures.structures import GeoBox
 
-        lon_bounds, lat_bounds = self.bounds
+        min_lon, min_lat, max_lon, max_lat = self.bounds
         return GeoBox(
-            Coordinate(lon_bounds[0], lat_bounds[1]),
-            Coordinate(lon_bounds[1], lat_bounds[0]),
+            Coordinate(min_lon, max_lat),
+            Coordinate(max_lon, min_lat),
             dt=self.dt,
         )
 
@@ -612,10 +631,10 @@ class LineLikeMixin(BaseShapeProtocol, ABC):
         """
         from geostructures.structures import GeoBox
 
-        lon_bounds, lat_bounds = self.bounds
+        min_lon, min_lat, max_lon, max_lat = self.bounds
         return GeoBox(
-            Coordinate(lon_bounds[0], lat_bounds[1]),
-            Coordinate(lon_bounds[1], lat_bounds[0]),
+            Coordinate(min_lon, max_lat),
+            Coordinate(max_lon, min_lat),
             dt=self.dt,
         )
 
@@ -645,11 +664,11 @@ class MultiShapeBase(BaseShape, ABC):
         return self.geoshapes.__iter__()
 
     @property
-    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-        min_lons, max_lons, min_lats, max_lats = list(
-            zip(*[[x for pair in shape.bounds for x in pair] for shape in self.geoshapes])
+    def bounds(self):
+        min_lons, min_lats, max_lons, max_lats = list(
+            zip(*[shape.bounds for shape in self.geoshapes])
         )
-        return (min(min_lons), max(max_lons)), (min(min_lats), max(max_lats))
+        return min(min_lons), min(min_lats), max(max_lons), max(max_lats)
 
     @property
     def has_m(self) -> bool:

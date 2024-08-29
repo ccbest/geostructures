@@ -54,9 +54,7 @@ def test_collection_bounds():
         GeoBox(Coordinate(-1., 0.), Coordinate(0., -5)),
         GeoBox(Coordinate(-0.5, 2.), Coordinate(2., -7)),
     ])
-    assert col1.bounds == (
-        (-1, 2), (-7, 2)
-    )
+    assert col1.bounds == (-1, -7, 2, 2)
 
 
 def test_collection_centroid():

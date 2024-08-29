@@ -49,17 +49,13 @@ class ShapeCollection:
         return self.geoshapes.__len__()
 
     @cached_property
-    def bounds(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+    def bounds(self) -> Tuple[float, float, float, float]:
         all_bounds = [x.bounds for x in self.geoshapes]
         return (
-            (
-                min(x[0][0] for x in all_bounds),
-                max(x[0][1] for x in all_bounds),
-            ),
-            (
-                min(x[1][0] for x in all_bounds),
-                max(x[1][1] for x in all_bounds)
-            )
+            min(x[0] for x in all_bounds),
+            min(x[1] for x in all_bounds),
+            max(x[2] for x in all_bounds),
+            max(x[3] for x in all_bounds)
         )
 
     @property
@@ -379,7 +375,7 @@ class ShapeCollection:
         way to sort larger (in extent) FeatureCollections from smaller ones.
         """
         bounds = self.bounds
-        return bounds[0][1] - bounds[0][0] + bounds[1][1] - bounds[1][0]
+        return bounds[2] - bounds[0] + bounds[3] - bounds[1]
 
     def intersects(self, shape: GeoShape):
         """
