@@ -1,7 +1,10 @@
 
 from datetime import datetime, timedelta, timezone
+import pickle
+import tempfile
 
 import pytest
+import shapely
 
 from geostructures import *
 from geostructures.multistructures import *
@@ -148,6 +151,26 @@ def test_baseshapeprotocol_strip_dt():
     expected = GeoPoint(Coordinate('0.0', '0.0'))
     assert point.strip_dt() == expected
 
+
+def test_baseshape_pickle():
+    point = GeoPoint(
+        Coordinate('0.0', '0.0'),
+        dt=datetime(2020, 1, 1, 12),
+        properties={'test': 'prop'}
+    )
+    with tempfile.TemporaryDirectory() as tempdir:
+        with open(f'{tempdir}/temp.pkl', 'wb') as f:
+            pickle.dump(point, f)
+
+        with open(f'{tempdir}/temp.pkl', 'rb') as f:
+            new_point = pickle.load(f)
+
+        assert point == new_point
+        assert point.properties == new_point.properties
+
+        # Make sure the original wasn't mutated and the new call works
+        assert point.to_shapely() == shapely.Point((0.0, 0.0))
+        assert new_point.to_shapely() == shapely.Point((0.0, 0.0))
 
 
 def test_shapelike_edges():
