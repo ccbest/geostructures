@@ -438,7 +438,6 @@ class BaseShape(BaseShapeProtocol, ABC):
     def __setstate__(self, state):
         state['to_shapely'] = lru_cache(maxsize=1)(self._to_shapely)
         self.__dict__ = state
-        return self
 
 
 class PolygonLikeMixin(BaseShapeProtocol, ABC):
