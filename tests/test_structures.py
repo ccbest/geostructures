@@ -661,7 +661,10 @@ def test_geopolygon_from_wkt():
         _ = GeoPolygon.from_wkt('NOT A POLYGON')
 
 
-def test_geopolygon_to_wkt():
+def test_geoshape_to_wkt():
+    box = GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0))
+    assert box.to_wkt() == 'POLYGON((0.0 1.0,0.0 0.0,1.0 0.0,1.0 1.0,0.0 1.0))'
+
     polygon = GeoPolygon(
         [
             Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0),
@@ -672,12 +675,8 @@ def test_geopolygon_to_wkt():
             Coordinate(0.25, 0.75), Coordinate(0.25, 0.25)
         ])]
     )
-    assert polygon.to_wkt() == 'POLYGON((0.0 0.0,1.0 0.0,1.0 1.0,0.0 1.0,0.0 0.0),(0.25 0.25,0.25 0.75,0.75 0.75,0.75 0.25,0.25 0.25))'
+    assert polygon.to_wkt() == 'POLYGON((0.0 0.0,1.0 0.0,1.0 1.0,0.0 1.0,0.0 0.0), (0.25 0.25,0.25 0.75,0.75 0.75,0.75 0.25,0.25 0.25))'
 
-
-def test_geoshape_to_wkt():
-    box = GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0))
-    assert box.to_wkt() == 'POLYGON((0.0 1.0,0.0 0.0,1.0 0.0,1.0 1.0,0.0 1.0))'
 
 
 def test_geobox_contains(geobox):

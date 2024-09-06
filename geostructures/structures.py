@@ -638,20 +638,6 @@ class GeoPolygon(PolygonBase):
 
         return GeoPolygon(coords, holes=holes or None, dt=dt, properties=properties)
 
-    def to_wkt(self, **kwargs) -> str:
-        """
-        Converts the shape to its WKT string representation
-
-        Keyword Args:
-            Arguments to be passed to the .linear_rings() method. Reference
-            that method for a list of corresponding kwargs.
-
-        Returns:
-            str
-        """
-        bboxs = [self._linear_ring_to_wkt(ring) for ring in self.linear_rings(**kwargs)]
-        return f'POLYGON({",".join(bboxs)})'
-
     def to_polygon(self, **_):
         return self
 
