@@ -206,7 +206,32 @@ def test_collection_filter_by_intersection():
         ),
     ])
 
+def test_filter_by_property():
+    collection = FeatureCollection(
+        [
+            GeoCircle(Coordinate(-0.118092, 51.509865), 500, properties={'example': 'property'}),
+            GeoCircle(Coordinate(-0.141092, 51.529865), 500, properties={'example': 'property'}),
+            GeoRing(Coordinate(-0.116092, 51.519865), inner_radius=800, outer_radius=1000, properties={'example': 'property'}),
+            GeoRing(Coordinate(-0.101092, 51.514865), inner_radius=300, outer_radius=500, angle_min=60, angle_max=190, properties={'example': 'property1'}),
+        ]
+    )
 
+    # Test for equality
+    filtered = collection.filter_by_property('example', 'property')
+    assert len(filtered.geoshapes) == 3
+
+    # Test for inequality
+    filtered = collection.filter_by_property('example', 'property1', '!=')
+    assert len(filtered.geoshapes) == 3
+
+    # Test for property not found
+    with pytest.raises(KeyError):
+        collection.filter_by_property('nonexistent_property', 'value')
+
+    # Test for unsupported operator
+    with pytest.raises(ValueError):
+        collection.filter_by_property('example', 'property', 'unsupported_operator')
+        
 def test_collection_from_geopandas():
     col = FeatureCollection([
         GeoPolygon(

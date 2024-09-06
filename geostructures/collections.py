@@ -7,10 +7,11 @@ __all__ = ['FeatureCollection', 'ShapeCollection', 'Track']
 from collections import defaultdict, Counter
 from datetime import date, datetime, time, timedelta
 from functools import cached_property
+import operator
 import os
 from pathlib import Path
 import tempfile
-from typing import cast, Any, List, Dict, Optional, Union, Tuple, TypeVar
+from typing import cast, Any, Callable, List, Dict, Optional, Union, Tuple, TypeVar
 from zipfile import ZipFile
 
 import numpy as np
@@ -125,6 +126,40 @@ class ShapeCollection:
             A shape collection of the same type as the original
         """
         return type(self)([x for x in self.geoshapes if x.intersects(shape)])
+
+    def filter_by_property(self: _COL_TYPE, property: str, target: Any, op: str = '==') -> _COL_TYPE:
+        """
+        Filter based on property and the given expression e.g. Property1 == "True"
+
+        Args:
+            property: The property to filter by.
+            target: The target value to compare against.
+            op: The operator to use for comparison (default is '==').
+
+        Returns:
+            A shape collection of the same type as the original
+        """
+        OPERATORS = {
+            '==': operator.eq,
+            '!=': operator.ne,
+            '<': operator.lt,
+            '<=': operator.le,
+            '>': operator.gt,
+            '>=': operator.ge
+        }
+
+        if op not in OPERATORS:
+            raise ValueError(f"Unsupported operator: {op}")
+
+        expr: Callable[[Any, Any], bool] = OPERATORS[op]
+
+        filtered_shapes = []
+        for shape in self.geoshapes:
+            if property not in shape.properties:
+                raise KeyError(f"Property '{property}' not found in shape properties")
+            if expr(shape.properties[property], target):
+                filtered_shapes.append(shape)
+        return type(self)(filtered_shapes)
 
     @classmethod
     def from_geojson(
