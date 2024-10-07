@@ -469,6 +469,14 @@ def test_geopolygon_from_geojson():
     )
     assert GeoPolygon.from_geojson(gjson) == expected
 
+    # Only geo interface
+    gjson = gjson['geometry']
+    expected = GeoPolygon(
+        [Coordinate(0.0, 0.0), Coordinate(1.0, 1.0), Coordinate(2.0, 0.0), Coordinate(0.0, 0.0)],
+        holes=[GeoPolygon([Coordinate(0.25, 0.25), Coordinate(0.5, 0.5), Coordinate(1.0, 0.25), Coordinate(0.25, 0.25)])],
+    )
+    assert GeoPolygon.from_geojson(gjson) == expected
+
     # Test custom timestamp format
     gjson = {
         'type': 'Feature',
@@ -1314,6 +1322,12 @@ def test_geolinestring_from_geojson():
     )
     assert GeoLineString.from_geojson(gls) == expected
 
+    gls = gls['geometry']
+    expected = GeoLineString(
+        [Coordinate(0.0, 0.0), Coordinate(1.0, 1.5), Coordinate(2.0, 2.0)],
+    )
+    assert GeoLineString.from_geojson(gls) == expected
+
     with pytest.raises(ValueError):
         bad_gjson = {
             'type': 'Feature',
@@ -1502,6 +1516,13 @@ def test_geopoint_from_geojson():
     )
     assert GeoPoint.from_geojson(gpoint) == expected
 
+    # Only geo interface
+    gpoint = gpoint['geometry']
+    expected = GeoPoint(
+        Coordinate(1.0, 0.0),
+    )
+    assert GeoPoint.from_geojson(gpoint) == expected
+
     with pytest.raises(ValueError):
         bad_gjson = {
             'type': 'Feature',
@@ -1530,12 +1551,13 @@ def test_geopoint_intersects_shape():
     assert not point.intersects_shape(GeoPoint(Coordinate(0.001, 0.001)))
 
 
-def test_geopoint_to_geojson(geopoint):
-    assert geopoint.to_geojson(properties={'test_prop': 2}, test_kwarg=1) == {
+def test_geopoint_to_geojson():
+    point = GeoPoint(Coordinate(1., 0.), dt=default_test_datetime)
+    assert point.to_geojson(properties={'test_prop': 2}, test_kwarg=1) == {
         'type': 'Feature',
         'geometry': {
             'type': 'Point',
-            'coordinates': [0.0, 0.0],
+            'coordinates': [1.0, 0.0],
         },
         'properties': {
             'test_prop': 2,
@@ -1544,8 +1566,6 @@ def test_geopoint_to_geojson(geopoint):
         },
         'test_kwarg': 1
     }
-
-    shapely.geometry.shape(geopoint.to_geojson(test_prop=2)['geometry'])
 
 
 def test_geopoint_to_shapely(geopoint):

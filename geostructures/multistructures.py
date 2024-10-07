@@ -100,7 +100,11 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin):
         time_end_property: str = 'datetime_end',
         time_format: Optional[str] = None,
     ) -> 'MultiGeoLineString':
-        geom = gjson.get('geometry', {})
+        if 'coordinates' in gjson:
+            geom = gjson
+        else:
+            geom = gjson.get('geometry', {})
+
         if not geom.get('type') == 'MultiLineString':
             raise ValueError(
                 f'Geometry represents a {geom.get("type")}; expected MultiLineString.'
@@ -320,7 +324,11 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin):
         time_end_property: str = 'datetime_end',
         time_format: Optional[str] = None,
     ) -> 'MultiGeoPoint':
-        geom = gjson.get('geometry', {})
+        if 'coordinates' in gjson:
+            geom = gjson
+        else:
+            geom = gjson.get('geometry', {})
+
         if not geom.get('type') == 'MultiPoint':
             raise ValueError(
                 f'Geometry represents a {geom.get("type")}; expected MultiPoint.'
@@ -564,7 +572,11 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin):
         time_end_property: str = 'datetime_end',
         time_format: Optional[str] = None,
     ):
-        geom = gjson.get('geometry', {})
+        if 'coordinates' in gjson:
+            geom = gjson
+        else:
+            geom = gjson.get('geometry', {})
+
         if not geom.get('type') == 'MultiPolygon':
             raise ValueError(
                 f'Geometry represents a {geom.get("type")}; expected MultiPolygon.'

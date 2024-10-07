@@ -153,31 +153,19 @@ class ShapeCollection:
         Returns:
             Track or FeatureCollection
         """
+        from geostructures.parsers import parse_geojson
 
         if gjson.get('type') != 'FeatureCollection':
             raise ValueError('Malformed GeoJSON; expected FeatureCollection')
 
-        conv_map = {
-            'Point': GeoPoint,
-            'LineString': GeoLineString,
-            'Polygon': GeoPolygon,
-            'MultiPoint': MultiGeoPoint,
-            'MultiLineString': MultiGeoLineString,
-            'MultiPolygon': MultiGeoPolygon,
-        }
-
         shapes: List[GeoShape] = []
         for feature in gjson.get('features', []):
-            geom_type = feature.get('geometry', {}).get('type')
-            if geom_type not in conv_map:
-                raise ValueError(f'Unrecognized geometry type: {geom_type}')
-
             shapes.append(
-                conv_map[geom_type].from_geojson(  # type: ignore
+                parse_geojson(
                     feature,
                     time_start_property,
                     time_end_property,
-                    time_format=time_format
+                    time_format
                 )
             )
 

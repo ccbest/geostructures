@@ -36,15 +36,31 @@ _RE_LINEAR_RINGS = re.compile(_RE_LINEAR_RINGS_STR)
 _RE_ZM_STR = r'\s?([ZM]{0,2})\s?'  # Presence is optional - for matching whole WKT
 _RE_ZM = re.compile(r'\s?([ZM]{1,2})\s?')  # Presence is required - for matching ZM specifically
 
-_RE_POINT_WKT = re.compile(r'^POINT' + _RE_ZM_STR + r'\(\s?' + _RE_COORD_STR + r'\s?\)$')
-_RE_POLYGON_WKT = re.compile(r'^POLYGON' + _RE_ZM_STR + _RE_LINEAR_RINGS_STR + '$')
-_RE_LINESTRING_WKT = re.compile(r'^LINESTRING' + _RE_ZM_STR + _RE_LINEAR_RING_STR + '$')
-
-_RE_MULTIPOINT_WKT = re.compile(r'^MULTIPOINT' + _RE_ZM_STR + _RE_LINEAR_RING_STR + '$')
-_RE_MULTIPOLYGON_WKT = re.compile(
-    r'^MULTIPOLYGON' + _RE_ZM_STR + r'\((' + _RE_LINEAR_RINGS_STR + r',?\s?)+\)$'
+_RE_POINT_WKT = re.compile(
+    r'^POINT' + _RE_ZM_STR + r'\(\s?' + _RE_COORD_STR + r'\s?\)$',
+    flags=re.IGNORECASE
 )
-_RE_MULTILINESTRING_WKT = re.compile(r'^MULTILINESTRING' + _RE_ZM_STR + _RE_LINEAR_RINGS_STR + '$')
+_RE_POLYGON_WKT = re.compile(
+    r'^POLYGON' + _RE_ZM_STR + _RE_LINEAR_RINGS_STR + '$',
+    flags=re.IGNORECASE
+)
+_RE_LINESTRING_WKT = re.compile(
+    r'^LINESTRING' + _RE_ZM_STR + _RE_LINEAR_RING_STR + '$',
+    flags=re.IGNORECASE
+)
+
+_RE_MULTIPOINT_WKT = re.compile(
+    r'^MULTIPOINT' + _RE_ZM_STR + _RE_LINEAR_RING_STR + '$',
+    flags=re.IGNORECASE
+)
+_RE_MULTIPOLYGON_WKT = re.compile(
+    r'^MULTIPOLYGON' + _RE_ZM_STR + r'\((' + _RE_LINEAR_RINGS_STR + r',?\s?)+\)$',
+    flags=re.IGNORECASE
+)
+_RE_MULTILINESTRING_WKT = re.compile(
+    r'^MULTILINESTRING' + _RE_ZM_STR + _RE_LINEAR_RINGS_STR + '$',
+    flags=re.IGNORECASE
+)
 
 
 SHAPE_VAR = TypeVar('SHAPE_VAR', bound='BaseShapeProtocol')
