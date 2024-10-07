@@ -87,6 +87,14 @@ def test_multigeolinestring_from_geojson():
     assert mls.dt == TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))
     assert mls._properties == {'test_prop': 'test_value'}
 
+    # Only geo interface
+    gjson = gjson['geometry']
+    mls = MultiGeoLineString.from_geojson(gjson)
+    assert mls.geoshapes == [
+        GeoLineString([Coordinate(0.0, 1.0), Coordinate(0.5, 0.5), Coordinate(1.0, 0.0)]),
+        GeoLineString([Coordinate(1.0, 1.0), Coordinate(0.5, 0.5), Coordinate(0.0, 0.0)])
+    ]
+
     with pytest.raises(ValueError):
         gjson = {
             "type": "Feature",
@@ -297,6 +305,14 @@ def test_multigeopoint_from_geojson():
     ]
     assert mp._properties == {"test_prop": "test_value"}
     assert mp.dt == TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
+
+    # Only geo interface
+    gjson = gjson['geometry']
+    mp = MultiGeoPoint.from_geojson(gjson)
+    assert mp.geoshapes == [
+        GeoPoint(Coordinate(0., 1.)),
+        GeoPoint(Coordinate(1., 1.))
+    ]
 
     with pytest.raises(ValueError):
         gjson = {
@@ -564,6 +580,36 @@ def test_multigeoshape_from_geojson():
     ]
     assert mp._properties == {'test_prop': 'test_val'}
     assert mp.dt == TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
+
+    # Only geo interface
+    gjson = gjson['geometry']
+    mp = MultiGeoPolygon.from_geojson(gjson)
+    assert mp.geoshapes == [
+        GeoPolygon(
+            [
+                Coordinate(0.0, 1.0), Coordinate(0.0, 0.0),
+                Coordinate(1.0, 0.0), Coordinate(1.0, 1.0),
+                Coordinate(0.0, 1.0),
+            ],
+            holes=[
+                GeoPolygon(
+                    [
+                        Coordinate(0.0, 1.0), Coordinate(0.0, 0.0),
+                        Coordinate(1.0, 0.0), Coordinate(1.0, 1.0),
+                        Coordinate(0.0, 1.0),
+                    ],
+                )
+            ]
+        ),
+        GeoPolygon(
+            [
+                Coordinate(1.0, 2.0), Coordinate(1.0, 1.0),
+                Coordinate(2.0, 1.0), Coordinate(2.0, 2.0),
+                Coordinate(1.0, 2.0),
+            ],
+        )
+    ]
+
 
     with pytest.raises(ValueError):
         gjson = {

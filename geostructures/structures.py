@@ -468,7 +468,11 @@ class GeoPolygon(PolygonBase):
         """
         from geostructures.typing import PolygonLike
 
-        geom = gjson.get('geometry', {})
+        if 'coordinates' in gjson:
+            geom = gjson
+        else:
+            geom = gjson.get('geometry', {})
+
         if not geom.get('type') == 'Polygon':
             raise ValueError(
                 f'Geometry represents a {geom.get("type")}; expected Polygon.'
@@ -1392,7 +1396,11 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
         Returns:
             GeoLineString
         """
-        geom = gjson.get('geometry', {})
+        if 'coordinates' in gjson:
+            geom = gjson
+        else:
+            geom = gjson.get('geometry', {})
+
         if not geom.get('type') == 'LineString':
             raise ValueError(
                 f'Geometry represents a {geom.get("type")}; expected LineString.'
@@ -1645,7 +1653,11 @@ class GeoPoint(SingleShapeBase, PointLikeMixin):
         Returns:
             GeoPoint
         """
-        geom = gjson.get('geometry', {})
+        if 'coordinates' in gjson:
+            geom = gjson
+        else:
+            geom = gjson.get('geometry', {})
+
         if not geom.get('type') == 'Point':
             raise ValueError(
                 f'Geometry represents a {geom.get("type")}; expected Point.'
