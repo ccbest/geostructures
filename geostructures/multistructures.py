@@ -13,7 +13,7 @@ from geostructures._base import (
     _RE_MULTIPOLYGON_WKT, _RE_MULTIPOINT_WKT,
     _RE_MULTILINESTRING_WKT, _RE_LINEAR_RING, _RE_LINEAR_RINGS,
     PolygonLikeMixin, MultiShapeBase,
-    PointLikeMixin, LineLikeMixin
+    PointLikeMixin, LineLikeMixin, SimpleShapeMixin
 )
 from geostructures.time import GEOTIME_TYPE
 from geostructures._geometry import convex_hull
@@ -23,7 +23,7 @@ from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPoly
 from geostructures.utils.functions import get_dt_from_geojson_props
 
 
-class MultiGeoLineString(MultiShapeBase, LineLikeMixin):
+class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
 
     def __init__(
         self,
@@ -170,23 +170,6 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin):
         return MultiGeoLineString(linestrings, dt=dt, properties=properties)
 
     @classmethod
-    def from_shapely(
-        cls,
-        shape
-    ):
-        """
-        Creates a corresponding multi shape from a shapely object
-
-        Args:
-            shape:
-                A shapely object
-
-        Returns:
-            MultiGeoLineString
-        """
-        return cls.from_wkt(shape.wkt)
-
-    @classmethod
     def from_wkt(
         cls,
         wkt_str: str,
@@ -253,7 +236,7 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin):
         return f'MULTILINESTRING({", ".join(lines)})'
 
 
-class MultiGeoPoint(MultiShapeBase, PointLikeMixin):
+class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
 
     def __init__(
         self,
@@ -390,23 +373,6 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin):
         return MultiGeoPoint(points, dt=dt, properties=properties)
 
     @classmethod
-    def from_shapely(
-        cls,
-        multipoint
-    ):
-        """
-        Creates a GeoPolygon from a shapely polygon
-
-        Args:
-            multipoint:
-                A shapely multipoint
-
-        Returns:
-            GeoPolygon
-        """
-        return cls.from_wkt(multipoint.wkt)
-
-    @classmethod
     def from_wkt(
         cls,
         wkt_str: str,
@@ -467,7 +433,7 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin):
         return f'MULTIPOINT({", ".join(points)})'
 
 
-class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin):
+class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
 
     def __init__(
         self,
@@ -647,23 +613,6 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin):
             )
 
         return MultiGeoPolygon(shapes, dt=dt, properties=properties)
-
-    @classmethod
-    def from_shapely(
-        cls,
-        multipolygon
-    ):
-        """
-        Creates a GeoPolygon from a shapely polygon
-
-        Args:
-            multipolygon:
-                A shapely multipolygon
-
-        Returns:
-            GeoPolygon
-        """
-        return cls.from_wkt(multipolygon.wkt)
 
     @classmethod
     def from_wkt(

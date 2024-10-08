@@ -21,7 +21,7 @@ from geostructures import LOGGER
 from geostructures._base import (
     _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT,
     _RE_LINESTRING_WKT, LineLikeMixin, PointLikeMixin, PolygonLikeMixin,
-    SingleShapeBase
+    SingleShapeBase, SimpleShapeMixin
 )
 from geostructures.time import GEOTIME_TYPE
 from geostructures.coordinates import Coordinate
@@ -227,7 +227,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
         return f'POLYGON({bbox_str})'
 
 
-class GeoPolygon(PolygonBase):
+class GeoPolygon(PolygonBase, SimpleShapeMixin):
 
     """
     A Polygon, as expressed by an ordered list of Coordinates. The final Coordinate
@@ -601,23 +601,6 @@ class GeoPolygon(PolygonBase):
             dt=dt,
             properties=properties
         )
-
-    @classmethod
-    def from_shapely(
-        cls,
-        polygon
-    ):
-        """
-        Creates a GeoPolygon from a shapely polygon
-
-        Args:
-            polygon:
-                A shapely polygon
-
-        Returns:
-            GeoPolygon
-        """
-        return cls.from_wkt(polygon.wkt)
 
     @classmethod
     def from_wkt(
@@ -1265,7 +1248,7 @@ class GeoRing(PolygonBase):
         return super().to_wkt(**kwargs)
 
 
-class GeoLineString(SingleShapeBase, LineLikeMixin):
+class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
 
     """
     A LineString (or more colloquially, a path) consisting of a series of
@@ -1452,19 +1435,6 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
         )
 
     @classmethod
-    def from_shapely(cls, linestring) -> 'GeoLineString':
-        """
-        Creates a GeoLinestring from a shapely Linestring
-        Args:
-            linestring:
-                A shapely linestring
-
-        Returns:
-            GeoLinestring
-        """
-        return cls.from_wkt(linestring.wkt)
-
-    @classmethod
     def from_wkt(
         cls,
         wkt_str: str,
@@ -1539,7 +1509,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin):
         return f'LINESTRING{bbox_str}'
 
 
-class GeoPoint(SingleShapeBase, PointLikeMixin):
+class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
 
     """
     A Coordinate with an associated timestamp. This is the only shape which
@@ -1701,19 +1671,6 @@ class GeoPoint(SingleShapeBase, PointLikeMixin):
             dt=dt,
             properties=properties
         )
-
-    @classmethod
-    def from_shapely(cls, point) -> 'GeoPoint':
-        """
-        Creates a GeoPoint from a shapely Point
-        Args:
-            point:
-                A shapely Point
-
-        Returns:
-            GeoPoint
-        """
-        return cls.from_wkt(point.wkt)
 
     @classmethod
     def from_wkt(
