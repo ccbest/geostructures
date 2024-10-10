@@ -127,6 +127,16 @@ class ShapeCollection:
         return type(self)([x for x in self.geoshapes if x.intersects(shape)])
 
     @classmethod
+    def from_fastkml_folder(cls, folder):
+        """
+        Construct a FeatureCollection from a FastKML Folder. Placemarks in
+        the folder will be parsed into their corresponding geostructures.
+        """
+        from geostructures.parsers import parse_fastkml
+
+        return FeatureCollection(parse_fastkml(folder))
+
+    @classmethod
     def from_geojson(
         cls,
         gjson: Dict[str, Any],
@@ -386,6 +396,14 @@ class ShapeCollection:
                 return True
 
         return False
+
+    def to_fastkml_folder(self, folder_name: str):
+        from fastkml import Folder
+
+        return Folder(
+            name=folder_name,
+            features=[x.to_fastkml_placemark() for x in self.geoshapes]
+        )
 
     def to_geojson(self, properties: Optional[Dict] = None, **kwargs):
         return {

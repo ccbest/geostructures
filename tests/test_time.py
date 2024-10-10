@@ -1,6 +1,9 @@
 
+from datetime import date, datetime, timedelta, timezone
+
+from fastkml.times import TimeSpan, TimeStamp, KmlDateTime
 import pytest
-from datetime import date, datetime, timedelta
+
 from geostructures.time import TimeInterval
 
 
@@ -103,3 +106,32 @@ def test_timeinterval_intersection():
     assert interval.intersection(TimeInterval(datetime(2020, 1, 2, 5), datetime(2020, 1, 3))) == TimeInterval(datetime(2020, 1, 2, 5), datetime(2020, 1, 3))
     assert interval.intersection(TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2, 1))) == TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 2, 1))
     assert interval.intersection(TimeInterval(datetime(2020, 1, 5), datetime(2020, 1, 6))) is None
+
+
+def test_timeinterval_to_fastkml():
+    interval = TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
+    expected = TimeStamp(timestamp=KmlDateTime(datetime(2020, 1, 1, tzinfo=timezone.utc)))
+    assert interval._to_fastkml() == expected
+
+    interval = TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))
+    expected = TimeSpan(
+        begin=KmlDateTime(datetime(2020, 1, 1, tzinfo=timezone.utc)),
+        end=KmlDateTime(datetime(2020, 1, 2, tzinfo=timezone.utc))
+    )
+    assert interval._to_fastkml() == expected
+
+
+def test_timeinterval_from_fastkml():
+    timestamp = TimeStamp(timestamp=KmlDateTime(datetime(2020, 1, 1, tzinfo=timezone.utc)))
+    expected = TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
+    assert TimeInterval._from_fastkml(timestamp) == expected
+
+    timespan = TimeSpan(
+        begin=KmlDateTime(datetime(2020, 1, 1, tzinfo=timezone.utc)),
+        end=KmlDateTime(datetime(2020, 1, 2, tzinfo=timezone.utc))
+    )
+    expected = TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))
+    assert TimeInterval._from_fastkml(timespan) == expected
+
+    with pytest.raises(ValueError):
+        TimeInterval._from_fastkml('something else')

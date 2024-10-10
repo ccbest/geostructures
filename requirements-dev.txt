@@ -1,5 +1,6 @@
 coverage>=5.5
 flake8
+fastkml==1.0.a13
 geopandas>=0.13,<1
 h3>=3.7,<4
 mgrs>=1.4.5,<2
