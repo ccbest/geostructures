@@ -51,6 +51,6 @@ setuptools.setup(
         'h3': ['h3>=3.7,<4'],
         'mgrs': ['mgrs>=1.4.5,<2'],
         'proj': ['pyproj>=3.6,<4'],
-        'kml': ['fastkml==1.0.a13']
+        'kml': ['fastkml==1.0.a13'],
     }
 )
