@@ -520,7 +520,7 @@ class SimpleShapeMixin(BaseShapeProtocol, ABC):
         pass
 
     @classmethod
-    def from_fastkml_placemark(cls: SHAPE_VAR, placemark) -> SHAPE_VAR:
+    def from_fastkml_placemark(cls, placemark):
         """
         Create a geostructure from the corresponding type of FastKML
         Placemark.
@@ -540,11 +540,11 @@ class SimpleShapeMixin(BaseShapeProtocol, ABC):
 
     @classmethod
     def from_shapely(
-        cls: SHAPE_VAR,
+        cls,
         shape,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
-    ) -> SHAPE_VAR:
+    ):
         """
         Creates a corresponding geostructure from a shapely object
         """
@@ -557,11 +557,11 @@ class SimpleShapeMixin(BaseShapeProtocol, ABC):
     @classmethod
     @abstractmethod
     def from_wkt(
-        cls: SHAPE_VAR,
+        cls,
         wkt_str: str,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
-    ) -> SHAPE_VAR:
+    ):
         """
         Construct a corresponding geostructure from a Well-Known Text
         (WKT) string.

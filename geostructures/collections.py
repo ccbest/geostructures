@@ -2,7 +2,7 @@
 Module for sequences of GeoShapes
 """
 
-__all__ = ['FeatureCollection', 'ShapeCollection', 'Track']
+__all__ = ['FeatureCollection', 'CollectionBase', 'Track']
 
 from collections import defaultdict, Counter
 from datetime import date, datetime, time, timedelta
@@ -16,21 +16,21 @@ from zipfile import ZipFile
 import numpy as np
 
 from geostructures import Coordinate, LOGGER
+from geostructures._base import PolygonLikeMixin, PointLikeMixin, LineLikeMixin, MultiShapeBase, BaseShape
 from geostructures._geometry import convex_hull
 from geostructures.calc import haversine_distance_meters
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
-from geostructures.typing import GeoShape, MultiShape, LineLike, PointLike, PolygonLike
 from geostructures.utils.functions import default_to_zulu
 
 
-_COL_TYPE = TypeVar('_COL_TYPE', bound='ShapeCollection')
+_COL_TYPE = TypeVar('_COL_TYPE', bound='CollectionBase')
 
 
-class ShapeCollection:
+class CollectionBase:
 
-    def __init__(self, geoshapes: List[GeoShape]):
+    def __init__(self, geoshapes: List[BaseShape]):
         super().__init__()
         self.geoshapes = geoshapes
 
@@ -71,17 +71,17 @@ class ShapeCollection:
         def _get_vertices(shapes):
             vertices = []
             for shape in shapes:
-                if isinstance(shape, MultiShape):
+                if isinstance(shape, MultiShapeBase):
                     vertices += [
                         vertex
                         for _shape in shape.geoshapes
                         for vertex in _get_vertices([_shape])
                     ]
-                elif isinstance(shape, PointLike):
+                elif isinstance(shape, PointLikeMixin):
                     vertices.append(shape.centroid)
-                elif isinstance(shape, LineLike):
+                elif isinstance(shape, LineLikeMixin):
                     vertices += shape.vertices
-                elif isinstance(shape, PolygonLike):
+                elif isinstance(shape, PolygonLikeMixin):
                     vertices += shape.bounding_coords()
             return vertices
 
@@ -112,7 +112,7 @@ class ShapeCollection:
 
         raise ValueError(f"Unexpected dt object: {dt}")
 
-    def filter_by_intersection(self: _COL_TYPE, shape: GeoShape) -> _COL_TYPE:
+    def filter_by_intersection(self: _COL_TYPE, shape: BaseShape) -> _COL_TYPE:
         """
         Filter the shape collection using an intersecting geoshape, which is optionally
         time-bounded.
@@ -168,7 +168,7 @@ class ShapeCollection:
         if gjson.get('type') != 'FeatureCollection':
             raise ValueError('Malformed GeoJSON; expected FeatureCollection')
 
-        shapes: List[GeoShape] = []
+        shapes: List[BaseShape] = []
         for feature in gjson.get('features', []):
             shapes.append(
                 parse_geojson(
@@ -237,7 +237,7 @@ class ShapeCollection:
         prop_fields = [
             x for x in df.columns if x not in (time_start_field, time_end_field, 'geometry')
         ]
-        shapes: List[GeoShape] = []
+        shapes: List[BaseShape] = []
         for record in df.to_dict('records'):
             geom_type = record['geometry'].geom_type
             if geom_type not in conv_map:  # pragma: no cover
@@ -375,7 +375,7 @@ class ShapeCollection:
         bounds = self.bounds
         return bounds[2] - bounds[0] + bounds[3] - bounds[1]
 
-    def intersects(self, shape: GeoShape):
+    def intersects(self, shape: BaseShape):
         """
         Boolean determination of whether any pings from the track exist inside the provided
         geostructure.
@@ -471,8 +471,8 @@ class ShapeCollection:
 
         points: List[GeoPoint] = []
         multipoints: List[MultiGeoPoint] = []
-        lines: List[LineLike] = []
-        shapes: List[PolygonLike] = []
+        lines: List[LineLikeMixin] = []
+        shapes: List[PolygonLikeMixin] = []
         for shape in self.geoshapes:
             if isinstance(shape, GeoPoint):
                 points.append(shape)
@@ -480,10 +480,10 @@ class ShapeCollection:
             elif isinstance(shape, MultiGeoPoint):
                 multipoints.append(shape)
 
-            elif isinstance(shape, LineLike):
+            elif isinstance(shape, LineLikeMixin):
                 lines.append(shape)
 
-            elif isinstance(shape, PolygonLike):
+            elif isinstance(shape, PolygonLikeMixin):
                 shapes.append(shape)
 
             else:
@@ -556,7 +556,7 @@ class ShapeCollection:
         return
 
 
-class FeatureCollection(ShapeCollection):
+class FeatureCollection(CollectionBase):
 
     """
     A collection of GeoShapes, in no particular order
@@ -604,13 +604,13 @@ class FeatureCollection(ShapeCollection):
         return FeatureCollection(self.geoshapes.copy())
 
 
-class Track(ShapeCollection):
+class Track(CollectionBase):
 
     """
     A sequence of chronologically-ordered (by start time) GeoShapes
     """
 
-    def __init__(self, geoshapes: List[GeoShape]):
+    def __init__(self, geoshapes: List[BaseShape]):
         if not all(x.dt for x in geoshapes):
             raise ValueError('All track geoshapes must have an associated time value.')
 

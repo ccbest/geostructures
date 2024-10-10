@@ -38,7 +38,7 @@ from geostructures._geometry import (
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from geostructures.typing import GeoShape, PolygonLike
 
 

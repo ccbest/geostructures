@@ -2,17 +2,20 @@
 
 __all__ = [
     'GeoShape', 'LineLike', 'MultiShape', 'PointLike',
-    'PolygonLike', 'SingleShape', 'SinglePolygon'
+    'PolygonLike', 'SingleShape', 'SinglePolygon',
+    'SimpleShape', 'ShapeCollection',
 ]
 
 from geostructures._base import (
     BaseShape,
     MultiShapeBase,
     SingleShapeBase,
+    SimpleShapeMixin,
     LineLikeMixin,
     PointLikeMixin,
     PolygonLikeMixin,
 )
+from geostructures.collections import CollectionBase
 from geostructures.structures import PolygonBase
 
 # Any Shape
@@ -22,6 +25,8 @@ GeoShape = BaseShape
 SingleShape = SingleShapeBase  # Union[PolygonBase, GeoLineString, GeoPoint]
 MultiShape = MultiShapeBase  # Union[MultiGeoPolygon, MultiGeoLineString, MultiGeoPoint]
 
+SimpleShape = type[SimpleShapeMixin]
+
 # All Single Polygon Shapes, e.g. GeoBox
 SinglePolygon = PolygonBase  # Union[GeoPolygon, GeoBox, GeoCircle, ... ]
 
@@ -29,3 +34,5 @@ SinglePolygon = PolygonBase  # Union[GeoPolygon, GeoBox, GeoCircle, ... ]
 LineLike = LineLikeMixin  # Union[GeoLineString, MultiGeoLinestring]
 PointLike = PointLikeMixin  # Union[GeoPoint, MultiGeoPoint]
 PolygonLike = PolygonLikeMixin  # Union[PolygonBase, MultiGeoPolygon]
+
+ShapeCollection = type[CollectionBase]

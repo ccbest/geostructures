@@ -11,17 +11,16 @@ from typing import cast, Any, Dict, List, Optional, Union
 from geostructures.collections import FeatureCollection
 from geostructures.structures import GeoPolygon, GeoPoint, GeoLineString
 from geostructures.multistructures import MultiGeoPoint, MultiGeoPolygon, MultiGeoLineString
-from geostructures.typing import GeoShape
+from geostructures.typing import GeoShape, SimpleShape
 
 
-_PARSER_MAP = {
+_PARSER_MAP: Dict[str, SimpleShape] = {
     'POINT': GeoPoint,
     'LINESTRING': GeoLineString,
     'POLYGON': GeoPolygon,
     'MULTIPOINT': MultiGeoPoint,
     'MULTILINESTRING': MultiGeoLineString,
     'MULTIPOLYGON': MultiGeoPolygon,
-    'FEATURECOLLECTION': FeatureCollection,
 }
 
 
@@ -72,7 +71,7 @@ def parse_fastkml(
 
     if isinstance(kml, Placemark):
         # Parse the shape and mutate _shapes
-        parser = _PARSER_MAP[kml.geometry.__geo_interface__['type'].upper()]
+        parser = _PARSER_MAP[kml.geometry.__geo_interface__['type'].upper()]  # type: ignore
         shape = parser.from_fastkml_placemark(kml)
         shape._properties.update(_props)
         for prop in ('name', 'description', 'address', 'phone_number'):
@@ -110,17 +109,22 @@ def parse_geojson(
     Returns:
         GeoShape, subtype determined by input
     """
+    PARSER_MAP = {
+        **_PARSER_MAP,
+        'FEATURECOLLECTION': FeatureCollection
+    }
+
     if isinstance(gjson, str):
         gjson = json.loads(gjson)
 
     gjson = cast(Dict[str, Any], gjson)
 
     parser = None
-    if 'type' in gjson and gjson['type'].upper() in _PARSER_MAP:
-        parser = _PARSER_MAP[gjson['type'].upper()]
+    if 'type' in gjson and gjson['type'].upper() in PARSER_MAP:
+        parser = PARSER_MAP[gjson['type'].upper()]
 
-    elif gjson.get('geometry', {}).get('type', '').upper() in _PARSER_MAP:
-        parser = _PARSER_MAP[gjson['geometry']['type'].upper()]
+    elif gjson.get('geometry', {}).get('type', '').upper() in PARSER_MAP:
+        parser = PARSER_MAP[gjson['geometry']['type'].upper()]
 
     if not parser:
         raise ValueError('Failed to parse geojson.')

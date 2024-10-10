@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, TypedDict, U
 
 from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint, GeoPolygon
 from geostructures._geometry import find_line_intersection
-from geostructures.collections import ShapeCollection
+from geostructures.collections import CollectionBase
 from geostructures.multistructures import MultiGeoPoint
 from geostructures.time import TimeInterval
 from geostructures.typing import GeoShape, LineLike, MultiShape, PointLike, PolygonLike, SinglePolygon
@@ -285,7 +285,7 @@ class HasherBase(abc.ABC):
     @abc.abstractmethod
     def hash_collection(
         self,
-        collection: ShapeCollection,
+        collection: CollectionBase,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -435,7 +435,7 @@ class H3Hasher(HasherBase):
 
     def hash_collection(
             self,
-            collection: ShapeCollection,
+            collection: CollectionBase,
             **kwargs
     ) -> Dict[str, Any]:
         """
@@ -673,7 +673,7 @@ class NiemeyerHasher(HasherBase):
 
     def hash_collection(
         self,
-        collection: ShapeCollection,
+        collection: CollectionBase,
         **kwargs
     ) -> Dict[str, Any]:
         """

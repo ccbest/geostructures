@@ -17,6 +17,7 @@ ConditionalPackageInterceptor.permit_packages(
     {
         'geopandas': 'geostructures[df]',
         'h3': 'geostructures[h3]',
+        'fastkml': 'geostructures[kml]',
         'mgrs': 'geostructures[mgrs]',
         'pandas': 'geostructures[df]',
         'pyproj': 'geostructures[proj]',
