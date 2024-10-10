@@ -77,6 +77,30 @@ def test_collection_len():
     assert len(track1) == 2
 
 
+def test_collection_from_fastkml_folder():
+    from fastkml import Folder
+    folder = Folder(name='test folder')
+    folder.append(
+        GeoPoint(
+            Coordinate(1., 0.),
+            dt=datetime(2020, 1, 1),
+            properties={'test': 'prop'}
+        ).to_fastkml_placemark(
+            description='test description',
+            name='test name'
+        )
+    )
+    actual = FeatureCollection.from_fastkml_folder(folder)
+    expected = FeatureCollection([
+        GeoPoint(
+            Coordinate(1., 0.),
+            dt=datetime(2020, 1, 1),
+            properties={'test': 'prop'}
+        )
+    ])
+    assert actual == expected
+
+
 def test_collection_filter_by_dt():
     col = FeatureCollection([
         # Intersects in point in time

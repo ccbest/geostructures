@@ -30,6 +30,9 @@ Geostructures only requires `numpy` to function.
 * `pip install geostructures[df]`
   * Add dataframe support for geopandas and pandas
 
+* `pip install geostructures[kml]`
+  * Add KML read/write support using FastKML
+
 * `pip install geostructures[h3]`
   * Add support for geohashing using Uber's H3 algorithm
 

@@ -3,6 +3,10 @@ from datetime import datetime, timedelta, timezone
 import pickle
 import tempfile
 
+from fastkml import Placemark
+from fastkml.times import TimeStamp, KmlDateTime
+from fastkml.data import ExtendedData, Data
+from pygeoif import MultiPolygon
 import pytest
 import shapely
 
@@ -171,6 +175,59 @@ def test_baseshape_pickle():
         # Make sure the original wasn't mutated and the new call works
         assert point.to_shapely() == shapely.Point((0.0, 0.0))
         assert new_point.to_shapely() == shapely.Point((0.0, 0.0))
+
+
+def test_baseshapeprotocol_to_fastkml_placemark():
+    shape = MultiGeoPolygon(
+        [
+            GeoBox(Coordinate(0., 1.), Coordinate(1., 0.)).to_polygon()
+        ],
+        dt=datetime(2020, 1, 1),
+        properties={'test': 'prop'}
+    )
+    actual = shape.to_fastkml_placemark()
+    expected = Placemark(
+        geometry=MultiPolygon(
+            [
+                [
+                    [x.to_float() for x in ring]
+                    for ring in shape
+                ] for shape in shape.linear_rings()
+            ]
+        ),
+        times=TimeStamp(timestamp=KmlDateTime(datetime(2020, 1, 1, tzinfo=timezone.utc))),
+        extended_data=ExtendedData(elements=[Data(name='test', value='prop')])
+    )
+    assert actual.geometry == expected.geometry
+    assert actual.times == expected.times
+    assert actual.extended_data == expected.extended_data
+    assert actual == expected
+
+
+def test_simpleshape_from_fastkml_placemark():
+    expected = MultiGeoPolygon(
+        [
+            GeoBox(Coordinate(0., 1.), Coordinate(1., 0.)).to_polygon()
+        ],
+        dt=datetime(2020, 1, 1),
+        properties={'test': 'prop'}
+    )
+
+    placemark = Placemark(
+        geometry=MultiPolygon(
+            [
+                [
+                    [x.to_float() for x in ring]
+                    for ring in shape
+                ] for shape in expected.linear_rings()
+            ]
+        ),
+        times=TimeStamp(timestamp=KmlDateTime(datetime(2020, 1, 1, tzinfo=timezone.utc))),
+        extended_data=ExtendedData(elements=[Data(name='test', value='prop')])
+    )
+    actual = MultiGeoPolygon.from_fastkml_placemark(placemark)
+    assert expected == actual
+
 
 
 def test_shapelike_edges():

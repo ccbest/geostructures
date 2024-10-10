@@ -385,6 +385,30 @@ class BaseShapeProtocol(Protocol):
         shape.dt = None
         return shape
 
+    def to_fastkml_placemark(self, **kwargs):
+        """
+        Converts this object to a FastKML Placemark object
+        (roughly equivalent to a geostructures GeoShape).
+
+        Keyword Args:
+            All kwargs are passed directly to Placemark.__init__.
+            Reference FastKML's documentation for more information.
+
+        Returns:
+            fastkml.Placemark
+        """
+        from fastkml import Placemark
+        from fastkml.data import ExtendedData, Data
+
+        return Placemark(
+            geometry=self,  # Relies on geo interface
+            extended_data=ExtendedData(
+                elements=[Data(name=k, value=v) for k, v in self._properties.items()]
+            ),
+            times=self.dt._to_fastkml() if self.dt is not None else None,
+            **kwargs
+        )
+
     @abstractmethod
     def to_geo_interface(self, **kwargs) -> Dict:
         pass
@@ -473,6 +497,76 @@ class BaseShape(BaseShapeProtocol, ABC):
     def __setstate__(self, state):
         state['to_shapely'] = lru_cache(maxsize=1)(self._to_shapely)
         self.__dict__ = state
+
+
+class SimpleShapeMixin(BaseShapeProtocol, ABC):
+
+    """
+    Mixin for shapes that adhere to OGC's Simple Features
+    standards. These shapes may be constructed from a variety of external
+    sources (wkt, geojson, etc.) that likewise adhere to the same
+    standards.
+    """
+
+    @classmethod
+    @abstractmethod
+    def from_geojson(
+        cls: SHAPE_VAR,
+        gjson: Dict[str, Any],
+        time_start_property: str = 'datetime_start',
+        time_end_property: str = 'datetime_end',
+        time_format: Optional[str] = None,
+    ) -> SHAPE_VAR:
+        pass
+
+    @classmethod
+    def from_fastkml_placemark(cls, placemark):
+        """
+        Create a geostructure from the corresponding type of FastKML
+        Placemark.
+        """
+        dt = None
+        if placemark.times is not None:
+            dt = TimeInterval._from_fastkml(placemark.times)
+
+        props = None
+        if placemark.extended_data is not None:
+            props = {x.name: x.value for x in placemark.extended_data.elements}
+
+        shape = cls.from_geojson(placemark.geometry.__geo_interface__)
+        shape.set_dt(dt, inplace=True)
+        shape._properties = props
+        return shape
+
+    @classmethod
+    def from_shapely(
+        cls,
+        shape,
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
+        """
+        Creates a corresponding geostructure from a shapely object
+        """
+        return cls.from_wkt(
+            shape.wkt,
+            dt=dt,
+            properties=properties
+        )
+
+    @classmethod
+    @abstractmethod
+    def from_wkt(
+        cls,
+        wkt_str: str,
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
+        """
+        Construct a corresponding geostructure from a Well-Known Text
+        (WKT) string.
+        """
+        pass
 
 
 class PolygonLikeMixin(BaseShapeProtocol, ABC):
@@ -673,7 +767,7 @@ class PointLikeMixin(BaseShapeProtocol, ABC):
     """
 
 
-class MultiShapeBase(BaseShape, ABC):
+class MultiShapeBase(SimpleShapeMixin, BaseShape, ABC):
 
     geoshapes: List
 

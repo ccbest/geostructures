@@ -75,6 +75,27 @@ class TimeInterval:
     def is_instant(self):
         return self.start == self.end
 
+    @staticmethod
+    def _from_fastkml(fastkml_time):
+        """Create a TimeInterval from the FastKML equivalent."""
+        from fastkml.times import TimeSpan, TimeStamp
+
+        if isinstance(fastkml_time, TimeStamp):
+            return TimeInterval(fastkml_time.timestamp.dt, fastkml_time.timestamp.dt)
+        if isinstance(fastkml_time, TimeSpan):
+            return TimeInterval(fastkml_time.begin.dt, fastkml_time.end.dt)
+
+        raise ValueError('Unrecognized FastKML time object.')
+
+    def _to_fastkml(self):
+        """Convert to a FastKML equivalent object."""
+        from fastkml.times import TimeSpan, TimeStamp, KmlDateTime
+
+        if self.start == self.end:
+            return TimeStamp(timestamp=KmlDateTime(dt=self.start))
+
+        return TimeSpan(begin=KmlDateTime(self.start), end=KmlDateTime(self.end))
+
     def copy(self):
         return TimeInterval(self.start, self.end)
 
