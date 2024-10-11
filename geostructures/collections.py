@@ -137,6 +137,63 @@ class CollectionBase:
         return FeatureCollection(parse_fastkml(folder))
 
     @classmethod
+    def from_featureclass(
+        cls, 
+        feature_class_path: str, 
+        geometry_type: geoshape = GeoPoint, 
+        time_field: Optional[str] = None
+    ):
+        """
+        Creates a FeatureCollection from a feature class.
+
+        Args:
+        - feature_class_path: str
+            The path to the feature class (can be a file geodatabase or shapefile).
+        - geometry_type: GeoShape subclass
+            The type of geometries to use (default is GeoPoint).
+        - time_field: str, optional
+            The name of the field containing time data.
+
+        Returns:
+        - FeatureCollection instance
+        """
+
+        # Load the feature class into a Spatially Enabled DataFrame (SEDF)
+        sedf = pd.DataFrame.spatial.from_featureclass(feature_class_path)
+        sedf['SHAPE'] = sedf['SHAPE'].apply(lambda x: shape(x.__geo_interface__))
+        sedf = sedf.rename(columns={'SHAPE': 'geometry'})
+
+        # Handle time field
+        if time_field:
+            if time_field in sedf.columns:
+                # Check if the time_field is already in datetime format
+                if not pd.api.types.is_datetime64_any_dtype(sedf[time_field]):
+                    sedf[time_field] = pd.to_datetime(sedf[time_field], errors='coerce')
+                time_values = sedf[time_field].tolist()
+            else:
+                time_values = None
+                raise ValueError(f"Time field '{time_field}' not found in the feature class.")
+        else:
+            time_values = None
+
+        # Create the FeatureCollection using from_geopandas
+        feature_collection = cls(geometry_type).from_geopandas(sedf)
+
+        # Assign the 'dt' attribute if time_field is provided
+        if time_values:
+            for feature, dt_value in zip(feature_collection, time_values):
+                if pd.notnull(dt_value):
+                    # Convert pandas Timestamp to native datetime if necessary
+                    if isinstance(dt_value, pd.Timestamp):
+                        feature.dt = TimeInterval(dt_value.to_pydatetime(), dt_value.to_pydatetime())
+                    else:
+                        feature.dt = TimeInterval(dt_value, dt_value)
+                else:
+                    feature.dt = None  # Handle missing time values if necessary
+
+        return feature_collection
+
+    @classmethod
     def from_geojson(
         cls,
         gjson: Dict[str, Any],
