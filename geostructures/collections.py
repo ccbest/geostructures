@@ -13,7 +13,10 @@ import tempfile
 from typing import cast, Any, List, Dict, Optional, Union, Tuple, TypeVar
 from zipfile import ZipFile
 
+from arcgis.features import GeoAcessor
 import numpy as np
+import pandas as pd
+from shapely import geometry
 
 from geostructures import Coordinate, LOGGER
 from geostructures._base import PolygonLikeMixin, PointLikeMixin, LineLikeMixin, MultiShapeBase, BaseShape
@@ -461,6 +464,11 @@ class CollectionBase:
             name=folder_name,
             features=[x.to_fastkml_placemark() for x in self.geoshapes]
         )
+
+    def to_featureclass(self, geodatabase, filename):
+        gdf = self.to_geopandas()
+        sedf = GeoAccessor.from_geodataframe(gdf)
+        sedf.spatial.to_featureclass(f'{geodatabase}\{filename}')
 
     def to_geojson(self, properties: Optional[Dict] = None, **kwargs):
         return {
