@@ -800,7 +800,7 @@ class Track(CollectionBase):
         sz = len(self.geoshapes)
         coords = [pt.centroid for pt in self.geoshapes]
         times = [pt.dt.start for pt in self.geoshapes]  # Assuming time info is stored in pt.dt
-        i = 0        
+        i = 0
         valid_geoshapes = [self.geoshapes[i]]  # Keep the first point as valid
 
         for j in range(1, sz):
