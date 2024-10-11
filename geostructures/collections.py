@@ -13,10 +13,7 @@ import tempfile
 from typing import cast, Any, List, Dict, Optional, Union, Tuple, TypeVar
 from zipfile import ZipFile
 
-from arcgis.features import GeoAcessor
 import numpy as np
-import pandas as pd
-from shapely import geometry
 
 from geostructures import Coordinate, LOGGER
 from geostructures._base import PolygonLikeMixin, PointLikeMixin, LineLikeMixin, MultiShapeBase, BaseShape
@@ -141,9 +138,9 @@ class CollectionBase:
 
     @classmethod
     def from_featureclass(
-        cls, 
-        feature_class_path: str, 
-        geometry_type: geoshape = GeoPoint, 
+        cls,
+        feature_class_path: str,
+        geometry_type: BaseShape = GeoPoint,
         time_field: Optional[str] = None
     ):
         """
@@ -160,6 +157,9 @@ class CollectionBase:
         Returns:
         - FeatureCollection instance
         """
+        from arcgis.features import GeoAcessor # noqa: F401
+        import pandas as pd
+        from shapely.geometry import shape
 
         # Load the feature class into a Spatially Enabled DataFrame (SEDF)
         sedf = pd.DataFrame.spatial.from_featureclass(feature_class_path)
@@ -466,9 +466,11 @@ class CollectionBase:
         )
 
     def to_featureclass(self, geodatabase, filename):
+        from arcgis.features import GeoAcceessor
+        
         gdf = self.to_geopandas()
         sedf = GeoAccessor.from_geodataframe(gdf)
-        sedf.spatial.to_featureclass(f'{geodatabase}\{filename}')
+        sedf.spatial.to_featureclass(f'{geodatabase}\\{filename}')
 
     def to_geojson(self, properties: Optional[Dict] = None, **kwargs):
         return {
