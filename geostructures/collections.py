@@ -793,7 +793,7 @@ class Track(CollectionBase):
 
         Args:
             max_speed (float): The maximum allowable speed (meters per second).
-        
+
         Returns:
             Track: A new Track instance with only valid geoshapes, removing impossible journeys.
         """
