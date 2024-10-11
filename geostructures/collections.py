@@ -157,7 +157,7 @@ class CollectionBase:
         Returns:
         - FeatureCollection instance
         """
-        from arcgis.features import GeoAcessor # noqa: F401
+        from arcgis.features import GeoAcessor  # noqa: F401
         import pandas as pd
         from shapely.geometry import shape
 
@@ -466,8 +466,8 @@ class CollectionBase:
         )
 
     def to_featureclass(self, geodatabase, filename):
-        from arcgis.features import GeoAcceessor
-        
+        from arcgis.features import GeoAccessor
+
         gdf = self.to_geopandas()
         sedf = GeoAccessor.from_geodataframe(gdf)
         sedf.spatial.to_featureclass(f'{geodatabase}\\{filename}')
