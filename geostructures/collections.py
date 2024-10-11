@@ -786,3 +786,34 @@ class Track(CollectionBase):
                 or shape.start.time() <= start_time <= end_time <= shape.end.time()
             ]
         )
+
+    def filter_impossible_journeys(self, max_speed: float) -> 'Track':
+        """
+        Filters out impossible journeys in the track based on speed thresholds.
+
+        Args:
+            max_speed (float): The maximum allowable speed (meters per second).
+        
+        Returns:
+            Track: A new Track instance with only valid geoshapes, removing impossible journeys.
+        """
+        sz = len(self.geoshapes)
+        coords = [pt.centroid for pt in self.geoshapes]
+        times = [pt.dt.start for pt in self.geoshapes]  # Assuming time info is stored in pt.dt
+        i = 0        
+        valid_geoshapes = [self.geoshapes[i]]  # Keep the first point as valid
+
+        for j in range(1, sz):
+            # Use pre-baked Haversine calculation
+            dx = haversine_distance_meters(coords[i], coords[j])
+            dt = (times[j] - times[i]).total_seconds()  # Time difference in seconds
+            speed = 0 if dx == 0 else dx / dt
+
+            if np.isnan(speed):  # Handle NaN speeds
+                i = j  # Move starting point to the current point
+            elif speed <= max_speed:
+                valid_geoshapes.append(self.geoshapes[j])  # Add valid point to the list
+                i = j  # Move starting point to current point
+
+        # Create a new Track with only valid geoshapes
+        return Track(valid_geoshapes)
