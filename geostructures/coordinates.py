@@ -209,13 +209,23 @@ class Coordinate:
             (*convert(self.latitude), 'N' if self.latitude >= 0 else 'S'),
         )
 
-    def to_float(self) -> Tuple:
+    def to_float(self, reverse: bool = False) -> Tuple:
         """
         Converts the coordinate to a tuple of strings (longitude, latitude).
         If the Coordinate contains Z and/or M datapoints, the tuple will be extended
         to include both (in that order)
+
+        Args:
+            reverse: (bool)
+                (Default False) If True, reverses the coordinate order to (latitude, longitude)
+
+        Returns:
+            Tuple of up to length 4, consisting of (longitude, latitude, altitude, M)
         """
         out = [self.longitude, self.latitude]
+        if reverse:
+            out = out[::-1]
+
         if self.z:
             out.append(self.z)
         if self.m:
@@ -250,9 +260,13 @@ class Coordinate:
             False
         )
 
-    def to_qdms(self) -> Tuple[str, str]:
+    def to_qdms(self, reverse: bool = False) -> Tuple[str, str]:
         """
         Converts this coordinate to QDDMMSSHH format
+
+        Args:
+            reverse: (bool)
+                (Default False) If True, reverses the coordinate order to (latitude, longitude)
 
         Returns:
             Tuple[str, str] representing longitude, latitude
@@ -273,16 +287,28 @@ class Coordinate:
             zero_pad(lat[1], 2),
             zero_pad(round_half_up(lat[2], 2), 4)
         ]
+        if reverse:
+            return f'{lat[3]}{"".join(_lat)}', f'{lon[3]}{"".join(_lon)}'
 
         return f'{lon[3]}{"".join(_lon)}', f'{lat[3]}{"".join(_lat)}'
 
-    def to_str(self) -> Tuple:
+    def to_str(self, reverse: bool = False) -> Tuple:
         """
         Converts the coordinate to a tuple of strings (longitude, latitude).
         If the Coordinate contains Z and/or M datapoints, the tuple will be extended
         to include both (in that order)
+
+        Args:
+            reverse: (bool)
+                (Default False) If True, reverses the coordinate order to (latitude, longitude)
+
+        Returns:
+            Tuple of up to length 4, consisting of (longitude, latitude, altitude, M)
         """
         out = [str(self.longitude), str(self.latitude)]
+        if reverse:
+            out = out[::-1]
+
         if self.z:
             out.append(str(self.z))
         if self.m:
