@@ -137,6 +137,85 @@ class CollectionBase:
         return FeatureCollection(parse_fastkml(folder))
 
     @classmethod
+    def from_arcgis_featureclass(
+        cls,
+        feature_class_path: str,
+        time_start_property: Optional[str] = None,
+        time_end_property: Optional[str] = None
+    ):
+        """
+        Creates an instance of the class from an ArcGIS feature class.
+
+        Args:
+            feature_class_path (str):
+                The path to the feature class.
+            time_start_property (Optional[str]):
+                The name of the field containing the start time data. Defaults to None.
+            time_end_property (Optional[str]):
+                The name of the field containing the end time data. Defaults to None.
+
+        Returns:
+            An instance of the class populated with geoshapes parsed from the feature class.
+        """
+        from arcgis.features import GeoAcessor  # noqa: F401
+        import pandas as pd
+        from geostructures.parsers import parse_arcgis_featureclass
+
+        # Convert the feature class into a Spatially Enabled DataFrame (SEDF) for further processing
+        sedf = pd.DataFrame.spatial.from_featureclass(feature_class_path)
+
+        # Parse the SEDF to extract geoshapes and convert them into the desired format
+        geoshapes = parse_arcgis_featureclass(sedf, time_start_property, time_end_property)
+
+        # Return an instance of the class with the parsed geoshapes
+        return cls(geoshapes)
+
+    @classmethod
+    def from_arcpy_featureclass(
+        cls,
+        feature_class_path: str,
+        time_start_property: Optional[str] = None,
+        time_end_property: Optional[str] = None
+    ):
+        """
+        Creates an instance of the class from an ArcGIS feature class.
+
+        Args:
+            feature_class_path (str):
+                The path to the feature class.
+            time_start_property (Optional[str]):
+                The name of the field containing the start time data. Defaults to None.
+            time_end_property (Optional[str]):
+                The name of the field containing the end time data. Defaults to None.
+
+        Returns:
+            An instance of the class populated with geoshapes parsed from the feature class.
+        """
+        import arcpy
+        from geostructures.parsers import parse_arcpy_featureclass
+
+        # Create a set for time properties to ensure uniqueness
+        time_properties = set()
+        if time_start_property:
+            time_properties.add(time_start_property)
+        if time_end_property:
+            time_properties.add(time_end_property)
+
+        # Initialize fields list with 'SHAPE@' and add unique time properties
+        fields = ['SHAPE@'] + list(time_properties)
+
+        # Add all other fields from the feature class, ensuring no duplicates
+        fields.extend([f.name for f in arcpy.ListFields(feature_class_path) if f.name not in fields])
+
+        # Use an arcpy SearchCursor to iterate over the feature class rows and extract the relevant fields
+        with arcpy.da.SearchCursor(feature_class_path, fields) as cursor:
+            # Parse the feature class using the cursor and provided fields
+            geoshapes = parser_arcpy_featureclass(cursor, fields, time_start_property, time_end_property)
+
+        # Return an instance of the class with the parsed geoshapes
+        return cls(geoshapes)
+
+    @classmethod
     def from_geojson(
         cls,
         gjson: Dict[str, Any],
@@ -404,6 +483,13 @@ class CollectionBase:
             name=folder_name,
             features=[x.to_fastkml_placemark() for x in self.geoshapes]
         )
+
+    def to_featureclass(self, geodatabase, filename):
+        from arcgis.features import GeoAccessor
+
+        gdf = self.to_geopandas()
+        sedf = GeoAccessor.from_geodataframe(gdf)
+        sedf.spatial.to_featureclass(f'{geodatabase}\\{filename}')
 
     def to_geojson(self, properties: Optional[Dict] = None, **kwargs):
         return {
