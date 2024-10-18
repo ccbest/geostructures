@@ -48,6 +48,7 @@ def _get_datetime_pandas(start_time, end_time):
 
         return TimeInterval(start_time, end_time)
 
+
 def parse_arcgis_featureclass(
     sedf,
     time_start_property: Optional[str] = None,
