@@ -147,11 +147,11 @@ class CollectionBase:
         Creates an instance of the class from an ArcGIS feature class.
 
         Args:
-            feature_class_path (str): 
+            feature_class_path (str):
                 The path to the feature class.
-            time_start_property (Optional[str]): 
+            time_start_property (Optional[str]):
                 The name of the field containing the start time data. Defaults to None.
-            time_end_property (Optional[str]): 
+            time_end_property (Optional[str]):
                 The name of the field containing the end time data. Defaults to None.
 
         Returns:
@@ -159,6 +159,7 @@ class CollectionBase:
         """
         from arcgis.features import GeoAcessor  # noqa: F401
         import pandas as pd
+        from geostructures.parsers import parse_arcgis_featureclass
 
         # Convert the feature class into a Spatially Enabled DataFrame (SEDF) for further processing
         sedf = pd.DataFrame.spatial.from_featureclass(feature_class_path)
@@ -180,20 +181,23 @@ class CollectionBase:
         Creates an instance of the class from an ArcGIS feature class.
 
         Args:
-            feature_class_path (str): 
+            feature_class_path (str):
                 The path to the feature class.
-            time_start_property (Optional[str]): 
+            time_start_property (Optional[str]):
                 The name of the field containing the start time data. Defaults to None.
-            time_end_property (Optional[str]): 
+            time_end_property (Optional[str]):
                 The name of the field containing the end time data. Defaults to None.
 
         Returns:
             An instance of the class populated with geoshapes parsed from the feature class.
         """
         import arcpy
+        from geostructures.parsers import parse_arcpy_featureclass
 
         # Create a set for time properties to ensure uniqueness
-        time_properties = {time_start_property, time_end_property} if time_start_property and time_end_property else set()
+        time_properties = {time_start_property, time_end_property} if
+            time_start_property and time_end_property else
+            set()
 
         # Initialize fields list with 'SHAPE@' and add unique time properties
         fields = ['SHAPE@'] + list(time_properties)
