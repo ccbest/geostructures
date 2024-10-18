@@ -137,64 +137,37 @@ class CollectionBase:
         return FeatureCollection(parse_fastkml(folder))
 
     @classmethod
-    def from_featureclass(
+    def from_arcgis_featureclass(
         cls,
         feature_class_path: str,
-        geometry_type: BaseShape = GeoPoint,
-        time_field: Optional[str] = None
+        time_start_property: Optional[str] = None,
+        time_end_property: Optional[str] = None
     ):
         """
-        Creates a FeatureCollection from a feature class.
+        Creates an instance of the class from an ArcGIS feature class.
 
         Args:
-        - feature_class_path: str
-            The path to the feature class (can be a file geodatabase or shapefile).
-        - geometry_type: GeoShape subclass
-            The type of geometries to use (default is GeoPoint).
-        - time_field: str, optional
-            The name of the field containing time data.
+            feature_class_path (str): 
+                The path to the feature class.
+            time_start_property (Optional[str]): 
+                The name of the field containing the start time data. Defaults to None.
+            time_end_property (Optional[str]): 
+                The name of the field containing the end time data. Defaults to None.
 
         Returns:
-        - FeatureCollection instance
+            An instance of the class populated with geoshapes parsed from the feature class.
         """
         from arcgis.features import GeoAcessor  # noqa: F401
         import pandas as pd
-        from shapely.geometry import shape
 
-        # Load the feature class into a Spatially Enabled DataFrame (SEDF)
+        # Convert the feature class into a Spatially Enabled DataFrame (SEDF) for further processing
         sedf = pd.DataFrame.spatial.from_featureclass(feature_class_path)
-        sedf['SHAPE'] = sedf['SHAPE'].apply(lambda x: shape(x.__geo_interface__))
-        sedf = sedf.rename(columns={'SHAPE': 'geometry'})
 
-        # Handle time field
-        if time_field:
-            if time_field in sedf.columns:
-                # Check if the time_field is already in datetime format
-                if not pd.api.types.is_datetime64_any_dtype(sedf[time_field]):
-                    sedf[time_field] = pd.to_datetime(sedf[time_field], errors='coerce')
-                time_values = sedf[time_field].tolist()
-            else:
-                time_values = None
-                raise ValueError(f"Time field '{time_field}' not found in the feature class.")
-        else:
-            time_values = None
+        # Parse the SEDF to extract geoshapes and convert them into the desired format
+        geoshapes = parse_arcgis_featureclass(sedf, time_start_property, time_end_property)
 
-        # Create the FeatureCollection using from_geopandas
-        feature_collection = cls(geometry_type).from_geopandas(sedf)
-
-        # Assign the 'dt' attribute if time_field is provided
-        if time_values:
-            for feature, dt_value in zip(feature_collection, time_values):
-                if pd.notnull(dt_value):
-                    # Convert pandas Timestamp to native datetime if necessary
-                    if isinstance(dt_value, pd.Timestamp):
-                        feature.dt = TimeInterval(dt_value.to_pydatetime(), dt_value.to_pydatetime())
-                    else:
-                        feature.dt = TimeInterval(dt_value, dt_value)
-                else:
-                    feature.dt = None  # Handle missing time values if necessary
-
-        return feature_collection
+        # Return an instance of the class with the parsed geoshapes
+        return cls(geoshapes)
 
     @classmethod
     def from_geojson(
