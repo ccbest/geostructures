@@ -9,6 +9,7 @@ import re
 from typing import cast, Any, Dict, List, Optional, Union
 
 from geostructures.collections import FeatureCollection
+from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoPolygon, GeoPoint, GeoLineString
 from geostructures.multistructures import MultiGeoPoint, MultiGeoPolygon, MultiGeoLineString
 from geostructures.typing import GeoShape, SimpleShape
@@ -23,6 +24,7 @@ _PARSER_MAP: Dict[str, SimpleShape] = {
     'MULTIPOLYGON': MultiGeoPolygon,
 }
 
+
 def _get_datetime_pandas(start_time, end_time):
     """
     Converts pandas Timestamps to Python datetime objects and returns a TimeInterval.
@@ -35,6 +37,7 @@ def _get_datetime_pandas(start_time, end_time):
         TimeInterval: The time interval representing the start and end time.
     """
     import pandas as pd
+    from geostructures.time import TimeInterval
 
     if pd.notnull(start_time) or pd.notnull(end_time):
         if isinstance(start_time, pd.Timestamp):
@@ -145,6 +148,7 @@ def parse_arcgis_featureclass(
 
     return _shapes
 
+
 def parse_arcpy_featureclass(
     cursor,
     fields: Optional[List[str]] = None,
@@ -254,6 +258,7 @@ def parse_arcpy_featureclass(
         _shapes.append(shape)
 
     return _shapes
+
 
 def parse_fastkml(
     kml,
