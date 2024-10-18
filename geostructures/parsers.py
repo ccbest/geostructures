@@ -23,6 +23,27 @@ _PARSER_MAP: Dict[str, SimpleShape] = {
     'MULTIPOLYGON': MultiGeoPolygon,
 }
 
+def _get_datetime_pandas(start_time, end_time):
+    """
+    Converts pandas Timestamps to Python datetime objects and returns a TimeInterval.
+
+    Args:
+        start_time (pd.Timestamp or None): The start time.
+        end_time (pd.Timestamp or None): The end time.
+
+    Returns:
+        TimeInterval: The time interval representing the start and end time.
+    """
+    import pandas as pd
+
+    if pd.notnull(start_time) or pd.notnull(end_time):
+        if isinstance(start_time, pd.Timestamp):
+            start_time = start_time.to_pydatetime()
+
+        if isinstance(end_time, pd.Timestamp):
+            end_time = end_time.to_pydatetime()
+
+        return TimeInterval(start_time, end_time)
 
 def parse_fastkml(
     kml,
