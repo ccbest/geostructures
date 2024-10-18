@@ -170,6 +170,46 @@ class CollectionBase:
         return cls(geoshapes)
 
     @classmethod
+    def from_arcpy_featureclass(
+        cls,
+        feature_class_path: str,
+        time_start_property: Optional[str] = None,
+        time_end_property: Optional[str] = None
+    ):
+        """
+        Creates an instance of the class from an ArcGIS feature class.
+
+        Args:
+            feature_class_path (str): 
+                The path to the feature class.
+            time_start_property (Optional[str]): 
+                The name of the field containing the start time data. Defaults to None.
+            time_end_property (Optional[str]): 
+                The name of the field containing the end time data. Defaults to None.
+
+        Returns:
+            An instance of the class populated with geoshapes parsed from the feature class.
+        """
+        import arcpy
+
+        # Create a set for time properties to ensure uniqueness
+        time_properties = {time_start_property, time_end_property} if time_start_property and time_end_property else set()
+
+        # Initialize fields list with 'SHAPE@' and add unique time properties
+        fields = ['SHAPE@'] + list(time_properties)
+
+        # Add all other fields from the feature class, ensuring no duplicates
+        fields.extend([f.name for f in arcpy.ListFields(feature_class_path) if f.name not in fields])
+
+        # Use an arcpy SearchCursor to iterate over the feature class rows and extract the relevant fields
+        with arcpy.da.SearchCursor(feature_class_path, fields) as cursor:
+            # Parse the feature class using the cursor and provided fields
+            geoshapes = parser_arcpy_featureclass(cursor, fields, time_start_property, time_end_property)
+
+        # Return an instance of the class with the parsed geoshapes
+        return cls(geoshapes)
+
+    @classmethod
     def from_geojson(
         cls,
         gjson: Dict[str, Any],
