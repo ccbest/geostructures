@@ -145,6 +145,116 @@ def parse_arcgis_featureclass(
 
     return _shapes
 
+def parse_arcpy_featureclass(
+    cursor,
+    fields: Optional[List[str]] = None,
+    time_start_property: Optional[str] = None,
+    time_end_property: Optional[str] = None,
+    _shapes: Optional[List[GeoShape]] = None,
+    _props: Optional[Dict[str, str]] = None,
+):
+    """
+    Parses feature class data using arcpy and converts it into geostructures.
+
+    Args:
+        cursor (arcpy.da.SearchCursor):
+            An arcpy.da.SearchCursor containing the feature class data.
+
+        fields (List[str]):
+            List of field names to retrieve from the cursor.
+
+        time_start_property (str, optional):
+            The name of the field containing the start time data.
+
+        time_end_property (str, optional):
+            The name of the field containing the end time data.
+
+        _shapes (List[GeoShape], optional):
+            Internal use only. Mutated with geostructures as they're extracted from the feature class.
+
+        _props (Dict[str, str], optional):
+            Internal use only. Information about higher-level containers
+            to store as properties on the shape for traceability.
+
+    Returns:
+        List[GeoShape]: A list of GeoShape objects parsed from the feature class.
+    """
+    if _shapes is None:
+        _shapes = []
+    if _props is None:
+        _props = {}
+
+    geometry_index = fields.index('SHAPE@')
+    time_start_index = fields.index(time_start_property) if time_start_property in fields else None
+    time_end_index = fields.index(time_end_property) if time_end_property in fields else None
+    cursor.reset()
+
+    for row in cursor:
+        geometry = row[geometry_index]
+        geometry_type_str = type(geometry).__name__.upper()
+
+        if geometry_type_str not in _PARSER_MAP:
+            raise ValueError(f"Unsupported geometry type: {geometry_type_str}")
+
+        parser = _PARSER_MAP[geometry_type_str]
+        properties = dict(zip(fields, row))
+        del properties['SHAPE@']
+
+        if geometry_type_str == 'POINT':
+            lon, lat = geometry.X, geometry.Y
+            shape = parser(Coordinate(lon, lat), properties=properties)
+
+        elif geometry_type_str == 'MULTIPOINT':
+            # Handle multipoint geometry
+            points = [Coordinate(point.X, point.Y) for point in geometry]
+            shape = parser(points, properties=properties)
+
+        elif geometry_type_str == 'POLYLINE':
+            # Parse the polyline geometry from the ESRI format to GeoLineString
+            lines = []
+            for part in geometry.getPart():
+                # Convert each point in the part to a Coordinate object
+                line = [Coordinate(point.X, point.Y) for point in part]
+                lines.append(line)
+
+            # Create the GeoLineString using the entire line
+            if len(lines) == 1:
+                shape = parser(lines[0], properties=properties)
+            else:
+                shape = MultiGeoLineString(lines, properties=properties)
+
+        elif geometry_type_str == 'POLYGON':
+            # Parse the polygon geometry from the ESRI format to GeoPolygon or MultiGeoPolygon
+            rings = []
+            for part in geometry.getPart():
+                # Convert each point in the ring to a Coordinate object
+                outline = [Coordinate(point.X, point.Y) for point in part]
+                # Ensure the outline is closed (first point equals the last point)
+                if outline[0] != outline[-1]:
+                    outline.append(outline[0])
+                rings.append(outline)
+
+            if len(rings) == 1:
+                # Create a GeoPolygon if there's only one part
+                outline = rings[0]
+                holes = rings[1:] if len(rings) > 1 else None
+                shape = parser(outline, holes=holes, properties=properties)
+            else:
+                # Create a MultiGeoPolygon if there are multiple parts
+                shape = MultiGeoPolygon([parser(ring) for ring in rings], properties=properties)
+
+        else:
+            raise TypeError(f'Parser for {geometry_type_str} not available at this time.')
+
+        # Assign the 'dt' attribute if time_start_property or time_end_property is provided and exists in the row
+        start_time = row[time_start_index] if isinstance(time_start_property, str) and time_start_index is not None else None
+        end_time = row[time_end_index] if isinstance(time_end_property, str) and time_end_index is not None else None
+        shape.dt = _get_datetime_pandas(start_time, end_time)
+        shape._properties.update(_props)
+        _shapes.append(shape)
+
+    return _shapes
+
 def parse_fastkml(
     kml,
     _shapes: Optional[List[GeoShape]] = None,
