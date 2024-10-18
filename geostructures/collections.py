@@ -195,9 +195,11 @@ class CollectionBase:
         from geostructures.parsers import parse_arcpy_featureclass
 
         # Create a set for time properties to ensure uniqueness
-        time_properties = {time_start_property, time_end_property} if
-            time_start_property and time_end_property else
-            set()
+        time_properties = set()
+        if time_start_property:
+            time_properties.add(time_start_property)
+        if time_end_property:
+            time_properties.add(time_end_property)
 
         # Initialize fields list with 'SHAPE@' and add unique time properties
         fields = ['SHAPE@'] + list(time_properties)
