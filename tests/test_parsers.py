@@ -82,3 +82,5 @@ def test_parse_wkt():
     with pytest.raises(ValueError):
         parse_wkt('bad wkt')
 
+    with pytest.raises(ValueError):
+        parse_wkt('worse')
