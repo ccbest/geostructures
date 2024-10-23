@@ -60,14 +60,6 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
         return Coordinate(lon, lat)
 
     @property
-    def has_m(self) -> bool:
-        return any(y.m for x in self.geoshapes for y in x.vertices)
-
-    @property
-    def has_z(self) -> bool:
-        return any(y.z for x in self.geoshapes for y in x.vertices)
-
-    @property
     def segments(self) -> List[List[Tuple[Coordinate, Coordinate]]]:
         return [x.segments for x in self.geoshapes]
 
@@ -270,14 +262,6 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
             np.array([point.centroid.to_float() for point in self.geoshapes]),
             axis=0
         ))
-
-    @property
-    def has_m(self) -> bool:
-        return any(x.centroid.m for x in self.geoshapes)
-
-    @property
-    def has_z(self) -> bool:
-        return any(x.centroid.z for x in self.geoshapes)
 
     def circumscribing_circle(self) -> 'GeoCircle':
         centroid = self.centroid

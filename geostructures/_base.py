@@ -34,7 +34,9 @@ _RE_LINEAR_RINGS_STR = r'(\((?:' + _RE_LINEAR_RING_STR + r'\,?\s?)+\))'
 _RE_LINEAR_RINGS = re.compile(_RE_LINEAR_RINGS_STR)
 
 _RE_ZM_STR = r'\s?([ZM]{0,2})\s?'  # Presence is optional - for matching whole WKT
-_RE_ZM = re.compile(r'\s?([ZM]{1,2})\s?')  # Presence is required - for matching ZM specifically
+
+# Presence is required - for matching ZM specifically
+_RE_ZM = re.compile(r'^(?:(?:MULTI)?(?:(?:POINT)|(?:POLYGON)|(?:LINESTRING)))\s?([ZM]{1,2})\s?')
 
 _RE_POINT_WKT = re.compile(
     r'^POINT' + _RE_ZM_STR + r'\(\s?' + _RE_COORD_STR + r'\s?\)$',

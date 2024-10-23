@@ -52,6 +52,35 @@ def test_parse_wkt():
     shape = GeoCircle(Coordinate(0., 0.), 500).to_polygon()
     assert parse_wkt(shape.to_wkt()) == shape
 
+    shape = GeoLineString([Coordinate(0., 0.), Coordinate(0., 0.)])
+    assert parse_wkt(shape.to_wkt()) == shape
+
+    shape = GeoPoint(Coordinate(1., 0.))
+    assert parse_wkt(shape.to_wkt()) == shape
+
+    shape = MultiGeoPolygon([
+        GeoCircle(Coordinate(0., 0.), 500).to_polygon(),
+        GeoCircle(Coordinate(0., 0.), 500).to_polygon()
+    ])
+    assert parse_wkt(shape.to_wkt()) == shape
+
+    shape = MultiGeoLineString([
+        GeoLineString([Coordinate(0., 0.), Coordinate(0., 0.)]),
+        GeoLineString([Coordinate(0., 0.), Coordinate(0., 0.)])
+    ])
+    assert parse_wkt(shape.to_wkt()) == shape
+
+    shape = MultiGeoPoint([
+        GeoPoint(Coordinate(1., 0.)),
+        GeoPoint(Coordinate(1., 0.))
+    ])
+    assert parse_wkt(shape.to_wkt()) == shape
+
+    shape = GeoPoint(Coordinate(1., 0., z=50., m=10.))
+    assert parse_wkt(shape.to_wkt()) == shape
+
     with pytest.raises(ValueError):
         parse_wkt('bad wkt')
 
+    with pytest.raises(ValueError):
+        parse_wkt('worse')
