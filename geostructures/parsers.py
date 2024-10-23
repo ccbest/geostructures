@@ -148,7 +148,7 @@ def parse_wkt(wkt: str) -> GeoShape:
     Returns:
         GeoShape, subtype determined by input
     """
-    wkt_type = re.split(r'\s?\(', wkt, 1)[0].upper()
+    wkt_type = re.match(r'^[a-zA-Z]+', wkt).group()
     if wkt_type not in _PARSER_MAP:
         raise ValueError('Invalid WKT.')
 

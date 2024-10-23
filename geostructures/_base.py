@@ -34,7 +34,7 @@ _RE_LINEAR_RINGS_STR = r'(\((?:' + _RE_LINEAR_RING_STR + r'\,?\s?)+\))'
 _RE_LINEAR_RINGS = re.compile(_RE_LINEAR_RINGS_STR)
 
 _RE_ZM_STR = r'\s?([ZM]{0,2})\s?'  # Presence is optional - for matching whole WKT
-_RE_ZM = re.compile(r'\s?([ZM]{1,2})\s?')  # Presence is required - for matching ZM specifically
+_RE_TEST_ZM = re.compile(r'^(?:(?:MULTI)?(?:(?:POINT)|(?:POLYGON)|(?:LINESTRING)))\s?([ZM]{1,2})\s?')  # Presence is required - for matching ZM specifically
 
 _RE_POINT_WKT = re.compile(
     r'^POINT' + _RE_ZM_STR + r'\(\s?' + _RE_COORD_STR + r'\s?\)$',
@@ -183,7 +183,7 @@ class BaseShapeProtocol(Protocol):
             List of Coordinates
         """
         coords = _RE_COORD.findall(wkt_coords)
-        zm = _RE_ZM.findall(wkt_str) or ['ZM']
+        zm = _RE_TEST_ZM.findall(wkt_str) or ['ZM']
         parsed_coords = [Coordinate.from_wkt(coord, zm_order=zm[0]) for coord in coords]
         return parsed_coords
 

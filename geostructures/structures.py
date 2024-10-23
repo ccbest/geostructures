@@ -80,7 +80,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
     @property
     def has_z(self) -> bool:
         # If the centroid has a Z value, any derived coordinates should as well
-        return bool(self.centroid.z)
+        return self.centroid.z is not None
 
     def bounding_edges(self, **kwargs) -> List[Tuple[Coordinate, Coordinate]]:
         bounding_coords = self.bounding_coords(**kwargs)
@@ -350,11 +350,11 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
 
     @property
     def has_m(self) -> bool:
-        return any(x.m for x in self.outline)
+        return any(x.m is not None for x in self.outline)
 
     @property
     def has_z(self) -> bool:
-        return any(x.z for x in self.outline)
+        return any(x.z is not None for x in self.outline)
 
     @staticmethod
     def _point_in_polygon(
@@ -1300,11 +1300,11 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
 
     @property
     def has_m(self) -> bool:
-        return any(x.m for x in self.vertices)
+        return any(x.m is not None for x in self.vertices)
 
     @property
     def has_z(self) -> bool:
-        return any(x.z for x in self.vertices)
+        return any(x.z is not None for x in self.vertices)
 
     @property
     def segments(self) -> List[Tuple[Coordinate, Coordinate]]:
@@ -1561,11 +1561,11 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
 
     @property
     def has_m(self) -> bool:
-        return bool(self.centroid.m)
+        return self.centroid.m is not None
 
     @property
     def has_z(self) -> bool:
-        return bool(self.centroid.z)
+        return self.centroid.z is not None
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         return coord == self.centroid
