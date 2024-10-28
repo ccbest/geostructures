@@ -131,7 +131,7 @@ class TimeInterval:
         return TimeInterval(min(self.start, other.start), max(self.end, other.end))
 
     @classmethod
-    def _get_timeformat(cls, time_str: str, formats: List[str] = _DATE_FORMATS): -> str
+    def _get_timeformat(cls, time_str: str, formats: List[str] = _DATE_FORMATS) -> str:
         for fmt in formats:
             try:
                 datetime.strptime(time_str, fmt)
@@ -141,7 +141,7 @@ class TimeInterval:
         raise ValueError(f'Date formate was not recognized; {time_str}')
 
     @classmethod
-    def from_str(cls, start: str, end: Optional[str] = None, time_format: Optional[Union[str, List[str]]] = None): -> GEOTIME_TYPE
+    def from_str(cls, start: str, end: Optional[str] = None, time_format: Optional[Union[str, List[str]]] = None) -> GEOTIME_TYPE:
         if time_start:
             formats = time_format if isinstance(time_format, list) else [time_format]
         if time_format is None:
