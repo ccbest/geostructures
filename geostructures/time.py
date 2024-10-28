@@ -160,7 +160,7 @@ class TimeInterval:
         end: Optional[str] = None,
         time_format: Optional[Union[str, List[str]]] = None
     ) -> GEOTIME_TYPE:
-        if time_start:
+        if time_format:
             formats = time_format if isinstance(time_format, list) else [time_format]
         if time_format is None:
             formats = _DATE_FORMATS
