@@ -5,10 +5,19 @@ from __future__ import annotations
 __all__ = ['TimeInterval', 'GEOTIME_TYPE']
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 
 GEOTIME_TYPE = Union[datetime, 'TimeInterval']
+_DATE_FORMATS = [
+    '%Y-%m-%dT%H:%M:%S.%f%z',
+    '%Y-%m-%dT%H:%M:%S.%f',
+    '%Y-%m-%dT%H:%M:%S%z',
+    '%Y-%m-%d %H:%M:%S.%f%z',
+    '%Y-%m-%d %H:%M:%S.%f',
+    '%Y-%m-%d %H:%M:%S%z',
+    '%Y-%m-%d',
+]
 
 
 class TimeInterval:
@@ -131,7 +140,11 @@ class TimeInterval:
         return TimeInterval(min(self.start, other.start), max(self.end, other.end))
 
     @classmethod
-    def _get_timeformat(cls, time_str: str, formats: List[str] = _DATE_FORMATS) -> str:
+    def _get_timeformat(
+        cls, 
+        time_str: str, 
+        formats: List[str] = _DATE_FORMATS
+    ) -> str:
         for fmt in formats:
             try:
                 datetime.strptime(time_str, fmt)
@@ -141,7 +154,12 @@ class TimeInterval:
         raise ValueError(f'Date formate was not recognized; {time_str}')
 
     @classmethod
-    def from_str(cls, start: str, end: Optional[str] = None, time_format: Optional[Union[str, List[str]]] = None) -> GEOTIME_TYPE:
+    def from_str(
+        cls, 
+        start: str, 
+        end: Optional[str] = None, 
+        time_format: Optional[Union[str, List[str]]] = None
+    ) -> GEOTIME_TYPE:
         if time_start:
             formats = time_format if isinstance(time_format, list) else [time_format]
         if time_format is None:
@@ -149,6 +167,6 @@ class TimeInterval:
 
         fmt = cls._get_timeformat(start, formats)
         start = datetime.strptime(start, formats)
-        end = start if end is None else datetime.strptime(end, formats)
+        end = start if end is None else datetime.strptime(end, fmt)
 
         return cls(start, end)
