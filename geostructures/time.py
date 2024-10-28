@@ -141,8 +141,8 @@ class TimeInterval:
 
     @classmethod
     def _get_timeformat(
-        cls, 
-        time_str: str, 
+        cls,
+        time_str: str,
         formats: List[str] = _DATE_FORMATS
     ) -> str:
         for fmt in formats:
@@ -155,9 +155,9 @@ class TimeInterval:
 
     @classmethod
     def from_str(
-        cls, 
-        start: str, 
-        end: Optional[str] = None, 
+        cls,
+        start: str,
+        end: Optional[str] = None,
         time_format: Optional[Union[str, List[str]]] = None
     ) -> GEOTIME_TYPE:
         if time_start:
