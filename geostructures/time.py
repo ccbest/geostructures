@@ -131,7 +131,7 @@ class TimeInterval:
         return TimeInterval(min(self.start, other.start), max(self.end, other.end))
 
     @classmethod
-    def _get_timeformat(cls, time_str: str, formats: List[str] = _DATE_FORMATS): -> str:
+    def _get_timeformat(cls, time_str: str, formats: List[str] = _DATE_FORMATS): -> str
         for fmt in formats:
             try:
                 datetime.strptime(time_str, fmt)
