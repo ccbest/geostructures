@@ -12,6 +12,7 @@ from geostructures.collections import FeatureCollection
 from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoPolygon, GeoPoint, GeoLineString
 from geostructures.multistructures import MultiGeoPoint, MultiGeoPolygon, MultiGeoLineString
+from geostructures.time import TimeInterval
 from geostructures.typing import GeoShape, SimpleShape
 
 
@@ -53,8 +54,8 @@ def _get_datetime_pandas(start_time, end_time):
 def parse_arcgis_featureclass(
     row,
     columns,
-    time_start_property: Optional[Union[str, datetime]] = None,
-    time_end_property: Optional[Union[str, datetime]] = None,
+    time_start_property: Optional[Union[str, 'datetime']] = None,
+    time_end_property: Optional[Union[str, 'datetime']] = None,
     time_fmt: Optional[Union[str, List[str]]] = None,
 ) -> GeoShape:
     """
@@ -82,6 +83,8 @@ def parse_arcgis_featureclass(
     Raises:
         ValueError: If the geometry type is not supported.
     """
+    from datetime import datetime
+    
     geometry = row.SHAPE
     geometry_type_str = type(geometry).__name__.upper()
 
@@ -114,8 +117,8 @@ def parse_arcgis_featureclass(
 def parse_arcpy_featureclass(
     row,
     fields,
-    time_start_property: Optional[Union[str, datetime]] = None,
-    time_end_property: Optional[Union[str, datetime]] = None,
+    time_start_property: Optional[Union[str, 'datetime']] = None,
+    time_end_property: Optional[Union[str, 'datetime']] = None,
     time_fmt: Optional[Union[str, List[str]]] = None,
 ) -> GeoShape:
     """
@@ -134,6 +137,8 @@ def parse_arcpy_featureclass(
     Raises:
         ValueError: If the geometry type is not supported.
     """
+    from datetime import datetime
+    
     geometry_index = fields.index('SHAPE@')
     time_start_index, time_end_index = None, None
   
@@ -143,18 +148,16 @@ def parse_arcpy_featureclass(
     if time_end_property in fields:
         time_end_index = fields.index(time_end_property)
 
-    geometry = row.SHAPE
+    geometry = row[geometry_index]
     geometry_type_str = type(geometry).__name__.upper()
 
     if geometry_type_str not in _PARSER_MAP:
         raise ValueError(f'Unsupported geometry type: {geometry_type_str}.')
 
     parser = _PARSER_MAP[geometry_type_str]
-
-    properties = dict(zip(columns, row))
+    properties = dict(zip(fields, row))
     del properties['SHAPE@']
     time_start_value, time_end_value = None, None
-
     if time_start_value is not None:
         time_start_value = getattr(row, time_start_property, None)
 
