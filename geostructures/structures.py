@@ -35,7 +35,6 @@ from geostructures._geometry import (
     circumscribing_circle_for_polygon, do_edges_intersect,
     find_line_intersection, is_counter_clockwise
 )
-from geostructures.multistructures import MultiGeoPolygon, MultiGeoLineString
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
 
@@ -446,7 +445,7 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
         geometry,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[dict] = None,
-    ) -> Union['GeoPolygon', 'MultiGeoPolygon']:
+    ) -> 'GeoShape':
         """
         Creates a GeoPolygon or MultiGeoPolygon from ESRI formatted geometry
 
@@ -461,7 +460,7 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
                 the columns and values of the attributes of the feature
         """
         from geostructures._geometry import is_counter_clockwise
-
+        from geostructures.multistructures import MultiGeoPolygon
         def _get_rings_from_part(part):
             idx, rings = 0, []
             while idx < len(part):
@@ -1455,7 +1454,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
         geometry,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[dict] = None,
-    ) -> Union['GeoLineString', 'MultiGeoLineString']:
+    ) -> 'GeoShape':
         """
         Creates a GeoLineString or MultiGeoLineString from ESRI formatted geometry
 
@@ -1469,6 +1468,8 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
             properties: (Optional)
                 the columns and values of the attributes of the feature
         """
+        from geostructures.multistructures import MultiGeoLineString
+
         lines = []
         if isinstance(geometry, dict) and 'paths' in geometry:
             for part in geometry['paths']:
