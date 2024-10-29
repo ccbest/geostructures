@@ -196,7 +196,7 @@ class CollectionBase:
                 if end_time_fmt not in time_fmt:
                     time_fmt.append(fmt for fmt in end_time_fmt)
 
-            if time_start_value and not is instance(time_start_value, str):
+            if time_start_value and not isinstance(time_start_value, str):
                 raise TypeError(
                     f'Time formats cannot be mixed, '
                     f'Start Time: {type(time_start_value)}, '
