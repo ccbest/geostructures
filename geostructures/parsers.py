@@ -6,10 +6,10 @@ __all__ = [
 
 import json
 import re
+from datetime import datetime
 from typing import cast, Any, Dict, List, Optional, Union
 
 from geostructures.collections import FeatureCollection
-from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoPolygon, GeoPoint, GeoLineString
 from geostructures.multistructures import MultiGeoPoint, MultiGeoPolygon, MultiGeoLineString
 from geostructures.time import TimeInterval
@@ -82,9 +82,7 @@ def parse_arcgis_featureclass(
 
     Raises:
         ValueError: If the geometry type is not supported.
-    """
-    from datetime import datetime
-    
+    """    
     geometry = row.SHAPE
     geometry_type_str = type(geometry).__name__.upper()
 
@@ -137,8 +135,6 @@ def parse_arcpy_featureclass(
     Raises:
         ValueError: If the geometry type is not supported.
     """
-    from datetime import datetime
-    
     geometry_index = fields.index('SHAPE@')
     time_start_index, time_end_index = None, None
   
