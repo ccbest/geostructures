@@ -56,7 +56,7 @@ def parse_arcgis_featureclass(
     time_start_property: Optional[Union[str, datetime]] = None,
     time_end_property: Optional[Union[str, datetime]] = None,
     time_fmt: Optional[Union[str, List[str]]] = None,
-): -> GeoShape
+) -> GeoShape:
     """
     Parses an ArcGIS feature class row into a geospatial structure.
 
@@ -117,7 +117,7 @@ def parse_arcpy_featureclass(
     time_start_property: Optional[Union[str, datetime]] = None,
     time_end_property: Optional[Union[str, datetime]] = None,
     time_fmt: Optional[Union[str, List[str]]] = None,
-):
+) -> GeoShape:
     """
     Parses an ArcGIS feature class row into a geospatial structure.
 
