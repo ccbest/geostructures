@@ -13,7 +13,7 @@ import copy
 from functools import cached_property
 import math
 import statistics
-from typing import cast, Any, Dict, List, Optional, Tuple, Sequence, TYPE_CHECKING, Union
+from typing import cast, Any, Dict, List, Optional, Tuple, Sequence, TYPE_CHECKING
 
 import numpy as np
 
