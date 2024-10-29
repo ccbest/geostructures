@@ -263,19 +263,19 @@ class CollectionBase:
 
             if time_end_property is not None:
                 time_end_index = fields.index(time_end_property)
-                
+
             time_start_value, time_end_value = None, None
             if time_start_index is not None:
                 time_start_value = row[time_start_index]
 
             if time_end_index is not None:
                 time_end_value = row[time_end_value]
-    
+
             # Pull time format for time_start_property, if it is a string.
             if time_start_value and isinstance(time_start_value, str):
                 if time_fmt is None:
                     time_fmt = [TimeInterval._get_timeformat(time_start_value)]
-    
+
                 if time_end_value and not isinstance(time_end_value, str):
                     raise TypeError(
                         f'Time formats cannot be mixed, '
@@ -289,7 +289,7 @@ class CollectionBase:
                 if time_fmt != end_time_fmt:
                     if end_time_fmt not in time_fmt:
                         time_fmt.append(fmt for fmt in end_time_fmt)
-    
+
                 if time_start_value and not isinstance(time_start_value, str):
                     raise TypeError(
                         f'Time formats cannot be mixed, '
@@ -297,7 +297,8 @@ class CollectionBase:
                         f'End Time: {type(time_end_value)}'
                     )
 
-        break
+            break
+
         cursor.reset()
         # Parse each row in cursor to extract geoshapes
         for row in cursor:
