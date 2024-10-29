@@ -510,7 +510,7 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
                     
                 shapes.append(GeoPolygon(outline, holes=holes))
 
-        elif hasattr(geometry[0][0], 'centroid'):for part in geometry:
+        elif hasattr(geometry[0][0], 'centroid'):
             for part in geometry:
                 rings = _get_rings_from_part(part)
                 outline = [Coordinate(point.centroid.X, point.centroid.Y) for point in rings[0]]
