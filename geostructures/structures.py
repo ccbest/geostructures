@@ -13,7 +13,7 @@ import copy
 from functools import cached_property
 import math
 import statistics
-from typing import cast, Any, Dict, List, Optional, Tuple, Sequence, TYPE_CHECKING
+from typing import cast, Any, Dict, List, Optional, Tuple, Sequence, TYPE_CHECKING, Union
 
 import numpy as np
 
@@ -471,10 +471,10 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
                     idx += 1
 
                 rings.append(ring)
-                idx +=1
+                idx += 1
 
             return rings
-            
+
         shapes = []
         if isinstance(geometry, dict) and 'rings' in geometry:
             holes, idx, outline = [], 0, None
@@ -507,7 +507,7 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
                             Coordinate(point.X, point.Y) for point in ring
                         ]) for ring in rings[1:]
                     ]
-                    
+
                 shapes.append(GeoPolygon(outline, holes=holes))
 
         elif hasattr(geometry[0][0], 'centroid'):
