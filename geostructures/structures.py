@@ -521,7 +521,7 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
                             Coordinate(point.centroid.X, point.centroid.Y) for point in ring
                         ]) for ring in rings[1:]
                     ]
-                    
+
                 shapes.append(GeoPolygon(outline, holes=holes))
 
         else:
