@@ -461,6 +461,7 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
         """
         from geostructures._geometry import is_counter_clockwise
         from geostructures.multistructures import MultiGeoPolygon
+
         def _get_rings_from_part(part):
             idx, rings = 0, []
             while idx < len(part):
