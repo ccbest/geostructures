@@ -82,7 +82,7 @@ def parse_arcgis_featureclass(
 
     Raises:
         ValueError: If the geometry type is not supported.
-    """    
+    """
     geometry = row.SHAPE
     geometry_type_str = type(geometry).__name__.upper()
 
@@ -137,7 +137,7 @@ def parse_arcpy_featureclass(
     """
     geometry_index = fields.index('SHAPE@')
     time_start_index, time_end_index = None, None
-  
+
     if time_start_property in fields:
         time_start_index = fields.index(time_start_property)
 
@@ -155,10 +155,10 @@ def parse_arcpy_featureclass(
     del properties['SHAPE@']
     time_start_value, time_end_value = None, None
     if time_start_value is not None:
-        time_start_value = getattr(row, time_start_property, None)
+        time_start_value = row[time_start_index]
 
     if time_end_value is not None:
-        time_end_value = getattr(row, time_end_property, None)
+        time_end_value = row[time_end_index]
 
     dt = None
     if time_start_value and isinstance(time_start_value, str):
