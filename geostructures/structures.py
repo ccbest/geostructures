@@ -479,7 +479,7 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
         if isinstance(geometry, dict) and 'rings' in geometry:
             holes, idx, outline = [], 0, None
             while idx < len(geometry['rings']):
-                ring = Coordinate(*x) for x in geometry['rings'][idx]]
+                ring = [Coordinate(*x) for x in geometry['rings'][idx]]
 
                 if is_counter_clockwise(ring):
                     holes.append(GeoPolygon(ring))
