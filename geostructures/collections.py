@@ -241,7 +241,7 @@ class CollectionBase:
         Returns:
             An instance of the class populated with geoshapes parsed from the feature class.
         """
-        from arcpy  # noqa: F401
+        import arcpy  # noqa: F401
         from geostructures.parsers import parse_arcpy_featureclass
 
         _shapes = []
