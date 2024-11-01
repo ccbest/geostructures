@@ -974,6 +974,22 @@ def test_track_filter_by_time():
     ])
 
 
+def test_track_filter_impossible_journeys():
+    track = Track([
+        GeoPoint(Coordinate(0., 0.), dt=datetime(2020, 1, 1)),
+        GeoPoint(Coordinate(0.0001, 0.0001), dt=datetime(2020, 1, 1, 0, 1)),
+        GeoPoint(Coordinate(1., 1.), dt=datetime(2020, 1, 1, 0, 2)),  # impossible
+        GeoPoint(Coordinate(1., 1.), dt=datetime(2020, 1, 1, 0, 3)),  # impossible
+        GeoPoint(Coordinate(0.0002, 0.0002), dt=datetime(2020, 1, 1, 0, 4)),
+    ])
+    assert track.filter_impossible_journeys(5) == Track([
+        GeoPoint(Coordinate(0., 0.), dt=datetime(2020, 1, 1)),
+        GeoPoint(Coordinate(0.0001, 0.0001), dt=datetime(2020, 1, 1, 0, 1)),
+        GeoPoint(Coordinate(0.0002, 0.0002), dt=datetime(2020, 1, 1, 0, 4)),
+    ])
+
+
+
 def test_track_intersects():
     track1 = Track(
         [

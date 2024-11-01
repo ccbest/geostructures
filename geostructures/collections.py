@@ -808,9 +808,7 @@ class Track(CollectionBase):
             dt = (times[j] - times[i]).total_seconds()  # Time difference in seconds
             speed = 0 if dx == 0 else dx / dt
 
-            if np.isnan(speed):  # Handle NaN speeds
-                i = j  # Move starting point to the current point
-            elif speed <= max_speed:
+            if speed <= max_speed:
                 valid_geoshapes.append(self.geoshapes[j])  # Add valid point to the list
                 i = j  # Move starting point to current point
 
