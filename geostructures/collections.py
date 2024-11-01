@@ -798,8 +798,9 @@ class Track(CollectionBase):
         Returns:
             Track: A new Track instance with only valid geoshapes, removing impossible journeys.
         """
+        # Track shapes are guaranteed to have .start
+        times = [shape.start for shape in self.geoshapes]
         coords = [pt.centroid for pt in self.geoshapes]
-        times = [pt.dt.start for pt in self.geoshapes]  # Assuming time info is stored in pt.dt
         i = 0
         valid_geoshapes = [self.geoshapes[i]]  # Keep the first point as valid
 
