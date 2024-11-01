@@ -974,19 +974,31 @@ def test_track_filter_by_time():
     ])
 
 
-def test_track_filter_impossible_journeys():
+def test_track_filter_impossible_journeys(caplog):
     track = Track([
         GeoPoint(Coordinate(0., 0.), dt=datetime(2020, 1, 1)),
         GeoPoint(Coordinate(0.0001, 0.0001), dt=datetime(2020, 1, 1, 0, 1)),
         GeoPoint(Coordinate(1., 1.), dt=datetime(2020, 1, 1, 0, 2)),  # impossible
         GeoPoint(Coordinate(1., 1.), dt=datetime(2020, 1, 1, 0, 3)),  # impossible
         GeoPoint(Coordinate(0.0002, 0.0002), dt=datetime(2020, 1, 1, 0, 4)),
+        GeoPoint(Coordinate(0.0002, 0.0002), dt=datetime(2020, 1, 1, 0, 5)),  # zero movement
+        GeoPoint(Coordinate(0.0003, 0.0003), dt=datetime(2020, 1, 1, 0, 5)),  # zero timediff - removed without divide by zero
     ])
     assert track.filter_impossible_journeys(5) == Track([
         GeoPoint(Coordinate(0., 0.), dt=datetime(2020, 1, 1)),
         GeoPoint(Coordinate(0.0001, 0.0001), dt=datetime(2020, 1, 1, 0, 1)),
         GeoPoint(Coordinate(0.0002, 0.0002), dt=datetime(2020, 1, 1, 0, 4)),
+        GeoPoint(Coordinate(0.0002, 0.0002), dt=datetime(2020, 1, 1, 0, 5))
     ])
+
+    track = Track([
+        GeoPoint(Coordinate(0., 0.), dt=datetime(2020, 1, 1)),
+        GeoPoint(Coordinate(0.0001, 0.0001), dt=datetime(2020, 1, 1)),
+    ])
+    _ = track.filter_impossible_journeys(5)
+    assert 'Duplicate timestamps detected' in caplog.text
+
+
 
 
 

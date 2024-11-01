@@ -23,6 +23,7 @@ from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, Mul
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
 from geostructures.utils.functions import default_to_zulu
+from geostructures.utils.logging import warn_once
 
 
 _COL_TYPE = TypeVar('_COL_TYPE', bound='CollectionBase')
@@ -806,8 +807,17 @@ class Track(CollectionBase):
             # Use pre-baked Haversine calculation
             dx = haversine_distance_meters(coords[i], coords[j])
             dt = (times[j] - times[i]).total_seconds()  # Time difference in seconds
+            if dt == 0:
+                warn_once(
+                    'Duplicate timestamps detected; filtering all but the first. '
+                    'This warning will not repeat.'
+                )
+                continue
+
             speed = 0 if dx == 0 else dx / dt
 
+            if np.isnan(speed):  # Handle NaN speeds
+                i = j  # Move starting point to the current point
             if speed <= max_speed:
                 valid_geoshapes.append(self.geoshapes[j])  # Add valid point to the list
                 i = j  # Move starting point to current point
