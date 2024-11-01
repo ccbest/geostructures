@@ -819,7 +819,7 @@ class Track(CollectionBase):
 
             if np.isnan(speed):  # Handle NaN speeds
                 i = j  # Move starting point to the current point
-            if speed <= max_speed:
+            elif speed <= max_speed:
                 valid_geoshapes.append(self.geoshapes[j])  # Add valid point to the list
                 i = j  # Move starting point to current point
 
