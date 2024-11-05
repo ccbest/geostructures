@@ -151,7 +151,7 @@ class TimeInterval:
                 return fmt
             except ValueError:
                 continue
-        raise ValueError(f'Date formate was not recognized; {time_str}')
+        raise ValueError(f'Date format was not recognized; {time_str}')
 
     @classmethod
     def from_str(
