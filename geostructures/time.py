@@ -166,7 +166,7 @@ class TimeInterval:
             formats = _DATE_FORMATS
 
         fmt = cls._get_timeformat(start, formats)
-        start = datetime.strptime(start, formats)
+        start = datetime.strptime(start, fmt)
         end = start if end is None else datetime.strptime(end, fmt)
 
         return cls(start, end)
