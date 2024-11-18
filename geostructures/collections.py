@@ -23,6 +23,7 @@ from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, Mul
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
 from geostructures.utils.functions import default_to_zulu
+from geostructures.utils.logging import warn_once
 
 
 _COL_TYPE = TypeVar('_COL_TYPE', bound='CollectionBase')
@@ -797,8 +798,9 @@ class Track(CollectionBase):
         Returns:
             Track: A new Track instance with only valid geoshapes, removing impossible journeys.
         """
+        # Track shapes are guaranteed to have .start
+        times = [shape.start for shape in self.geoshapes]
         coords = [pt.centroid for pt in self.geoshapes]
-        times = [pt.dt.start for pt in self.geoshapes]  # Assuming time info is stored in pt.dt
         i = 0
         valid_geoshapes = [self.geoshapes[i]]  # Keep the first point as valid
 
@@ -806,6 +808,13 @@ class Track(CollectionBase):
             # Use pre-baked Haversine calculation
             dx = haversine_distance_meters(coords[i], coords[j])
             dt = (times[j] - times[i]).total_seconds()  # Time difference in seconds
+            if dt == 0:
+                warn_once(
+                    'Duplicate timestamps detected; filtering all but the first. '
+                    'This warning will not repeat.'
+                )
+                continue
+
             speed = 0 if dx == 0 else dx / dt
 
             if np.isnan(speed):  # Handle NaN speeds
