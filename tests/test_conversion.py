@@ -18,7 +18,7 @@ def test_convert_to_meters():
 def test_convert_to_mps():
     # Test cases: (speed, unit, expected_result)
     test_data = [
-        (1.0, 'kmh', 1000.0),
+        (1.0, 'kph', 1000.0),
         (1.0, 'mph', 0.44704),
         (1.0, 'kn', 0.5144444),
     ]
