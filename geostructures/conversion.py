@@ -35,7 +35,7 @@ def convert_to_mps(speed: float, unit: str):
 
     Args:
         speed (float): Speed value.
-        unit (str): Speed unit (kilometer per hour= 'kmh', mile per hour= 'mph',
+        unit (str): Speed unit (kilometer per hour= 'kph', mile per hour= 'mph',
         knot = 'kn').
 
     Returns:
@@ -43,7 +43,7 @@ def convert_to_mps(speed: float, unit: str):
     """
     unit = unit.lower()
     conversion_factors = {
-        'kmh': 1000,
+        'kph': 1000,
         'mph': 0.44704,
         'kn': 0.5144444
     }
