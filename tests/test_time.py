@@ -135,3 +135,32 @@ def test_timeinterval_from_fastkml():
 
     with pytest.raises(ValueError):
         TimeInterval._from_fastkml('something else')
+
+def test_timeinterval_from_str():
+    start = '2020-01-01T00:00:00.000'
+    assert TimeInterval.from_str(start) == TimeInterval(
+        datetime(2020, 1, 1, tzinfo=timezone.utc),
+        datetime(2020, 1, 1, tzinfo=timezone.utc)
+    )
+
+    # Test end + different format
+    end = '2020-01-02 00:00:00.000'
+    assert TimeInterval.from_str(start, end) == TimeInterval(
+        datetime(2020, 1, 1, tzinfo=timezone.utc),
+        datetime(2020, 1, 2, tzinfo=timezone.utc)
+    )
+
+    # Custom format
+    start = '2020/01/01 00:00:00.000'
+    assert TimeInterval.from_str(start, time_format='%Y/%m/%d %H:%M:%S.%f') == TimeInterval(
+        datetime(2020, 1, 1, tzinfo=timezone.utc),
+        datetime(2020, 1, 1, tzinfo=timezone.utc)
+    )
+
+    # Multiple custom formats
+    end = '2020.01.01 00:00:00.000'
+    expected = TimeInterval.from_str(start, end, time_format=['%Y/%m/%d %H:%M:%S.%f', '%Y.%m.%d %H:%M:%S.%f'])
+    assert expected == TimeInterval(
+        datetime(2020, 1, 1, tzinfo=timezone.utc),
+        datetime(2020, 1, 1, tzinfo=timezone.utc)
+    )
