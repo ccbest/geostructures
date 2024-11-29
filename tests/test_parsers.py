@@ -80,7 +80,7 @@ def test_parse_wkt():
     assert parse_wkt(shape.to_wkt()) == shape
 
     with pytest.raises(ValueError):
-        parse_wkt('bad wkt')
+        parse_wkt('123')
 
     with pytest.raises(ValueError):
         parse_wkt('worse')

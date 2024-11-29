@@ -5,10 +5,19 @@ from __future__ import annotations
 __all__ = ['TimeInterval', 'GEOTIME_TYPE']
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 
 GEOTIME_TYPE = Union[datetime, 'TimeInterval']
+_DEFAULT_DATE_FORMATS = [
+    '%Y-%m-%dT%H:%M:%S.%f%z',
+    '%Y-%m-%dT%H:%M:%S.%f',
+    '%Y-%m-%dT%H:%M:%S%z',
+    '%Y-%m-%d %H:%M:%S.%f%z',
+    '%Y-%m-%d %H:%M:%S.%f',
+    '%Y-%m-%d %H:%M:%S%z',
+    '%Y-%m-%d',
+]
 
 
 class TimeInterval:
@@ -87,6 +96,22 @@ class TimeInterval:
 
         raise ValueError('Unrecognized FastKML time object.')
 
+    @staticmethod
+    def _parse_timestamp(
+        time_str: str,
+        formats: Optional[List[str]] = None
+    ) -> datetime:
+        formats = formats or _DEFAULT_DATE_FORMATS
+        for idx, fmt in enumerate(formats):
+            try:
+                parsed = datetime.strptime(time_str, fmt)
+                # If the format worked, move to the front so future iterations will find it first
+                formats.insert(0, formats.pop(idx))
+                return parsed
+            except ValueError:
+                continue
+        raise ValueError(f'Date format was not recognized; {time_str}')
+
     def _to_fastkml(self):
         """Convert to a FastKML equivalent object."""
         from fastkml.times import TimeSpan, TimeStamp, KmlDateTime
@@ -98,6 +123,45 @@ class TimeInterval:
 
     def copy(self):
         return TimeInterval(self.start, self.end)
+
+    @classmethod
+    def from_str(
+        cls,
+        start: str,
+        end: Optional[str] = None,
+        time_format: Optional[Union[str, List[str]]] = None
+    ) -> GEOTIME_TYPE:
+        """
+        Create a TimeInterval from stringified timestamp(s). A limited number
+        of default common timestamp formats will be checked; you may pass one or
+        more custom formats to use instead.
+
+        Uses standard python strptime format codes, documented here:
+        https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes
+
+        Args:
+            start: (str)
+                The start time, as a string
+
+            end: (str) (Optional)
+                The end time, as a string. If no end time is provided, the start time be also
+                be treated as the end time.
+
+            time_format: (Union[str, List[str]]) (Optional)
+                Any custom timestamp formats to attempt parsing with.
+
+        Returns:
+            TimeInterval
+        """
+        if isinstance(time_format, str):
+            time_format = [time_format]
+
+        parsed_start = cls._parse_timestamp(start, time_format)
+        if end is None:
+            return cls(parsed_start, parsed_start)
+
+        parsed_end = cls._parse_timestamp(end, time_format)
+        return cls(parsed_start, parsed_end)
 
     def intersects(self, other: Union[datetime, TimeInterval]) -> bool:
         """Test whether this time interval intersects with another interval or point in time"""
