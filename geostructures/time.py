@@ -156,11 +156,12 @@ class TimeInterval:
         if isinstance(time_format, str):
             time_format = [time_format]
 
-        start = cls._parse_timestamp(start, time_format)
-        if end:
-            end = cls._parse_timestamp(end, time_format)
+        parsed_start = cls._parse_timestamp(start, time_format)
+        if end is None:
+            return cls(parsed_start, parsed_start)
 
-        return cls(start, end or start)
+        parsed_end = cls._parse_timestamp(end, time_format)
+        return cls(parsed_start, parsed_end)
 
     def intersects(self, other: Union[datetime, TimeInterval]) -> bool:
         """Test whether this time interval intersects with another interval or point in time"""

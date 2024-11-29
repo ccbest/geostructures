@@ -164,3 +164,7 @@ def test_timeinterval_from_str():
         datetime(2020, 1, 1, tzinfo=timezone.utc),
         datetime(2020, 1, 1, tzinfo=timezone.utc)
     )
+
+    with pytest.raises(ValueError):
+        # Bad format passed
+        TimeInterval.from_str(start, time_format='2020.01.01 00:00:00.000')
