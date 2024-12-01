@@ -1033,26 +1033,45 @@ def test_geoellipse_centroid(geoellipse):
 
 
 def test_georing_contains(georing, geowedge):
-    ring = GeoRing(Coordinate(0.0, 0.0), 500, 1000)
-    wedge = GeoRing(Coordinate(0.0, 0.0), 500, 1000, 90, 180)
-    # 750 meters east
-    assert ring.contains_coordinate(Coordinate(0.0067449, 0.0))
-    assert wedge.contains_coordinate(Coordinate(0.0067449, 0.0))
+    test_shape_centroid = Coordinate(0.0, 0.0)
+    ring = GeoRing(test_shape_centroid, 500, 1000)
+    wedge = GeoRing(test_shape_centroid, 500, 1000, 90, 180)
 
-    # 750 meters west (outside geowedge angle)
-    assert ring.contains_coordinate(Coordinate(-0.0067449, 0.0))
-    assert not wedge.contains_coordinate(Coordinate(-0.0067449, 0.0))
+    # Test inside both shapes
+    test_point = inverse_haversine_degrees(test_shape_centroid, 135, 750)
+    assert ring.contains_coordinate(test_point)
+    assert wedge.contains_coordinate(test_point)
+
+    # Due west (outside geowedge angle)
+    test_point = inverse_haversine_degrees(test_shape_centroid, 270, 750)
+    assert ring.contains_coordinate(test_point)
+    assert not wedge.contains_coordinate(test_point)
 
     # Centerpoint (not in shape)
-    assert not ring.contains_coordinate(Coordinate(0.0, 0.0))
-    assert not wedge.contains_coordinate(Coordinate(0.0, 0.0))
+    assert not ring.contains_coordinate(test_shape_centroid)
+    assert not wedge.contains_coordinate(test_shape_centroid)
 
-    # Along edge (1000m east)
-    assert ring.contains_coordinate(Coordinate(0.0089932, 0.0))
-    assert wedge.contains_coordinate(Coordinate(0.0089932, 0.0))
+    # Boundary intersection - max radius
+    outer_coords, inner_coords = ring._draw_bounds()
+    assert not ring.contains_coordinate(outer_coords[0])
+    assert ring.contains_coordinate(outer_coords[0], include_boundary=True)
+    assert not ring.contains_coordinate(inner_coords[0])
+    assert ring.contains_coordinate(inner_coords[0], include_boundary=True)
 
-    ring = GeoRing(Coordinate(0.0, 0.0), 500, 1000, holes=[GeoCircle(Coordinate(0.0067449, 0.0), 200)])
+    along_edge = inverse_haversine_degrees(test_shape_centroid, 180, 750)
+    assert not wedge.contains_coordinate(along_edge)
+    assert wedge.contains_coordinate(along_edge, include_boundary=True)
+
+    # Test hole logic
+    hole = GeoCircle(Coordinate(0.0067449, 0.0), 200)
+    ring = GeoRing(Coordinate(0.0, 0.0), 500, 1000, holes=[hole])
+
+    # Does not contain hole center
     assert not ring.contains_coordinate(Coordinate(0.0067449, 0.0))
+
+    # Does not contain hole boundary unless include_boundary
+    assert not ring.contains_coordinate(hole.bounding_coords()[0])
+    assert ring.contains_coordinate(hole.bounding_coords()[0], include_boundary=True)
 
 
 def test_georing_eq(geowedge):

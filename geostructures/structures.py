@@ -33,7 +33,7 @@ from geostructures.calc import (
 )
 from geostructures._geometry import (
     circumscribing_circle_for_polygon, do_edges_intersect,
-    find_line_intersection, is_counter_clockwise
+    find_line_intersection, is_counter_clockwise, is_point_in_line
 )
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
@@ -411,7 +411,7 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
         ctr, rad = circumscribing_circle_for_polygon(self.outline[:-1], [])
         return GeoCircle(cast(Coordinate, ctr), cast(float, rad), dt=self.dt)
 
-    def contains_coordinate(self, coord: Coordinate) -> bool:
+    def contains_coordinate(self, coord: Coordinate, include_boundary: bool = False) -> bool:
         # First see if the point even falls inside the circumscribing rectangle
         min_lon, min_lat, max_lon, max_lat = self.bounds
         if not (
@@ -422,12 +422,19 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
             return False
 
         # If not inside outline, no need to continue
-        if not self._point_in_polygon(coord, self.outline):
+        if not self._point_in_polygon(coord, self.outline, include_boundary=include_boundary):
             return False
 
         for hole in self.holes:
-            if coord in hole:
+            # Invert boundary containment test for holes
+            if hole.contains_coordinate(coord, include_boundary=not include_boundary):
                 return False
+
+        if (not include_boundary) and (
+            coord.latitude in (min_lat, max_lat) or
+            coord.longitude in (min_lon, max_lon)
+        ):
+            return False
 
         return True
 
@@ -713,7 +720,7 @@ class GeoBox(PolygonBase):
             dt=self.dt,
         )
 
-    def contains_coordinate(self, coord: Coordinate) -> bool:
+    def contains_coordinate(self, coord: Coordinate, include_boundary: bool = False) -> bool:
         if not (
             self.nw_bound.longitude <= coord.longitude <= self.se_bound.longitude and
             self.se_bound.latitude <= coord.latitude <= self.nw_bound.latitude
@@ -721,8 +728,15 @@ class GeoBox(PolygonBase):
             return False
 
         for hole in self.holes:
-            if coord in hole:
+            # Invert boundary containment test for holes
+            if hole.contains_coordinate(coord, include_boundary=not include_boundary):
                 return False
+
+        if (not include_boundary) and (
+            coord.latitude in (self.nw_bound.latitude, self.se_bound.latitude) or
+            coord.longitude in (self.nw_bound.longitude, self.se_bound.longitude)
+        ):
+            return False
 
         return True
 
@@ -844,13 +858,18 @@ class GeoCircle(PolygonBase):
     def circumscribing_circle(self) -> 'GeoCircle':
         return self
 
-    def contains_coordinate(self, coord: Coordinate) -> bool:
-        if not haversine_distance_meters(coord, self.center) <= self.radius:
+    def contains_coordinate(self, coord: Coordinate, include_boundary: bool = False) -> bool:
+        centroid_dist = haversine_distance_meters(coord, self.center)
+        if not centroid_dist <= self.radius:
             return False
 
         for hole in self.holes:
-            if coord in hole:
+            # Invert boundary containment test for holes
+            if hole.contains_coordinate(coord, include_boundary=not include_boundary):
                 return False
+
+        if (not include_boundary) and centroid_dist == self.radius:
+            return False
 
         return True
 
@@ -992,15 +1011,20 @@ class GeoEllipse(PolygonBase):
     def circumscribing_circle(self) -> GeoCircle:
         return GeoCircle(self.center, self.semi_major, dt=self.dt)
 
-    def contains_coordinate(self, coord: Coordinate) -> bool:
+    def contains_coordinate(self, coord: Coordinate, include_boundary: bool = False) -> bool:
         bearing = bearing_degrees(self.center, coord)
         radius = self._radius_at_angle(math.radians(bearing - self.rotation))
-        if not haversine_distance_meters(self.center, coord) <= radius:
+        centroid_dist = haversine_distance_meters(self.center, coord)
+        if not centroid_dist <= radius:
             return False
 
         for hole in self.holes:
-            if coord in hole:
+            # Invert boundary containment test for holes
+            if hole.contains_coordinate(coord, include_boundary=not include_boundary):
                 return False
+
+        if (not include_boundary) and centroid_dist == radius:
+            return False
 
         return True
 
@@ -1173,20 +1197,29 @@ class GeoRing(PolygonBase):
 
         return GeoCircle(self.centroid, self.outer_radius, dt=self.dt)
 
-    def contains_coordinate(self, coord: Coordinate) -> bool:
+    def contains_coordinate(self, coord: Coordinate, include_boundary: bool = False) -> bool:
         # Make sure bearing within wedge, if a wedge
+        center_bearing = bearing_degrees(self.center, coord)
         if self.angle_max - self.angle_min < 360:
-            bearing = bearing_degrees(self.center, coord)
-            if not self.angle_min <= bearing <= self.angle_max:
+            if not self.angle_min <= center_bearing <= self.angle_max:
                 return False
 
-        radius = haversine_distance_meters(self.center, coord)
-        if not self.inner_radius <= radius <= self.outer_radius:
+        centroid_distance = haversine_distance_meters(self.center, coord)
+        if not self.inner_radius <= centroid_distance <= self.outer_radius:
             return False
 
         for hole in self.holes:
             if coord in hole:
                 return False
+
+        if not include_boundary:
+            print(center_bearing, centroid_distance)
+
+        if (not include_boundary) and (
+            center_bearing in (self.angle_min, self.angle_max) or
+            centroid_distance in (self.inner_radius, self.outer_radius)
+        ):
+            return False
 
         return True
 
@@ -1340,10 +1373,12 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
 
         return is_sub_list(cast(LineLike, shape).vertices, self.vertices)
 
-    def contains_coordinate(self, coord: Coordinate) -> bool:
-        # For now, just check for exact match. Will need update if buffering
-        # becomes a feature
-        return coord in self.vertices
+    def contains_coordinate(self, coord: Coordinate, include_boundary: bool = False) -> bool:
+        for segment in self.segments:
+            if is_point_in_line(coord, segment):
+                return True
+
+        return False
 
     def copy(self) -> 'GeoLineString':
         return GeoLineString(
@@ -1567,7 +1602,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
     def has_z(self) -> bool:
         return self.centroid.z is not None
 
-    def contains_coordinate(self, coord: Coordinate) -> bool:
+    def contains_coordinate(self, coord: Coordinate, include_boundary: bool = False) -> bool:
         return coord == self.centroid
 
     def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:

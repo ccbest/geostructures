@@ -226,13 +226,17 @@ class BaseShapeProtocol(Protocol):
         return self.contains_shape(shape)
 
     @abstractmethod
-    def contains_coordinate(self, coord: Coordinate) -> bool:
+    def contains_coordinate(self, coord: Coordinate, include_boundary: bool = False) -> bool:
         """
         Test if this geoshape contains a coordinate.
 
         Args:
-            coord:
-                A Coordinate
+            coord: (Coordinate)
+                The coordinate to test
+
+            include_boundary: (bool) (Default False)
+                If true, coordinates that exist precisely on the boundary of the
+                shape will return as True. Otherwise, will return as False.
 
         Returns:
             bool
@@ -799,9 +803,9 @@ class MultiShapeBase(SimpleShapeMixin, BaseShape, ABC):
     def has_z(self) -> bool:
         return any(x.has_z for x in self.geoshapes)
 
-    def contains_coordinate(self, coord: Coordinate) -> bool:
+    def contains_coordinate(self, coord: Coordinate, include_boundary: bool = False) -> bool:
         for shape in self.geoshapes:
-            if shape.contains_coordinate(coord):
+            if shape.contains_coordinate(coord, include_boundary=include_boundary):
                 return True
 
         return False
