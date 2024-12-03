@@ -192,7 +192,7 @@ class BaseShapeProtocol(Protocol):
     def buffer_dt(
         self: SHAPE_VAR,
         buffer: timedelta,
-        inplace: bool = False
+        inplace: bool = True
     ) -> SHAPE_VAR:
         """
         Adds a timedelta buffer to the beginning and end of dt.
@@ -201,8 +201,9 @@ class BaseShapeProtocol(Protocol):
             buffer:
                 A timedelta that will expand both sides of dt
 
-            inplace:
-                Return a new object? Defaults to False.
+            inplace: (bool) (Default True)
+                If True, will mutate the current object. If False,
+                will return a copy of this object.
         """
         if not self.dt:
             raise ValueError("GeoShape has no associated time information.")
@@ -333,7 +334,11 @@ class BaseShapeProtocol(Protocol):
 
         return self.dt.intersects(dt)
 
-    def set_dt(self, dt: Union[datetime, TimeInterval, None], inplace: bool = False) -> 'BaseShapeProtocol':
+    def set_dt(
+            self,
+            dt: Union[datetime, TimeInterval, None],
+            inplace: bool = True
+    ) -> 'BaseShapeProtocol':
         """
         Sets time bounds on this geoshape. Will not mutate unless inplace is True
 
@@ -341,8 +346,9 @@ class BaseShapeProtocol(Protocol):
             dt: (Union[datetime, TimeInterval, None])
                 A datetime or TimeInterval
 
-            inplace: (bool) (Default False)
-                If True, will mutate this object.
+            inplace: (bool) (Default True)
+                If True, will mutate this object. If False, will create a
+                copy instead.
 
         Returns:
             self type
@@ -361,7 +367,7 @@ class BaseShapeProtocol(Protocol):
 
         raise ValueError(f'Unexpected dt value {dt}')
 
-    def set_property(self, key: str, value: Any, inplace: bool = False):
+    def set_property(self, key: str, value: Any, inplace: bool = True):
         """
         Sets the value of a property on this geoshape.
 
@@ -372,8 +378,9 @@ class BaseShapeProtocol(Protocol):
             value: (Any)
                 The property value
 
-            inplace: (bool) (Default False)
-                If True, will mutate this object.
+            inplace: (bool) (Default True)
+                If True, will mutate this object. If False, will create a copy
+                instead.
 
         Returns:
             self type

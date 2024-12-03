@@ -49,7 +49,7 @@ def test_baseshapeprotocol_start():
 def test_baseshapeprotocol_buffer_dt():
     # Base Case
     point = GeoPoint(Coordinate('0.0', '0.0'), dt=TimeInterval(datetime(2020, 1, 1, 12), datetime(2020, 1, 3, 12)))
-    point2 = point.buffer_dt(timedelta(hours=1))
+    point2 = point.buffer_dt(timedelta(hours=1), inplace=False)
     assert point2 == GeoPoint(
         Coordinate('0.0', '0.0'),
         dt=TimeInterval(datetime(2020, 1, 1, 11), datetime(2020, 1, 3, 13))
@@ -123,7 +123,7 @@ def test_baseshapeprotocol_intersects_time():
 
 def test_baseshapeprotocol_set_dt():
     point = GeoPoint(Coordinate('0.0', '0.0'))
-    point2 = point.set_dt(datetime(2020, 1, 1))
+    point2 = point.set_dt(datetime(2020, 1, 1), inplace=False)
     assert point2 is not point
     assert point2.dt == TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
     assert point.dt is None
