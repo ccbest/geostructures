@@ -48,7 +48,7 @@ setuptools.setup(
     ],
     extras_require={
         'df': ['geopandas>=0.13,<1', 'pandas>=2,<3'],
-        'h3': ['h3>=3.7,<4'],
+        'h3': ['h3>=4.1,<5'],
         'mgrs': ['mgrs>=1.4.5,<2'],
         'proj': ['pyproj>=3.6,<4'],
         'kml': ['fastkml==1.0.a13'],

@@ -225,10 +225,10 @@ def h3_to_geopolygon(
     Returns:
         GeoPolygon
     """
-    from h3 import h3_to_geo_boundary
-
+    from h3 import cell_to_boundary
+    boundary = [Coordinate(*x[::-1]) for x in cell_to_boundary(h3_geohash)]
     return GeoPolygon(
-        [Coordinate(*x) for x in h3_to_geo_boundary(h3_geohash, geo_json=True)],
+        [*boundary, boundary[0]],
         dt=dt,
         properties={
             'h3_geohash': h3_geohash,
@@ -342,7 +342,7 @@ class H3Hasher(HasherBase):
         self.resolution = resolution
 
     @staticmethod
-    def _hash_polygon(polygon: GeoShape, resolution: int) -> Set[str]:
+    def _hash_polygon(polygon: SinglePolygon, resolution: int) -> Set[str]:
         """
         Returns all geohashes contained by a polygon. Uses H3's polyfill function
 
@@ -357,12 +357,13 @@ class H3Hasher(HasherBase):
             A set of H3 geohashes
         """
         import h3
-
-        return h3.polyfill(
-            polygon.to_geojson()['geometry'],
-            resolution,
-            geo_json_conformant=True  # uses long/lat order
+        poly = h3.LatLngPoly(
+            *[[x.to_float(reverse=True) for x in ring] for ring in polygon.linear_rings()]
         )
+        return set(h3.polygon_to_cells(
+            poly,
+            resolution,
+        ))
 
     @staticmethod
     def _hash_linestring(linestring: GeoLineString, resolution: int) -> Set[str]:
@@ -388,19 +389,20 @@ class H3Hasher(HasherBase):
         _hexes = set()
         for segment in linestring.segments:
             # Get h3's straight line hexes
-            line_hashes = h3.h3_line(
-                h3.geo_to_h3(segment[0].latitude, segment[0].longitude, resolution),
-                h3.geo_to_h3(segment[1].latitude, segment[1].longitude, resolution)
+            line_hashes = h3.grid_path_cells(
+                h3.latlng_to_cell(segment[0].latitude, segment[0].longitude, resolution),
+                h3.latlng_to_cell(segment[1].latitude, segment[1].longitude, resolution)
             )
             # Add single ring buffer
             all_hexes = set(
-                hexid for rings in h3.hex_ranges(line_hashes, 1).values()
-                for ring in rings
-                for hexid in ring
+                _geohash
+                for geohash in line_hashes
+                for _geohash in h3.grid_ring(geohash, 1)
             )
+
             # Test which hexes actually intersect the line
             for _hex in all_hexes:
-                bounds = [Coordinate(y, x) for x, y in h3.h3_to_geo_boundary(_hex)]
+                bounds = [Coordinate(y, x) for x, y in h3.cell_to_boundary(_hex)]
                 for hex_edge in zip(bounds, [*bounds[1:], bounds[0]]):
                     if find_line_intersection(segment, hex_edge):
                         _hexes.add(_hex)
@@ -426,7 +428,7 @@ class H3Hasher(HasherBase):
         import h3
 
         return {
-            h3.geo_to_h3(
+            h3.latlng_to_cell(
                 point.latitude,
                 point.longitude,
                 resolution
@@ -465,8 +467,8 @@ class H3Hasher(HasherBase):
         agg_fn = kwargs.get('agg_fn', len)
         hash_dict: Dict[str, List[GeoShape]] = defaultdict(list)
         for shape in collection.geoshapes:
-            for hash in self.hash_shape(shape, resolution=resolution):
-                hash_dict[hash].append(shape)
+            for geohash in self.hash_shape(shape, resolution=resolution):
+                hash_dict[geohash].append(shape)
         return {h: agg_fn(shape_list) for h, shape_list in hash_dict.items()}
 
     def hash_coordinates(self, coordinates: Sequence[Coordinate], **kwargs):
@@ -511,6 +513,9 @@ class H3Hasher(HasherBase):
         Returns:
             The unique list of hashes that comprise the shape
         """
+        if isinstance(shape, MultiShape):
+            return set().union(*[self.hash_shape(x) for x in shape.geoshapes])
+
         resolution = kwargs.get('resolution', self.resolution)
         if not resolution:
             raise ValueError('You must pass a H3 resolution.')
@@ -521,7 +526,7 @@ class H3Hasher(HasherBase):
         if isinstance(shape, GeoLineString):
             return self._hash_linestring(shape, resolution)
 
-        return self._hash_polygon(shape, resolution)
+        return self._hash_polygon(cast(SinglePolygon, shape), resolution)
 
 
 class NiemeyerHasher(HasherBase):
