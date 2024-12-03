@@ -526,7 +526,7 @@ class H3Hasher(HasherBase):
         if isinstance(shape, GeoLineString):
             return self._hash_linestring(shape, resolution)
 
-        return self._hash_polygon(shape, resolution)
+        return self._hash_polygon(cast(SinglePolygon, shape), resolution)
 
 
 class NiemeyerHasher(HasherBase):
