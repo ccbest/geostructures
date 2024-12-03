@@ -65,6 +65,48 @@ Additionally, geostructures provides convenience objects for representing chrono
 
 For an interactive introduction, please review our collection of [Jupyter notebooks](./notebooks).
 
+#### Working with Coordinates
+Geostructures uses WGS84 (EPSG4326) for all operations, but supports conversion to and from 
+a variety of coordinate formats. Z and M values are supported and will be preserved when converting
+to formats that support them (e.g. ESRI shapefile).
+
+**Note**: Geostructures represents coordinates in (longitude, latitude) order.
+```python
+from geostructures import *
+
+coord = Coordinate(
+  longitude=-0.154092,
+  latitude=51.539865
+)
+
+coord.to_float()    # (-0.154092, 51.539865)
+coord.to_str()      # ('-0.154092', '51.539865')
+
+# Degrees, Minutes, Seconds
+coord.to_dms()
+coord.from_dms((0, 9, 14.7312, 'W'), (51, 32, 23.514, 'N'))
+
+# Quadrant, Degrees, Minutes, Seconds
+coord.to_qdms()
+coord.from_qdms('W000091473', 'N51322351')
+
+# Non-WGS84 Projection
+coord.to_projection('EPSG:27700')
+coord.from_projection(-16.01032599998871, -6.869540999992751, 'EPSG:27700')
+
+# Military Grid Reference System (MGRS) (requires geostructures[mgrs])
+coord.to_mgrs()
+coord.from_mgrs('30UXC9735113702')
+
+# Add Z and M values
+coord = Coordinate(
+  longitude=-0.154092,
+  latitude=51.539865,
+  z=100,
+  m=200
+)
+```
+
 #### Creating GeoShapes
 ```python
 from geostructures import *
@@ -266,6 +308,12 @@ polygon.from_wkt( '<a wkt polygon string>' )
 polygon.to_shapely()
 polygon.from_shapely( a shapely polygon )
 
+# FastKML
+from fastkml import KML
+k = KML()  # also works with fastkml.Folder
+k.append(polygon.to_fastkml_placemark())
+polygon.from_fastkml_placemark(k.features[0])
+
 # Collections (and Tracks) of shapes have additional supported formats
 collection = FeatureCollection([polygon])
 
@@ -328,6 +376,9 @@ subset = track[datetime(2020, 5, 1, 12):datetime(2020, 5, 1, 13)]
 track.centroid_distances    # meters
 track.speed_diffs           # meters per second
 track.time_start_diffs      # timedeltas
+
+# Remove shapes that are spatially distant but chronologically close
+track.filter_impossible_journeys(max_speed=5)  # meters per second
 ```
 
 #### Geohashing
