@@ -10,7 +10,7 @@ from functools import cached_property
 import os
 from pathlib import Path
 import tempfile
-from typing import cast, Any, List, Dict, Optional, Union, Tuple, TypeVar
+from typing import Callable, cast, Any, List, Dict, Optional, Union, Tuple, TypeVar
 from zipfile import ZipFile
 
 import numpy as np
@@ -126,6 +126,25 @@ class CollectionBase:
             A shape collection of the same type as the original
         """
         return type(self)([x for x in self.geoshapes if x.intersects(shape)])
+
+    def filter_by_property(self: _COL_TYPE, property: str, func: Callable[[Any], bool]) -> _COL_TYPE:
+        """
+        Filter based on property and the given function.
+        Args:
+            property: The property to filter by.
+            func: The function to apply to the property value. e.g.
+            lambda x: x == 'red'
+        Returns:
+            A shape collection of the same type as the original
+        """
+        filtered_shapes = []
+        for shape in self.geoshapes:
+            if property not in shape.properties:
+                raise KeyError(f"Property '{property}' not found in shape properties")
+            if func(shape.properties[property]):
+                filtered_shapes.append(shape)
+        return type(self)(filtered_shapes)
+
 
     @classmethod
     def from_fastkml_folder(cls, folder):
