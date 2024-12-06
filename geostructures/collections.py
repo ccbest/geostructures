@@ -145,7 +145,6 @@ class CollectionBase:
                 filtered_shapes.append(shape)
         return type(self)(filtered_shapes)
 
-
     @classmethod
     def from_fastkml_folder(cls, folder):
         """
