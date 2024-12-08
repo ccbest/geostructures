@@ -773,8 +773,8 @@ class Track(CollectionBase):
                     Coordinate(sum(_lons)/len(_lons), sum(_lats)/len(_lats)),
                     _ts,
                     properties={
-                        k:v for shape in ping_group
-                        for k,v in shape._properties.items()
+                        k: v for shape in ping_group
+                        for k, v in shape._properties.items()
                     }
                 )
             )
