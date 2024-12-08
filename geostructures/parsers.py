@@ -73,7 +73,8 @@ def parse_fastkml(
         # Parse the shape and mutate _shapes
         parser = _PARSER_MAP[kml.geometry.__geo_interface__['type'].upper()]  # type: ignore
         shape = parser.from_fastkml_placemark(kml)
-        shape._properties.update(_props)
+        props = shape._properties or {}
+        props.update(_props)
         for prop in ('name', 'description', 'address', 'phone_number'):
             # Inject KML properties into shape properties
             if getattr(kml, prop) is not None:
