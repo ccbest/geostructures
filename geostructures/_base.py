@@ -538,7 +538,7 @@ class SimpleShapeMixin(BaseShapeProtocol, ABC):
         if placemark.times is not None:
             dt = TimeInterval._from_fastkml(placemark.times)
 
-        props = None
+        props = {}
         if placemark.extended_data is not None:
             props = {x.name: x.value for x in placemark.extended_data.elements}
 
