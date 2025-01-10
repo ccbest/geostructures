@@ -1495,8 +1495,14 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
                 # Calculate proportional time interval
                 dt = None
                 if total_duration_seconds is not None:
-                    segment_start_time = start_time + timedelta(seconds=(cumulative_length - remaining_distance_meters) / total_length_meters * total_duration_seconds)
-                    segment_end_time = start_time + timedelta(seconds=cumulative_length / total_length_meters * total_duration_seconds)
+                    segment_start = (cumulative_length - remaining_distance_meters)
+                    segment_end = cumulative_length
+                    segment_start_time = start_time + timedelta(
+                        seconds=(segment_start / total_length_meters * total_duration_seconds)
+                    )
+                    segment_end_time = start_time + timedelta(
+                        seconds=(segment_end / total_length_meters * total_duration_seconds)
+                    )
                     dt = TimeInterval(segment_start_time, segment_end_time)
 
                 elif self.dt:
@@ -1515,8 +1521,14 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
             segments.pop(0)
 
         if remaining_distance_meters and total_duration_seconds is not None:
-            segment_start_time = start_time + timedelta(seconds=(cumulative_length - remaining_distance_meters) / total_length_meters * total_duration_seconds)
-            segment_end_time = start_time + timedelta(seconds=cumulative_length / total_length_meters * total_duration_seconds)
+            segment_start = (cumulative_length - remaining_distance_meters)
+            segment_end = cumulative_length
+            segment_start_time = start_time + timedelta(
+                seconds=(segment_start / total_length_meters * total_duration_seconds)
+            )
+            segment_end_time = start_time + timedelta(
+                seconds=(segment_end / total_length_meters * total_duration_seconds)
+            )
             dt = TimeInterval(segment_start_time, segment_end_time)
             vertices.append(segments[0][1])
             out.append(GeoLineString(vertices, dt=dt))
