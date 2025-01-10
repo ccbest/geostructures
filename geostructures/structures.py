@@ -1479,7 +1479,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
         # because the centroid may fall in a hole
         return o_edges[0][0][0] in self or s_edges[0][0][0] in shape
 
-        @staticmethod
+    @staticmethod
     def split(self, distance_meters: float) -> List[GeoLineString]:
         """
         Splits a GeoLineString into smaller GeoLineStrings of equal length while also dividing
