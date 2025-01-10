@@ -1535,7 +1535,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
 
         elif remaining_distance_meters and self.dt:
             vertices.append(segments[0][1])
-            out.append(GeoLineString(vertices), dt = self.dt)
+            out.append(GeoLineString(vertices, dt=self.dt))
 
         if remaining_distance_meters:
             vertices.append(segments[0][1])
