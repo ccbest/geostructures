@@ -386,27 +386,26 @@ class H3Hasher(HasherBase):
         """
         import h3
 
+        hasher = H3Hasher(resolution)
         _hexes = set()
         for segment in linestring.segments:
-            # Get h3's straight line hexes
-            line_hashes = h3.grid_path_cells(
-                h3.latlng_to_cell(segment[0].latitude, segment[0].longitude, resolution),
-                h3.latlng_to_cell(segment[1].latitude, segment[1].longitude, resolution)
-            )
-            # Add single ring buffer
-            all_hexes = set(
-                _geohash
-                for geohash in line_hashes
-                for _geohash in h3.grid_ring(geohash, 1)
-            )
+            checked, queue = set(), set()
+            start = hasher.hash_shape(GeoPoint(linestring.vertices[0])).pop()
+            queue.add(start)
+            _hexes.add(start)
+            while queue:
+                gh = queue.pop()
+                _all_hexes = set(h3.grid_disk(gh, 1)) - {gh}
+                for _hex in _all_hexes:
+                    if _hex in checked:
+                        continue
 
-            # Test which hexes actually intersect the line
-            for _hex in all_hexes:
-                bounds = [Coordinate(y, x) for x, y in h3.cell_to_boundary(_hex)]
-                for hex_edge in zip(bounds, [*bounds[1:], bounds[0]]):
-                    if find_line_intersection(segment, hex_edge):
-                        _hexes.add(_hex)
-                        break
+                    checked.add(_hex)
+                    bounds = [Coordinate(y, x) for x, y in h3.cell_to_boundary(_hex)]
+                    for hex_edge in zip(bounds, [*bounds[1:], bounds[0]]):
+                        if find_line_intersection(segment, hex_edge):
+                            _hexes.add(_hex)
+                            queue.add(_hex)
 
         return _hexes
 
