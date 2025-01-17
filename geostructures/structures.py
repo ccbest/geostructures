@@ -1453,96 +1453,6 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
             properties=properties,
         )
 
-    @staticmethod
-    def split(self, distance_meters: float) -> List['GeoLineString']:
-        """
-        Splits a GeoLineString into smaller GeoLineStrings of equal length while also dividing
-        the associated time interval proportionally if it spans a range. If the time interval
-        is a single timestamp, time is not split.
-
-        Args:
-            distance_meters (float): The desired length of each segment.
-
-        Returns:
-            List[GeoLineString]: A list of GeoLineStrings, each with proportional time intervals if applicable.
-        """
-        out = []
-        cumulative_length = 0
-        segments: List[Tuple[Coordinate, Coordinate]] = self.segments.copy()
-        vertices = [segments[0][0]]
-        remaining_distance_meters = distance_meters
-
-        # Total line length
-        total_length_meters = sum(haversine_distance_meters(*segment) for segment in segments)
-
-        start_time = end_time = total_duration_seconds = None
-        if self.dt and self.dt.start != self.dt.end:  # Check for a valid time range
-            start_time, end_time = self.dt.start, self.dt.end
-            total_duration_seconds = (end_time - start_time).total_seconds()
-
-        while segments:
-            remaining_segment_length = haversine_distance_meters(*segments[0])
-
-            while remaining_distance_meters < remaining_segment_length:
-                end_point = inverse_haversine_degrees(
-                    vertices[-1],
-                    bearing_degrees(vertices[-1], segments[0][1]),
-                    remaining_distance_meters
-                )
-                vertices.append(end_point)
-                cumulative_length += remaining_distance_meters
-
-                # Calculate proportional time interval
-                dt = None
-                if total_duration_seconds is not None:
-                    segment_start = (cumulative_length - remaining_distance_meters)
-                    segment_end = cumulative_length
-                    segment_start_time = start_time + timedelta(
-                        seconds=(segment_start / total_length_meters * total_duration_seconds)
-                    )
-                    segment_end_time = start_time + timedelta(
-                        seconds=(segment_end / total_length_meters * total_duration_seconds)
-                    )
-                    dt = TimeInterval(segment_start_time, segment_end_time)
-
-                elif self.dt:
-                    dt = self.dt
-
-                out.append(GeoLineString(vertices), dt=dt)
-                vertices = [end_point]
-                remaining_segment_length = haversine_distance_meters(vertices[-1], segments[0][1])
-
-            remaining_distance_meters = remaining_distance_meters - remaining_segment_length
-            cumulative_length += remaining_segment_length
-            vertices.append(segments[0][1])
-            if len(segments) == 1:
-                break
-
-            segments.pop(0)
-
-        if remaining_distance_meters and total_duration_seconds is not None:
-            segment_start = (cumulative_length - remaining_distance_meters)
-            segment_end = cumulative_length
-            segment_start_time = start_time + timedelta(
-                seconds=(segment_start / total_length_meters * total_duration_seconds)
-            )
-            segment_end_time = start_time + timedelta(
-                seconds=(segment_end / total_length_meters * total_duration_seconds)
-            )
-            dt = TimeInterval(segment_start_time, segment_end_time)
-            vertices.append(segments[0][1])
-            out.append(GeoLineString(vertices, dt=dt))
-
-        elif remaining_distance_meters and self.dt:
-            vertices.append(segments[0][1])
-            out.append(GeoLineString(vertices, dt=self.dt))
-
-        if remaining_distance_meters:
-            vertices.append(segments[0][1])
-            out.append(GeoLineString(vertices))
-
-        return out
-
     def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
         from geostructures.typing import MultiShape, PolygonLike, PointLike, LineLike
 
@@ -1569,6 +1479,127 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
         # which counts as intersection. Have to use a point from the boundary
         # because the centroid may fall in a hole
         return o_edges[0][0][0] in self or s_edges[0][0][0] in shape
+
+    def split(self, distance_meters: float) -> List['GeoLineString']:
+        """
+        Splits a GeoLineString into smaller segments based on a specified distance.
+
+        Args:
+            distance_meters (float): The maximum distance for each segment in meters.
+
+        Returns:
+            List[GeoLineString]: A list of GeoLineString objects, each of which is no longer
+                                than the specified distance. If the total length of the
+                                line is less than the specified distance, the original line
+                                is returned as a single segment.
+
+        Notes:
+            - If the GeoLineString is time-bounded (has a datetime interval), the resulting
+            segments will have proportional datetime intervals based on the segment's length.
+            - If the specified distance is greater than the total length of the line,
+            a warning is issued, and the original line is returned.
+        """
+
+        out = []  # List to store resulting GeoLineString segments
+        segments: List[Tuple[Coordinate, Coordinate]] = self.segments.copy()  # Copy of all line segments
+        vertices = [segments[0][0]]  # Initialize the first vertex from the starting point of the first segment
+        remaining_distance_meters = None  # Remaining distance from a previous iteration
+        total_length_meters = sum(haversine_distance_meters(*segment) for segment in segments)  # Total line length
+
+        # Handle case where the total line length is less than the specified distance
+        if total_length_meters <= distance_meters:
+            warnings.warn(
+                f'Total length ({total_length_meters}) is less than the distance ({distance_meters}); returning line.'
+            )
+            return [self]
+
+        properties = self._properties.copy()  # Copy of properties for the GeoLineString
+        cumulative_length = 0  # Tracks cumulative length traversed
+        dt = None  # Placeholder for datetime interval for each segment
+
+        start_time = end_time = total_duration_seconds = None
+        # If time interval is provided, calculate total duration in seconds
+        if self.dt and self.dt.start != self.dt.end:
+            start_time, end_time = self.dt.start, self.dt.end
+            total_duration_seconds = (end_time - start_time).total_seconds()
+
+        # Iterate through segments and split accordingly
+        while segments:
+            remaining_segment_length = haversine_distance(*segments[0])  # Length of the current segment
+
+            if remaining_distance_meters is not None:
+                # If there's a remaining distance from the previous iteration, process it
+                cumulative_length += distance_meters - remaining_distance_meters
+                end_point = inverse_haversine_degrees(
+                    vertices[-1],
+                    bearing_degrees(vertices[-1], segments[0][1]),
+                    remaining_distance_meters
+                )
+                # Calculate the time interval proportionally if applicable
+                if total_duration_seconds is not None:
+                    segment_start_time = start_time + timedelta(
+                        seconds=cumulative_length / total_length_meters * total_duration_seconds
+                    )
+                    dt = TimeInterval(dt.end, segment_start_time)
+                elif self.dt:
+                    dt = self.dt
+
+                vertices.append(end_point)  # Add the calculated endpoint to vertices
+                out.append(GeoLineString(vertices), properties=properties.copy(), dt=dt)  # Store the segment
+                vertices = [end_point]  # Reset vertices for the next segment
+                remaining_segment_length = haversine_distance_meters(vertices[-1], segments[0][1])
+                remaining_distance_meters = None
+
+            while distance_meters < remaining_segment_length:
+                # Handle cases where the current segment is longer than the specified distance
+                cumulative_length += distance_meters
+                end_point = inverse_haversine_degrees(
+                    vertices[-1],
+                    bearing_degrees(vertices[-1], segments[0][1]),
+                    distance_meters
+                )
+                # Calculate the time interval proportionally if applicable
+                if total_duration_seconds is not None:
+                    segment_start_time = start_time + timedelta(
+                        seconds=(cumulative_length - remaining_distance_meters)
+                        / total_length_meters * total_duration_seconds
+                    )
+                    segment_end_time = start_time + timedelta(
+                        seconds=cumulative_length / total_length_meters * total_duration_seconds
+                    )
+                    dt = TimeInterval(segment_start_time, segment_end_time)
+                elif self.dt:
+                    dt = self.dt
+
+                vertices.append(end_point)  # Add the calculated endpoint to vertices
+                out.append(GeoLineString(vertices), properties=properties.copy(), dt=dt)  # Store the segment
+                vertices = [end_point]  # Reset vertices for the next segment
+                remaining_segment_length = haversine_distance_meters(vertices[-1], segments[0][1])
+
+            # Calculate the remaining distance after processing the current segment
+            remaining_distance_meters = remaining_distance_meters - remaining_segment_length
+            cumulative_length += remaining_distance_meters
+            vertices.append(segments[0][1])  # Add the endpoint of the current segment
+
+            if len(segments) == 1:
+                break
+
+            segments.pop(0)  # Remove the processed segment
+
+        # Handle the final segment if there are remaining distances
+        if remaining_distance_meters:
+            last_segment = out.pop() if out else None
+            if last_segment:
+                vertices = last_segment.vertices[:-1] + [vertices[-1]]
+                # Assign the time interval for the final segment if applicable
+                if total_duration_seconds is not None:
+                    dt = TimeInterval(last_segment.dt.start, end_time)
+                elif self.dt:
+                    dt = self.dt
+
+            out.append(GeoLineString(vertices, properties=properties.copy(), dt=dt))
+
+        return out
 
     def to_geo_interface(self, **kwargs):
         return {
