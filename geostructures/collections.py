@@ -829,3 +829,19 @@ class Track(CollectionBase):
 
         # Create a new Track with only valid geoshapes
         return Track(valid_geoshapes)
+
+    def to_GeoLineString(self):
+        if not all(isinstance(shape, GeoPoint) for shape in self.geoshapes):
+            raise TypeError(f'Track must contain only {GeoPoint}')
+
+        lines = []
+        shapes = self.geoshapes
+        while len(shapes)-1 != 0:
+            point = shapes.pop(0)
+            next_point = shapes[0]
+            line = GeoLineString([point.coordinate, next_point.coordinate])
+            line.dt = TimeInterval(point.dt.end, next_point.dt.start)
+            line._properties = point.properties.copy()
+            lines.append(line)
+
+        return Track(lines)
