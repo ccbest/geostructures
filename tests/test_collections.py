@@ -1205,7 +1205,17 @@ def test_extrapolate_geoline(line_track):
 
 def test_extrapolate_invalid_shape():
     """Test extrapolation fails on invalid shape type."""
-    invalid_track = Track([GeoPoint(Coordinate(0, 0))])
+    invalid_track = Track(
+        [GeoPolygon([
+            Coordinate(0, 0),
+            Coordinate(0, 1),
+            Coordinate(1, 1),
+            Coordinate(0, 0)
+        ], dt=TimeInterval(
+            datetime(2025, 1, 1),
+            datetime(2025, 1, 1)
+        ))]
+    )
 
-    with pytest.raises(TypeError, match="Can only extrapolate a GeoPoint or GeoLineString."):
+    with pytest.raises(TypeError, match="Can only extrapolate a Points or LineStrings."):
         invalid_track.extrapolate(timedelta(minutes=30))
