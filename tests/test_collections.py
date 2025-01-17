@@ -1065,3 +1065,64 @@ def test_track_intersection():
 
     gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=datetime(2020, 1, 1, 3))
     assert len(track1.filter_by_intersection(gbox)) == 1
+
+
+@pytest.fixture
+def geo_point_track():
+    """Fixture to create a Track of GeoPoint objects."""
+    points = [
+        GeoPoint(
+            Coordinate(longitude, latitude),
+            dt=TimeInterval(
+                start=datetime(2025, 1, 1, hour),
+                end=datetime(2025, 1, 1, hour + 1)
+            ),
+            properties={"id": f"point_{longitude}"}
+        )
+        for hour, (longitude, latitude) in enumerate([(0, 0), (1, 1), (2, 2)])
+    ]
+    return Track(points)
+
+@pytest.fixture
+def mixed_track():
+    """Fixture to create a Track with mixed GeoShapes."""
+    points = [
+        GeoPoint(
+            Coordinate(0, 0),
+            dt=TimeInterval(
+                start=datetime(2025, 1, 1, 0),
+                end=datetime(2025, 1, 1, 1)
+            ),
+            properties={"id": "point_0"}
+        ),
+        GeoLineString([Coordinate(0, 0), Coordinate(1, 1)],
+                      dt=TimeInterval(
+                          start=datetime(2025, 1, 1, 2),
+                          end=datetime(2025, 1, 1, 3)
+                      ))  # Invalid for this test
+    ]
+    return Track(points)
+
+def test_to_geoline_string_conversion(geo_point_track):
+    """Test successful conversion of GeoPoint Track to GeoLineString Track."""
+    track = geo_point_track
+    result = track.to_GeoLineString()
+
+    assert len(result.geoshapes) == 2  # Number of segments should be n-1 of GeoPoints
+    assert all(isinstance(shape, GeoLineString) for shape in result.geoshapes)
+
+    # Check segment properties
+    for i, line in enumerate(result.geoshapes):
+        assert line.dt.start == track.geoshapes[i].dt.end
+        assert line.dt.end == track.geoshapes[i + 1].dt.start
+        assert line._properties == track.geoshapes[i].properties
+        assert line.vertices == [
+            track.geoshapes[i].coordinate,
+            track.geoshapes[i + 1].coordinate,
+        ]
+
+def test_to_geoline_string_type_error(mixed_track):
+    """Test that TypeError is raised when non-GeoPoint objects are present."""
+    track = mixed_track
+    with pytest.raises(TypeError, match="Track must contain only Points."):
+        track.to_GeoLineString()
