@@ -15,6 +15,7 @@ from functools import cached_property
 import math
 import statistics
 from typing import cast, Any, Dict, List, Optional, Tuple, Sequence, TYPE_CHECKING
+import warnings
 
 import numpy as np
 
@@ -1525,7 +1526,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
 
         # Iterate through segments and split accordingly
         while segments:
-            remaining_segment_length = haversine_distance(*segments[0])  # Length of the current segment
+            remaining_segment_length = haversine_distance_meters(*segments[0])  # Length of the current segment
 
             if remaining_distance_meters is not None:
                 # If there's a remaining distance from the previous iteration, process it
