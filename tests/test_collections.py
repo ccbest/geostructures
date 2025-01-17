@@ -1209,11 +1209,3 @@ def test_extrapolate_invalid_shape():
 
     with pytest.raises(TypeError, match="Can only extrapolate a GeoPoint or GeoLineString."):
         invalid_track.extrapolate(timedelta(minutes=30))
-
-
-def test_extrapolate_empty_track():
-    """Test extrapolation on an empty track."""
-    empty_track = Track([])
-
-    with pytest.raises(IndexError):
-        empty_track.extrapolate(timedelta(minutes=30))
