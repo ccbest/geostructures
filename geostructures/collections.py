@@ -853,7 +853,7 @@ class Track(CollectionBase):
             - The properties of the starting GeoPoint are copied to the GeoLineString.
         """
         if not all(isinstance(shape, GeoPoint) for shape in self.geoshapes):
-            raise TypeError(f'Track must contain only Points.')
+            raise TypeError('Track must contain only Points.')
 
         lines = []
         shapes = self.geoshapes.copy()
