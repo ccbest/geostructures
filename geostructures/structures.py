@@ -1546,7 +1546,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
                     dt = self.dt
 
                 vertices.append(end_point)  # Add the calculated endpoint to vertices
-                out.append(GeoLineString(vertices), properties=properties.copy(), dt=dt)  # Store the segment
+                out.append(GeoLineString(vertices, properties=properties.copy(), dt=dt))  # Store the segment
                 vertices = [end_point]  # Reset vertices for the next segment
                 remaining_segment_length = haversine_distance_meters(vertices[-1], segments[0][1])
                 remaining_distance_meters = None
@@ -1562,7 +1562,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
                 # Calculate the time interval proportionally if applicable
                 if total_duration_seconds is not None:
                     segment_start_time = start_time + timedelta(
-                        seconds=(cumulative_length - remaining_distance_meters)
+                        seconds=(cumulative_length - distance_meters)
                         / total_length_meters * total_duration_seconds
                     )
                     segment_end_time = start_time + timedelta(
@@ -1573,12 +1573,12 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
                     dt = self.dt
 
                 vertices.append(end_point)  # Add the calculated endpoint to vertices
-                out.append(GeoLineString(vertices), properties=properties.copy(), dt=dt)  # Store the segment
+                out.append(GeoLineString(vertices, properties=properties.copy(), dt=dt))  # Store the segment
                 vertices = [end_point]  # Reset vertices for the next segment
                 remaining_segment_length = haversine_distance_meters(vertices[-1], segments[0][1])
 
             # Calculate the remaining distance after processing the current segment
-            remaining_distance_meters = remaining_distance_meters - remaining_segment_length
+            remaining_distance_meters = distance_meters - remaining_segment_length
             cumulative_length += remaining_distance_meters
             vertices.append(segments[0][1])  # Add the endpoint of the current segment
 
