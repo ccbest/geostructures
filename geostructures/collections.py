@@ -831,6 +831,27 @@ class Track(CollectionBase):
         return Track(valid_geoshapes)
 
     def to_GeoLineString(self):
+        """
+        Converts a Track of GeoPoint objects into a Track of GeoLineString objects.
+
+        This method takes a sequence of chronologically ordered GeoPoint objects
+        from the current Track instance and generates a sequence of GeoLineString
+        objects connecting consecutive GeoPoints. The resulting Track consists
+        of these GeoLineString segments.
+
+        Returns:
+            Track: A new Track instance where each GeoLineString represents
+                the connection between two consecutive GeoPoints.
+
+        Raises:
+            TypeError: If the Track contains shapes that are not instances of GeoPoint.
+
+        Notes:
+            - The datetime interval (dt) for each GeoLineString is derived from the
+            `end` datetime of the starting GeoPoint and the `start` datetime of
+            the next GeoPoint.
+            - The properties of the starting GeoPoint are copied to the GeoLineString.
+        """
         if not all(isinstance(shape, GeoPoint) for shape in self.geoshapes):
             raise TypeError(f'Track must contain only {GeoPoint}')
 
