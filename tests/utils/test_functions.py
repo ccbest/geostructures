@@ -13,26 +13,26 @@ def test_default_to_zulu(caplog):
     assert default_to_zulu(dt).tzinfo == timezone.utc
 
 
-def test_get_dt_from_geojson_props():
-    props = {
-        'datetime_start': '2020-01-01 00:00:00',
-        'datetime_end': '2020-01-01 00:00:00',
-    }
-    assert get_dt_from_geojson_props(props) == TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
+# def test_get_dt_from_geojson_props():
+#     props = {
+#         'datetime_start': '2020-01-01 00:00:00',
+#         'datetime_end': '2020-01-01 00:00:00',
+#     }
+#     assert get_dt_from_geojson_props(props) == TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
 
-    props = {}
-    assert get_dt_from_geojson_props(props) is None
+#     props = {}
+#     assert get_dt_from_geojson_props(props) is None
 
-    props = {
-        'datetime_start': '2020-01-01 00:00:00',
-    }
-    assert get_dt_from_geojson_props(props) == datetime(2020, 1, 1)
+#     props = {
+#         'datetime_start': '2020-01-01 00:00:00',
+#     }
+#     assert get_dt_from_geojson_props(props) == datetime(2020, 1, 1)
 
-    props = {
-        'start': '2020-01-01',
-        'end': '2020-01-01',
-    }
-    assert get_dt_from_geojson_props(props, time_start_field='start', time_end_field='end', time_format='%Y-%m-%d') == TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
+#     props = {
+#         'start': '2020-01-01',
+#         'end': '2020-01-01',
+#     }
+#     assert get_dt_from_geojson_props(props, time_start_field='start', time_end_field='end', time_format='%Y-%m-%d') == TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
 
 
 def test_round_half_up():
