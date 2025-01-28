@@ -1,7 +1,12 @@
 """Module for miscellaneous multi-use functions"""
 
+# __all__ = [
+#     'default_to_zulu', 'get_dt_from_geojson_props', 'is_sub_list',
+#     'round_half_up', 'sanitize_json'
+# ]
+
 __all__ = [
-    'default_to_zulu', 'get_dt_from_geojson_props', 'is_sub_list',
+    'default_to_zulu', 'is_sub_list',
     'round_half_up', 'sanitize_json'
 ]
 
@@ -24,33 +29,33 @@ def default_to_zulu(dt: datetime) -> datetime:
     return dt
 
 
-def get_dt_from_geojson_props(
-    rec: Dict[str, Any],
-    time_start_field: str = 'datetime_start',
-    time_end_field: str = 'datetime_end',
-    time_format: Optional[str] = None
-) -> Union[datetime, TimeInterval, None]:
-    """Grabs datetime data and returns appropriate struct"""
-    def _convert(dt: Optional[str], _format: Optional[str] = None):
-        if not dt:
-            return
+# def get_dt_from_geojson_props(
+#     rec: Dict[str, Any],
+#     time_start_field: str = 'datetime_start',
+#     time_end_field: str = 'datetime_end',
+#     time_format: Optional[str] = None
+# ) -> Union[datetime, TimeInterval, None]:
+#     """Grabs datetime data and returns appropriate struct"""
+#     def _convert(dt: Optional[str], _format: Optional[str] = None):
+#         if not dt:
+#             return
 
-        if _format:
-            return datetime.strptime(dt, _format)
+#         if _format:
+#             return datetime.strptime(dt, _format)
 
-        return datetime.fromisoformat(dt)
+#         return datetime.fromisoformat(dt)
 
-    # Pop the field so it doesn't remain in properties
-    dt_start = _convert(rec.pop(time_start_field, None), time_format)
-    dt_end = _convert(rec.pop(time_end_field, None), time_format)
+#     # Pop the field so it doesn't remain in properties
+#     dt_start = _convert(rec.pop(time_start_field, None), time_format)
+#     dt_end = _convert(rec.pop(time_end_field, None), time_format)
 
-    if dt_start is None and dt_end is None:
-        return None
+#     if dt_start is None and dt_end is None:
+#         return None
 
-    if not (dt_start and dt_end):
-        return dt_start or dt_end
+#     if not (dt_start and dt_end):
+#         return dt_start or dt_end
 
-    return TimeInterval(dt_start, dt_end)
+#     return TimeInterval(dt_start, dt_end)
 
 
 def round_half_up(value: float, precision) -> float:
