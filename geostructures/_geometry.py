@@ -8,6 +8,7 @@ from typing import List, Tuple, Optional, cast, Set
 import numpy as np
 from numpy.linalg import norm
 
+import geostructures.calc
 from geostructures._const import EARTH_RADIUS
 from geostructures.coordinates import Coordinate
 from geostructures.utils.functions import round_half_up
@@ -198,7 +199,10 @@ def dist_xyz_meters(coord1: Coordinate, coord2: Coordinate) -> float:
     Returns:
         (float) the distance in meters
     """
-    return math.acos(sum([an*bn for an, bn in zip(coord1.xyz, coord2.xyz)])) * EARTH_RADIUS
+    try:
+        return math.acos(sum([an*bn for an, bn in zip(coord1.xyz, coord2.xyz)])) * EARTH_RADIUS
+    except ValueError:
+        return geostructures.calc.haversine_distance_meters(coord1, coord2)
 
 
 def do_bounds_overlap(bounds1: Tuple[float, float], bounds2: Tuple[float, float]):
@@ -459,3 +463,54 @@ def is_counter_clockwise(bounds: List[Coordinate]) -> bool:
         )
     )
     return ans <= 0
+
+def knn(
+        pt: Coordinate, 
+        pts: List[Coordinate], 
+        k: int
+    ) -> List[Coordinate]:
+    """
+    Finds the closest k Coordinates to a given Coordinate. 
+    
+    Because dist_xyz_meters switches to haversine for very small distances, this may be inaccurate 
+    for very small radii Coordinate sets, in which case a knn algorithm in Euclidean space should
+    work with minimal distortion.
+
+    Args:
+        pt:
+            A Coordinate to find neighbors for
+        coordinates:
+            A list of Coordinates representing the possible neighbors
+        k:
+            The number of neighbors to return
+
+    Returns:
+        A list of the k nearest Coordinates, or the entire list except the given point if there are k
+        or fewer candidates.
+    """
+    dists = [dist_xyz_meters(pt, p) for p in pts]
+    sorted_dists = sorted(enumerate(dists), key=lambda x:x[1])
+    k_nearest = []
+    for idx, dist in sorted_dists:
+        if not dist: continue
+
+        k_nearest.append(idx)
+        if len(k_nearest)==k:
+            break
+    return [pts[idx] for idx in k_nearest]
+
+def local_convex_hulls(coordinates: List[Coordinate], k: int) -> List[List[Coordinate]]:
+    """
+    Computes the local convex hulls of each point in a shape, which can be unioned using
+    shapely into a local convex hull. O(n**2 log n) complexity.
+
+    Args:
+        coordinates:
+            A list of coordinates
+        k:
+            The number of neighbors to consider for each convex hull
+
+    Returns:
+        A list of linear rings representing the local convex hull of each point
+    """
+    return [convex_hull(knn(c, coordinates, k)) for c in coordinates]

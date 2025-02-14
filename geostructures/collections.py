@@ -17,7 +17,7 @@ import numpy as np
 
 from geostructures import Coordinate, LOGGER
 from geostructures._base import PolygonLikeMixin, PointLikeMixin, LineLikeMixin, MultiShapeBase, BaseShape
-from geostructures._geometry import convex_hull
+from geostructures._geometry import convex_hull, local_convex_hulls
 from geostructures.calc import haversine_distance_meters
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
@@ -415,6 +415,32 @@ class CollectionBase:
                 return True
 
         return False
+    
+    def local_convex_hulls(self, k: int) -> List[GeoPolygon]:
+        """Creates convex hulls around the pings"""
+        def _get_vertices(shapes):
+            vertices = []
+            for shape in shapes:
+                if isinstance(shape, MultiShapeBase):
+                    vertices += [
+                        vertex
+                        for _shape in shape.geoshapes
+                        for vertex in _get_vertices([_shape])
+                    ]
+                elif isinstance(shape, PointLikeMixin):
+                    vertices.append(shape.centroid)
+                elif isinstance(shape, LineLikeMixin):
+                    vertices += shape.vertices
+                elif isinstance(shape, PolygonLikeMixin):
+                    vertices += shape.bounding_coords()
+            return vertices
+
+        return [
+            GeoPolygon(hull) 
+            for hull in local_convex_hulls(_get_vertices(self.geoshapes), k)
+        ]
+        
+        
 
     def to_fastkml_folder(self, folder_name: str):
         from fastkml import Folder
