@@ -1015,6 +1015,29 @@ class GeoEllipse(PolygonBase):
             properties=copy.deepcopy(self._properties)
         )
 
+    def covariance_matrix(self):
+        rotation = np.radians(self.rotation)
+        varx1 = self.semi_major**2 * np.cos(rotation)**2 + self.semi_minor**2 * np.sin(rotation)**2
+        varx2 = self.semi_major**2 * np.sin(rotation)**2 + self.semi_minor**2 * np.cos(rotation)**2
+        cov = (self.semi_major**2 - self.semi_minor**2) * np.sin(rotation) * np.cos(rotation)
+        return np.array([
+            [varx1, cov],
+            [cov, varx2],
+        ])
+
+    @classmethod
+    def from_covariance_matrix(cls, matrix: np.array, centroid: Coordinate, **kwargs):
+        (a, b), (b, c) = matrix
+        l1 = (a+c) / 2 + np.sqrt(((a-c) / 2) ** 2 + b**2)
+        l2 = (a+c) / 2 - np.sqrt(((a-c) / 2) ** 2 + b**2)
+        if b == 0 and a >= c:
+            rotation = 0.
+        elif b == 0 and a < c:
+            rotation = 90.
+        else:
+            rotation = np.degrees(np.arctan2(l1 - a, b))
+        return GeoEllipse(centroid, semi_major=np.sqrt(l1), semi_minor=np.sqrt(l2), rotation=rotation, **kwargs)
+
     def to_polygon(self, **kwargs) -> GeoPolygon:
         return GeoPolygon(self.bounding_coords(**kwargs), holes=self.holes, dt=self.dt)
 
