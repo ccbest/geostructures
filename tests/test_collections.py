@@ -167,7 +167,7 @@ def test_collection_filter_contained_by():
     assert actual == expected
 
 
-def test_collection_filter_contained_by():
+def test_collection_filter_contains():
     col = FeatureCollection([
         GeoCircle(Coordinate(-1, 0), 100),
         GeoCircle(Coordinate(0, 0), 100),
