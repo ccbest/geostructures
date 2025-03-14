@@ -18,7 +18,7 @@ import numpy as np
 from geostructures import Coordinate, LOGGER
 from geostructures._base import PolygonLikeMixin, PointLikeMixin, LineLikeMixin, MultiShapeBase, BaseShape
 from geostructures._geometry import convex_hull
-from geostructures.calc import haversine_distance_meters
+from geostructures.calc import bearing_degrees, haversine_distance_meters, inverse_haversine_degrees
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
@@ -764,6 +764,63 @@ class Track(CollectionBase):
             for x, y in zip(self.geoshapes, self.geoshapes[1:])
         ])
 
+    def extrapolate(self, time_traveled: 'timedelta') -> 'Track':
+        last_shape = self.geoshapes[-1].copy()
+        if not isinstance(last_shape, (GeoPoint, GeoLineString)):
+            raise TypeError('Can only extrapolate a Points or LineStrings.')
+
+        if isinstance(last_shape, GeoLineString):
+            segments = last_shape.segments
+            start_time = last_shape.dt.start
+            end_time = last_shape.dt.end
+            total_duration_seconds = (end_time - start_time).total_seconds()
+            total_length_meters = sum(haversine_distance_meters(*segment) for segment in segments)
+            speed = total_length_meters / total_duration_seconds
+            bearing = bearing_degrees(*segments[0])
+            extrapolated_point = inverse_haversine_degrees(
+                segments[0][1],
+                bearing,
+                speed * time_traveled.total_seconds()
+            )
+            new_track = Track([
+                GeoLineString(
+                    [last_shape.vertices[-1], extrapolated_point],
+                    dt=TimeInterval(end_time, end_time + time_traveled),
+                    properties=last_shape.properties.copy()
+                )
+            ])
+
+        if isinstance(last_shape, GeoPoint):
+            second_last_shape = self.geoshapes[-2]
+            if last_shape.dt.start == last_shape.dt.end:
+                start_time = second_last_shape.dt.end
+                end_time = last_shape.dt.end
+
+            else:
+                start_time, end_time = last_shape.dt.start, last_shape.dt.end
+
+            total_duration_seconds = (end_time - start_time).total_seconds()
+            total_length_meters = haversine_distance_meters(
+                second_last_shape.coordinate,
+                last_shape.coordinate
+            )
+            speed = total_length_meters / total_duration_seconds
+            bearing = bearing_degrees(second_last_shape.coordinate, last_shape.coordinate)
+            extrapolated_point = inverse_haversine_degrees(
+                last_shape.coordinate,
+                bearing,
+                speed * time_traveled.total_seconds()
+            )
+            new_track = Track([
+                GeoPoint(
+                    extrapolated_point,
+                    dt=TimeInterval(end_time, end_time + time_traveled),
+                    properties=last_shape.properties.copy()
+                )
+            ])
+
+        return self.__add__(new_track)
+
     def copy(self):
         """Returns a shallow copy of self"""
         return Track(self.geoshapes.copy())
@@ -847,3 +904,40 @@ class Track(CollectionBase):
 
         # Create a new Track with only valid geoshapes
         return Track(valid_geoshapes)
+
+    def to_GeoLineString(self):
+        """
+        Converts a Track of GeoPoint objects into a Track of GeoLineString objects.
+
+        This method takes a sequence of chronologically ordered GeoPoint objects
+        from the current Track instance and generates a sequence of GeoLineString
+        objects connecting consecutive GeoPoints. The resulting Track consists
+        of these GeoLineString segments.
+
+        Returns:
+            Track: A new Track instance where each GeoLineString represents
+                the connection between two consecutive GeoPoints.
+
+        Raises:
+            TypeError: If the Track contains shapes that are not instances of GeoPoint.
+
+        Notes:
+            - The datetime interval (dt) for each GeoLineString is derived from the
+            `end` datetime of the starting GeoPoint and the `start` datetime of
+            the next GeoPoint.
+            - The properties of the starting GeoPoint are copied to the GeoLineString.
+        """
+        if not all(isinstance(shape, GeoPoint) for shape in self.geoshapes):
+            raise TypeError('Track must contain only Points.')
+
+        lines = []
+        shapes = self.geoshapes.copy()
+        while len(shapes)-1 != 0:
+            point = shapes.pop(0)
+            next_point = shapes[0]
+            line = GeoLineString([point.coordinate, next_point.coordinate])
+            line.dt = TimeInterval(point.dt.end, next_point.dt.start)
+            line._properties = point.properties.copy()
+            lines.append(line)
+
+        return Track(lines)
