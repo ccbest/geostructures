@@ -32,8 +32,8 @@ from geostructures.calc import (
     bearing_degrees
 )
 from geostructures._geometry import (
-    circumscribing_circle_for_polygon, do_edges_intersect,
-    find_line_intersection, is_counter_clockwise
+    convert_trig_angle, circumscribing_circle_for_polygon,
+    do_edges_intersect, find_line_intersection, is_counter_clockwise,
 )
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
@@ -1013,6 +1013,87 @@ class GeoEllipse(PolygonBase):
             holes=self.holes.copy(),
             dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self._properties)
+        )
+
+    def covariance_matrix(self, to_trigonometric_rotation: bool = True) -> np.ndarray:
+        """
+        Produces the covariance matrix corresponding to this GeoEllipse.
+
+        Args:
+            to_trigonometric_rotation: (bool) (Default True)
+                Convert degrees rotation from their trigonometric definition (measured from the
+                position x-axis in a counterclockwise direction) to their navigational definition
+                (measure as angles clockwise from north).
+
+        Returns:
+            np.array
+        """
+        rotation = self.rotation
+        if to_trigonometric_rotation:
+            rotation = convert_trig_angle(rotation)
+
+        rotation = np.radians(rotation)
+        scaled_major, minor_axis = self.semi_major, self.semi_minor
+        cos_phi, sin_phi = np.cos(rotation), np.sin(rotation)
+
+        varx1 = scaled_major**2 * cos_phi**2 + minor_axis**2 * sin_phi**2
+        varx2 = scaled_major**2 * sin_phi**2 + minor_axis**2 * cos_phi**2
+        cov = (scaled_major**2 - minor_axis**2) * sin_phi * cos_phi
+        return np.array([
+            [varx1, cov],
+            [cov, varx2],
+        ])
+
+    @classmethod
+    def from_covariance_matrix(
+        cls,
+        matrix: np.ndarray,
+        mean_value: Coordinate,
+        from_trigonometric_rotation: bool = True,
+        **kwargs
+    ) -> 'GeoEllipse':
+        """
+        Creates a GeoEllipse from a covariance matrix and mean values (as a Coordinate).
+
+        Args:
+            matrix: (np.array)
+                A numpy array of shape (2, 2)
+
+            mean_value: (Coordinate)
+                The mean values, representing the centroid of the ellipse
+
+            from_trigonometric_rotation: (bool) (Default True)
+                Convert degrees rotation from their trigonometric definition (measured from the
+                position x-axis in a counterclockwise direction) to their navigational definition
+                (measure as angles clockwise from north).
+
+        Keyword Args:
+              Any additional keyword arguments are passed to GeoEllipse's __init__ method
+
+        Returns:
+            GeoEllipse
+        """
+        eigenvalues, _ = np.linalg.eig(matrix)
+        l1, l2 = eigenvalues.max(), eigenvalues.min()
+
+        a: float
+        b: float
+        c: float
+        (a, b), (b, c) = matrix
+        if b == 0:
+            rotation = 0. if a >= c else 90.
+        else:
+            rotation = np.degrees(np.arctan2(l1 - a, b))
+
+        if from_trigonometric_rotation:
+            rotation = convert_trig_angle(rotation)
+
+        return GeoEllipse(
+            mean_value,
+            semi_major=np.sqrt(l1),
+            semi_minor=np.sqrt(l2),
+            rotation=rotation,
+            **kwargs
         )
 
     def to_polygon(self, **kwargs) -> GeoPolygon:
