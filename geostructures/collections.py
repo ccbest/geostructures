@@ -127,6 +127,34 @@ class CollectionBase:
         """
         return type(self)([x for x in self.geoshapes if x.intersects(shape)])
 
+    def filter_contained_by(self: _COL_TYPE, shape: BaseShape) -> _COL_TYPE:
+        """
+        Filter the shape collection using a containing geoshape, which is optionally
+        time-bounded.
+
+        Args:
+            shape:
+                A geoshape
+
+        Returns:
+            A shape collection of the same type as the original
+        """
+        return type(self)([x for x in self.geoshapes if shape.contains(x)])
+
+    def filter_contains(self: _COL_TYPE, shape: BaseShape) -> _COL_TYPE:
+        """
+        Filter the shape collection using a geoshape each shape must contain,
+        which is optionally time-bounded.
+
+        Args:
+            shape:
+                A geoshape
+
+        Returns:
+            A shape collection of the same type as the original
+        """
+        return type(self)([x for x in self.geoshapes if x.contains(shape)])
+
     def filter_by_property(self: _COL_TYPE, property: str, func: Callable[[Any], bool]) -> _COL_TYPE:
         """
         Filter based on property and the given function.

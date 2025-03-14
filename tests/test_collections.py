@@ -156,6 +156,28 @@ def test_collection_filter_by_dt():
     ])
 
 
+def test_collection_filter_contained_by():
+    col = FeatureCollection([
+        GeoPoint(Coordinate(-1, 0)),
+        GeoPoint(Coordinate(0, 0)),
+        GeoPoint(Coordinate(1, 0)),
+    ])
+    expected = FeatureCollection([GeoPoint(Coordinate(0, 0))])
+    actual = col.filter_contained_by(GeoCircle(Coordinate(0., 0.), 100))
+    assert actual == expected
+
+
+def test_collection_filter_contains():
+    col = FeatureCollection([
+        GeoCircle(Coordinate(-1, 0), 100),
+        GeoCircle(Coordinate(0, 0), 100),
+        GeoCircle(Coordinate(1, 0), 100),
+    ])
+    expected = FeatureCollection([GeoCircle(Coordinate(0, 0), 100)])
+    actual = col.filter_contains(GeoPoint(Coordinate(0., 0.)))
+    assert actual == expected
+
+
 def test_collection_filter_by_intersection():
     col = FeatureCollection([
         # Intersects in point in time
@@ -1014,9 +1036,6 @@ def test_track_filter_impossible_journeys(caplog):
     ])
     _ = track.filter_impossible_journeys(5)
     assert 'Duplicate timestamps detected' in caplog.text
-
-
-
 
 
 def test_track_intersects():
