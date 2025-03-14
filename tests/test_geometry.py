@@ -159,3 +159,16 @@ def test_is_counter_clockwise():
         Coordinate(0.75, 0.25), Coordinate(0.5, 0.0), Coordinate(0.25, 0.25),
         Coordinate(0.5, 0.5), Coordinate(0.75, 0.75), Coordinate(0.5, 1.)
     ])
+
+
+def test_convert_trig_angle():
+    assert convert_trig_angle(90) == 0.
+    assert convert_trig_angle(30) == 60.
+    assert convert_trig_angle(0.) == 90.
+    assert convert_trig_angle(-90) == 180.
+
+    assert convert_trig_angle(-450) == 180.
+    assert convert_trig_angle(450) == 0.
+
+    assert convert_trig_angle(180) == 270.
+    assert convert_trig_angle(270) == 180.
