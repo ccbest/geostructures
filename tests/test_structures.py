@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+
+import numpy as np
 import pytest
 import shapely
 from shapely import wkt
@@ -1030,6 +1032,48 @@ def test_geoellipse_circumscribing_circle(geoellipse):
 
 def test_geoellipse_centroid(geoellipse):
     assert geoellipse.centroid == geoellipse.center
+
+
+def test_geoellipse_covariance_matrix():
+    from numpy.testing import assert_allclose
+    ellipse = GeoEllipse(Coordinate(0., 1.), 100, 50, 45)
+    assert_allclose(ellipse.covariance_matrix(), np.array([[6250., 3750.], [3750., 6250.]]))
+
+    ellipse = GeoEllipse(Coordinate(1., 2.), 100, 50, 90)
+    assert_allclose(ellipse.covariance_matrix(), np.array([[10000., 0.], [0., 2500.]]))
+
+    ellipse = GeoEllipse(Coordinate(1., 2.), 100, 50, 90)
+    assert_allclose(
+        ellipse.covariance_matrix(to_trigonometric_rotation=False),
+        np.array([[2500., 0.], [0., 10000.]]),
+        atol=1e-07
+    )
+
+
+def test_geoellipse_from_covariance_matrix():
+    from numpy.testing import assert_allclose
+    mean = Coordinate(1., 2.)
+
+    cov = np.array([[6250., 3750.], [3750., 6250.]])
+    expected = GeoEllipse(Coordinate(1., 2.), 100, 50, 45)
+    actual = GeoEllipse.from_covariance_matrix(cov, mean)
+    assert expected.centroid == actual.centroid
+    for attr in ('semi_major', 'semi_minor', 'rotation'):
+        assert_allclose(getattr(expected, attr), getattr(actual, attr))
+
+    cov = np.array([[10000., 0.], [0., 2500.]])
+    expected = GeoEllipse(Coordinate(1., 2.), 100, 50, 90)
+    actual = GeoEllipse.from_covariance_matrix(cov, mean)
+    assert expected.centroid == actual.centroid
+    for attr in ('semi_major', 'semi_minor', 'rotation'):
+        assert_allclose(getattr(expected, attr), getattr(actual, attr))
+
+    cov = np.array([[2500., 0.], [0., 10000.]])
+    expected = GeoEllipse(Coordinate(1., 2.), 100, 50, 90)
+    actual = GeoEllipse.from_covariance_matrix(cov, mean, from_trigonometric_rotation=False)
+    assert expected.centroid == actual.centroid
+    for attr in ('semi_major', 'semi_minor', 'rotation'):
+        assert_allclose(getattr(expected, attr), getattr(actual, attr))
 
 
 def test_georing_contains(georing, geowedge):

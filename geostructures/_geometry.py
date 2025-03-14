@@ -459,3 +459,21 @@ def is_counter_clockwise(bounds: List[Coordinate]) -> bool:
         )
     )
     return ans <= 0
+
+
+def convert_trig_angle(bearing: float) -> float:
+    """
+    Converts angles between bearing (angle of 0 corresponds to the point (1, 0) and increases
+    in the clockwise direction) and trigonometric (angle of 0 corresponds to the point (1,0)
+    and increases in the counterclockwise direction) definitions.
+
+    This function is its own inverse, meaning calling it twice will produce the same input
+
+    Args:
+        bearing: (float)
+            An angle of bearing
+
+    Returns:
+        float
+    """
+    return (90 - bearing) % 360
