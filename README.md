@@ -23,9 +23,17 @@ $ pip install geostructures
 
 #### Requirements
 
-Geostructures only requires `numpy` to function.
+Geostructures aims to have as low overhead as possible, thus only requiring `numpy` for core 
+functionality. 
+
+Many optional features (listed below) will require additional packages. If you call any features
+without the requirements installed, geostructures will raise an `ImportError` and give you 
+the installation command needed to proceed.
 
 #### Optional Requirements
+
+We try to keep pace with all optional dependencies' most recent major versions, however
+installing these dependencies using the below commands will ensure the correct version is used.
 
 * `pip install geostructures[df]`
   * Add dataframe support for geopandas and pandas
@@ -42,6 +50,11 @@ Geostructures only requires `numpy` to function.
 * `pip install geostructures[proj]`
   * Add support for coordinate projection conversion
 
+* `pip install geostructures[shapefile]`
+  * Add support to reading/writing ESRI shapefiles
+
+* `pip install geostructures[shapely]`
+  * Add support for converting geostructures to/from shapely objects
 
 ### Overview
 

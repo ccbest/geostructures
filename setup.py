@@ -42,15 +42,18 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent"
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.9',
     install_requires=[
-        'numpy>=1,<2',
+        'numpy>=2,<3',
     ],
     extras_require={
-        'df': ['geopandas>=0.13,<1', 'pandas>=2,<3'],
+        'df': ['geopandas>=1,<2', 'pandas>=2,<3'],
         'h3': ['h3>=4.1,<5'],
+        'kml': ['fastkml>=1,<2'],
         'mgrs': ['mgrs>=1.4.5,<2'],
-        'proj': ['pyproj>=3.6,<4'],
-        'kml': ['fastkml==1.0.a13'],
+        'proj': ['pyproj>=3.7.1,<4'],
+        'shapely': ['shapely>=2.0.7'],
+        'shapefile': ['pyshp>=2.3.1,<3']
     }
 )
+

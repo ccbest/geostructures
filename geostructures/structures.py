@@ -335,8 +335,9 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
         # Decompose polygon into triangles using vertex pairs around the origin
         poly1 = np.array([x.to_float() for x in self.bounding_coords()])
         poly2 = np.roll(poly1, -1, axis=0)
-        # Find signed area of each triangle
-        signed_areas = 0.5 * np.cross(poly1, poly2)
+
+        # Compute signed area manually since np.cross is deprecated for 2D inputs
+        signed_areas = 0.5 * (poly1[:, 0] * poly2[:, 1] - poly1[:, 1] * poly2[:, 0])
 
         z = None
         if self.has_z:
