@@ -51,7 +51,7 @@ setuptools.setup(
         'h3': ['h3>=4.1,<5'],
         'kml': ['fastkml>=1,<2'],
         'mgrs': ['mgrs>=1.4.5,<2'],
-        'proj': ['pyproj>=3.7.1,<4'],
+        'proj': ['pyproj>=3.6,<4'],
         'shapely': ['shapely>=2.0.7'],
         'shapefile': ['pyshp>=2.3.1,<3']
     }
