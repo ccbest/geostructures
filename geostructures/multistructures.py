@@ -455,8 +455,10 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
         # Decompose polygon into triangles using vertex pairs around the origin
         poly1 = np.array([x.to_float() for poly in self.geoshapes for x in poly.bounding_coords()])
         poly2 = np.roll(poly1, -1, axis=0)
-        # Find signed area of each triangle
-        signed_areas = 0.5 * np.cross(poly1, poly2)
+
+        # Compute signed area manually since np.cross is deprecated for 2D inputs
+        signed_areas = 0.5 * (poly1[:, 0] * poly2[:, 1] - poly1[:, 1] * poly2[:, 0])
+
         # Return average of triangle centroids, weighted by area
         return Coordinate(*np.average((poly1 + poly2) / 3, axis=0, weights=signed_areas))
 
