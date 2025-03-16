@@ -11,6 +11,8 @@ from typing import (
     TypeVar, Union, cast
 )
 
+import fastkml
+
 from geostructures.coordinates import Coordinate
 from geostructures.time import TimeInterval, GEOTIME_TYPE
 from geostructures.utils.functions import default_to_zulu, sanitize_json
@@ -534,13 +536,20 @@ class SimpleShapeMixin(BaseShapeProtocol, ABC):
         Create a geostructure from the corresponding type of FastKML
         Placemark.
         """
+        placemark: fastkml.Placemark
+
         dt = None
         if placemark.times is not None:
             dt = TimeInterval._from_fastkml(placemark.times)
 
         props = {}
+
         if placemark.extended_data is not None:
-            props = {x.name: x.value for x in placemark.extended_data.elements}
+            for elem in placemark.extended_data.elements:
+                if isinstance(elem, fastkml.SchemaData):
+                    props.update({x.name: x.value for x in elem.data})
+                else:
+                    props = {x.name: x.value for x in placemark.extended_data.elements}
 
         shape = cls.from_geojson(placemark.geometry.__geo_interface__)
         shape.set_dt(dt, inplace=True)

@@ -71,6 +71,10 @@ def parse_fastkml(
 
     if isinstance(kml, Placemark):
         # Parse the shape and mutate _shapes
+        if kml.geometry is None:
+            # It's possible to create a placeless placemark
+            return _shapes
+
         parser = _PARSER_MAP[kml.geometry.__geo_interface__['type'].upper()]  # type: ignore
         shape = parser.from_fastkml_placemark(kml)
         props = shape._properties or {}
