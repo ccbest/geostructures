@@ -9,8 +9,9 @@ from geostructures.parsers import *
 
 
 def test_parse_fastkml():
-    from fastkml import Folder
-    folder = Folder(name='test folder')
+    import fastkml
+
+    folder = fastkml.Folder(name='test folder')
     folder.append(
         GeoPoint(
             Coordinate(1., 0.),
@@ -34,6 +35,13 @@ def test_parse_fastkml():
         'name': 'test name',
         'description': 'test description'
     }
+
+    # Assert SchemaData fields get parsed correctly
+    with open('./tests/test_files/test_schemadata.kml', 'r') as f:
+        kml_str = f.read()
+
+    result = parse_fastkml(fastkml.KML.from_string(kml_str))
+    assert result[0].properties['TrailHeadName'] == 'Pi in the sky'
 
 
 def test_parse_geojson():
