@@ -23,7 +23,7 @@ from geostructures._base import (
     _RE_LINESTRING_WKT, LineLikeMixin, PointLikeMixin, PolygonLikeMixin,
     SingleShapeBase, SimpleShapeMixin
 )
-from geostructures.time import GEOTIME_TYPE
+from geostructures.time import GEOTIME_TYPE, TimeInterval
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
     inverse_haversine_radians,
@@ -35,7 +35,7 @@ from geostructures._geometry import (
     circumscribing_circle_for_polygon, do_edges_intersect,
     find_line_intersection, is_counter_clockwise
 )
-from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
+from geostructures.utils.functions import round_half_up, is_sub_list
 from geostructures.utils.logging import warn_once
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -489,12 +489,20 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
             holes = [GeoPolygon(ring) for ring in rings[1:]]
 
         properties = gjson.get('properties', {})
-        dt = get_dt_from_geojson_props(
-            properties,
-            time_start_property,
-            time_end_property,
-            time_format
-        )
+        dt = None
+        if time_start_property in properties or time_end_property in properties:
+            # Pop time field so it doesn't remain in properties
+            dt_start = properties.pop(time_start_property, None)
+            dt_end = properties.pop(time_end_property, None)
+
+            if dt_start and not dt_end:
+                dt = TimeInterval.from_str(dt_start, dt_start, time_format)
+
+            elif dt_end and not dt_start:
+                dt = TimeInterval.from_str(dt_end, dt_end, time_format)
+
+            else:
+                dt = TimeInterval.from_str(dt_start, dt_end, time_format)
 
         return GeoPolygon(rings[0], holes=holes, dt=dt, properties=properties)
 
@@ -1394,12 +1402,20 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
             for x in geom.get('coordinates', [])
         ]
         properties = gjson.get('properties', {})
-        dt = get_dt_from_geojson_props(
-            properties,
-            time_start_property,
-            time_end_property,
-            time_format
-        )
+        dt = None
+        if time_start_property in properties or time_end_property in properties:
+            # Pop time field so it doesn't remain in properties
+            dt_start = properties.pop(time_start_property, None)
+            dt_end = properties.pop(time_end_property, None)
+
+            if dt_start and not dt_end:
+                dt = TimeInterval.from_str(dt_start, dt_start, time_format)
+
+            elif dt_end and not dt_start:
+                dt = TimeInterval.from_str(dt_end, dt_end, time_format)
+
+            else:
+                dt = TimeInterval.from_str(dt_start, dt_end, time_format)
         return GeoLineString(coords, dt=dt, properties=properties)
 
     @classmethod
@@ -1635,12 +1651,20 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
 
         coord = Coordinate(**dict(zip(('longitude', 'latitude', 'z'), geom['coordinates'])))
         properties = gjson.get('properties', {})
-        dt = get_dt_from_geojson_props(
-            properties,
-            time_start_property,
-            time_end_property,
-            time_format
-        )
+        dt = None
+        if time_start_property in properties or time_end_property in properties:
+            # Pop time field so it doesn't remain in properties
+            dt_start = properties.pop(time_start_property, None)
+            dt_end = properties.pop(time_end_property, None)
+
+            if dt_start and not dt_end:
+                dt = TimeInterval.from_str(dt_start, dt_start, time_format)
+
+            elif dt_end and not dt_start:
+                dt = TimeInterval.from_str(dt_end, dt_end, time_format)
+
+            else:
+                dt = TimeInterval.from_str(dt_start, dt_end, time_format)
 
         return GeoPoint(coord, dt=dt, properties=properties)
 

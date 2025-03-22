@@ -15,12 +15,11 @@ from geostructures._base import (
     PolygonLikeMixin, MultiShapeBase,
     PointLikeMixin, LineLikeMixin, SimpleShapeMixin
 )
-from geostructures.time import GEOTIME_TYPE
+from geostructures.time import GEOTIME_TYPE, TimeInterval
 from geostructures._geometry import convex_hull
 from geostructures.calc import haversine_distance_meters
 from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, PolygonBase
-from geostructures.utils.functions import get_dt_from_geojson_props
 
 
 class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
@@ -108,12 +107,20 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
             ) for line in geom.get('coordinates', [])
         ]
         properties = gjson.get('properties', {})
-        dt = get_dt_from_geojson_props(
-            properties,
-            time_start_property,
-            time_end_property,
-            time_format
-        )
+        dt = None
+        if time_start_property in properties or time_end_property in properties:
+            # Pop time field so it doesn't remain in properties
+            dt_start = properties.pop(time_start_property, None)
+            dt_end = properties.pop(time_end_property, None)
+
+            if dt_start and not dt_end:
+                dt = TimeInterval.from_str(dt_start, dt_start, time_format)
+
+            elif dt_end and not dt_start:
+                dt = TimeInterval.from_str(dt_end, dt_end, time_format)
+
+            else:
+                dt = TimeInterval.from_str(dt_start, dt_end, time_format)
         return MultiGeoLineString(
             lines,
             dt=dt,
@@ -305,12 +312,20 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
             for coord in geom.get('coordinates', [])
         ]
         properties = gjson.get('properties', {})
-        dt = get_dt_from_geojson_props(
-            properties,
-            time_start_property,
-            time_end_property,
-            time_format
-        )
+        dt = None
+        if time_start_property in properties or time_end_property in properties:
+            # Pop time field so it doesn't remain in properties
+            dt_start = properties.pop(time_start_property, None)
+            dt_end = properties.pop(time_end_property, None)
+
+            if dt_start and not dt_end:
+                dt = TimeInterval.from_str(dt_start, dt_start, time_format)
+
+            elif dt_end and not dt_start:
+                dt = TimeInterval.from_str(dt_end, dt_end, time_format)
+
+            else:
+                dt = TimeInterval.from_str(dt_start, dt_end, time_format)
         return MultiGeoPoint(
             points,
             dt=dt,
@@ -545,12 +560,20 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
             shapes.append(GeoPolygon(shell, holes=holes))
 
         properties = gjson.get('properties', {})
-        dt = get_dt_from_geojson_props(
-            properties,
-            time_start_property,
-            time_end_property,
-            time_format
-        )
+        dt = None
+        if time_start_property in properties or time_end_property in properties:
+            # Pop time field so it doesn't remain in properties
+            dt_start = properties.pop(time_start_property, None)
+            dt_end = properties.pop(time_end_property, None)
+
+            if dt_start and not dt_end:
+                dt = TimeInterval.from_str(dt_start, dt_start, time_format)
+
+            elif dt_end and not dt_start:
+                dt = TimeInterval.from_str(dt_end, dt_end, time_format)
+
+            else:
+                dt = TimeInterval.from_str(dt_start, dt_end, time_format)
         return MultiGeoPolygon(
             shapes,
             dt=dt,
