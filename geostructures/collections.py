@@ -748,7 +748,7 @@ class Track(CollectionBase):
             (y.start - x.start)
             for x, y in zip(self.geoshapes, self.geoshapes[1:])
         ])
-    
+
     def extrapolate(self, time_traveled: 'timedelta') -> 'Track':
         last_shape = self.geoshapes[-1].copy()
         if not isinstance(last_shape, (GeoPoint, GeoLineString)):
@@ -794,7 +794,7 @@ class Track(CollectionBase):
             extrapolated_point = inverse_haversine_degrees(
                 last_shape.coordinate,
                 bearing,
-                speed*time_traveled.total_seconds()
+                speed * time_traveled.total_seconds()
             )
             new_track = Track([
                 GeoPoint(
