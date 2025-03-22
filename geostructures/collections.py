@@ -794,7 +794,7 @@ class Track(CollectionBase):
             extrapolated_point = inverse_haversine_degrees(
                 last_shape.coordinate,
                 bearing,
-                speed * time_traveled.total_seconds()
+                speed*time_traveled.total_seconds()
             )
             new_track = Track([
                 GeoPoint(
