@@ -1065,3 +1065,159 @@ def test_track_intersection():
 
     gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=datetime(2020, 1, 1, 3))
     assert len(track1.filter_by_intersection(gbox)) == 1
+
+
+
+
+@pytest.fixture
+def geo_point_track():
+    """Fixture to create a Track of GeoPoint objects."""
+    points = [
+        GeoPoint(
+            Coordinate(longitude, latitude),
+            dt=TimeInterval(
+                start=datetime(2025, 1, 1, hour),
+                end=datetime(2025, 1, 1, hour + 1)
+            ),
+            properties={"id": f"point_{longitude}"}
+        )
+        for hour, (longitude, latitude) in enumerate([(0, 0), (1, 1), (2, 2)])
+    ]
+    return Track(points)
+
+
+@pytest.fixture
+def mixed_track():
+    """Fixture to create a Track with mixed GeoShapes."""
+    points = [
+        GeoPoint(
+            Coordinate(0, 0),
+            dt=TimeInterval(
+                start=datetime(2025, 1, 1, 0),
+                end=datetime(2025, 1, 1, 1)
+            ),
+            properties={"id": "point_0"}
+        ),
+        GeoLineString([Coordinate(0, 0), Coordinate(1, 1)],
+                      dt=TimeInterval(
+                          start=datetime(2025, 1, 1, 2),
+                          end=datetime(2025, 1, 1, 3)
+                      ))  # Invalid for this test
+    ]
+    return Track(points)
+
+
+def test_to_geoline_string_conversion(geo_point_track):
+    """Test successful conversion of GeoPoint Track to GeoLineString Track."""
+    track = geo_point_track
+    result = track.to_GeoLineString()
+
+    assert len(result.geoshapes) == 2  # Number of segments should be n-1 of GeoPoints
+    assert all(isinstance(shape, GeoLineString) for shape in result.geoshapes)
+
+    # Check segment properties
+    for i, line in enumerate(result.geoshapes):
+        assert line.dt.start == track.geoshapes[i].dt.end
+        assert line.dt.end == track.geoshapes[i + 1].dt.start
+        assert line._properties == track.geoshapes[i].properties
+        assert line.vertices == [
+            track.geoshapes[i].coordinate,
+            track.geoshapes[i + 1].coordinate,
+        ]
+
+
+def test_to_geoline_string_type_error(mixed_track):
+    """Test that TypeError is raised when non-GeoPoint objects are present."""
+    track = mixed_track
+    with pytest.raises(TypeError, match="Track must contain only Points."):
+        track.to_GeoLineString()
+
+
+@pytest.fixture
+def basic_track():
+    """Fixture to create a simple track with GeoPoints."""
+    points = [
+        GeoPoint(
+            Coordinate(0, 0),
+            dt=TimeInterval(
+                start=datetime(2025, 1, 1, 0, 0, 0),
+                end=datetime(2025, 1, 1, 0, 30, 0)
+            ),
+            properties={"id": "point_0"}
+        ),
+        GeoPoint(
+            Coordinate(1, 1),
+            dt=TimeInterval(
+                start=datetime(2025, 1, 1, 0, 30, 0),
+                end=datetime(2025, 1, 1, 1, 0, 0)
+            ),
+            properties={"id": "point_1"}
+        )
+    ]
+    return Track(points)
+
+@pytest.fixture
+def line_track():
+    """Fixture to create a track with a GeoLineString."""
+    line = GeoLineString(
+        [
+            Coordinate(0, 0),
+            Coordinate(1, 1)
+        ],
+        dt=TimeInterval(
+            start=datetime(2025, 1, 1, 0, 0, 0),
+            end=datetime(2025, 1, 1, 1, 0, 0)
+        ),
+        properties={"id": "line_0"}
+    )
+    return Track([line])
+
+
+def test_extrapolate_geopoint(basic_track):
+    """Test extrapolation from a track ending in a GeoPoint."""
+    track = basic_track
+    extrapolated_time = timedelta(minutes=30)
+
+    result = track.extrapolate(extrapolated_time)
+
+    assert len(result.geoshapes) == 3
+    assert isinstance(result.geoshapes[-1], GeoPoint)
+
+    last_point = result.geoshapes[-1]
+    assert last_point.dt.start == datetime(2025, 1, 1, 1, 0, 0, tzinfo=timezone.utc)
+    assert last_point.dt.end == datetime(2025, 1, 1, 1, 30, 0, tzinfo=timezone.utc)
+    assert "id" in last_point.properties
+
+
+def test_extrapolate_geoline(line_track):
+    """Test extrapolation from a track ending in a GeoLineString."""
+    track = line_track
+    extrapolated_time = timedelta(minutes=30)
+
+    result = track.extrapolate(extrapolated_time)
+
+    assert len(result.geoshapes) == 2
+    assert isinstance(result.geoshapes[-1], GeoLineString)
+
+    last_line = result.geoshapes[-1]
+    assert last_line.dt.start == datetime(2025, 1, 1, 1, 0, 0, tzinfo=timezone.utc)
+    assert last_line.dt.end == datetime(2025, 1, 1, 1, 30, 0, tzinfo=timezone.utc)
+    assert "id" in last_line.properties
+
+
+def test_extrapolate_invalid_shape():
+    """Test extrapolation fails on invalid shape type."""
+    invalid_track = Track(
+        [GeoPolygon([
+            Coordinate(0, 0),
+            Coordinate(0, 1),
+            Coordinate(1, 1),
+            Coordinate(0, 0)
+        ], dt=TimeInterval(
+            datetime(2025, 1, 1),
+            datetime(2025, 1, 1)
+        ))]
+    )
+
+    with pytest.raises(TypeError, match="Can only extrapolate a Points or LineStrings."):
+        invalid_track.extrapolate(timedelta(minutes=30))
