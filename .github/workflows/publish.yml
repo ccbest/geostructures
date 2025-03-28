@@ -1,6 +1,9 @@
 name: Publish to PYPI
 
 on:
+  workflow_run:
+    workflows:
+      - "Pull Request Quality Check"
   push:
     tags:
       - '*'
@@ -8,7 +11,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
@@ -21,18 +24,6 @@ jobs:
           python -m pip install build wheel twine 
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-
-      - name: Lint with flake8
-        run: |
-          flake8 geostructures --count --show-source --statistics --max-line-length=120
-
-      - name: Pytest
-        run: |
-          coverage run --source geostructures/ -m pytest && coverage report -m --fail-under 99
-
-      - name: MyPy
-        run: |
-          mypy geostructures --ignore-missing-imports
 
       - name: Build package
         run: |

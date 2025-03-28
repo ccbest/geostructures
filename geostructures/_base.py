@@ -11,8 +11,6 @@ from typing import (
     TypeVar, Union, cast
 )
 
-import fastkml
-
 from geostructures.coordinates import Coordinate
 from geostructures.time import TimeInterval, GEOTIME_TYPE
 from geostructures.utils.functions import default_to_zulu, sanitize_json
@@ -536,6 +534,7 @@ class SimpleShapeMixin(BaseShapeProtocol, ABC):
         Create a geostructure from the corresponding type of FastKML
         Placemark.
         """
+        import fastkml
         placemark: fastkml.Placemark
 
         dt = None
