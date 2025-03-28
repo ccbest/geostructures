@@ -536,6 +536,7 @@ class SimpleShapeMixin(BaseShapeProtocol, ABC):
         Create a geostructure from the corresponding type of FastKML
         Placemark.
         """
+        import fastkml
         placemark: fastkml.Placemark
 
         dt = None

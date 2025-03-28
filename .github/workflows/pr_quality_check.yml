@@ -14,11 +14,17 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Install dependencies
+      - name: Install required dependencies
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+
+      - name: Test compile
+        run: pytest ./tests/test_compile.py
+
+      - name: Install optional dependencies
+        run: pip install -r requirements-dev.txt
 
       - name: Lint with flake8
         run: |
@@ -26,7 +32,7 @@ jobs:
 
       - name: Pytest
         run: |
-          coverage run --source geostructures/ -m pytest && coverage report -m --fail-under 99
+          coverage run --source geostructures/ -m pytest --ignore ./tests/test_compile.py && coverage report -m --fail-under 99
 
       - name: MyPy
         run: |
