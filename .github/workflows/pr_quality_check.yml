@@ -2,7 +2,7 @@ name: Pull Request Quality Check
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, edited, synchronize, reopened]
 
 jobs:
   build:
