@@ -11,7 +11,7 @@ def convert_to_meters(distance: float, unit: str):
     Args:
         distance (float): The distance value.
         unit (str): The unit of distance (kilometer= 'km', mile = 'mi'
-        , feet ='ft',nautical mile = 'nm', yard = 'yd').
+        , feet ='ft',nautical mile = 'nmi', yard = 'yd').
 
     Returns:
         float: The distance in meters.
