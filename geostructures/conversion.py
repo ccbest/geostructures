@@ -21,7 +21,7 @@ def convert_to_meters(distance: float, unit: str):
         'km': 1000,
         'mi': 1609.34,
         'ft': 0.3048,
-        'nmi': 1852,
+        'nm': 1852,
         'yd': 0.9144,
     }
 
