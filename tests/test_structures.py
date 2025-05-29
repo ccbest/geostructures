@@ -288,6 +288,23 @@ def test_shape_to_geojson(geocircle):
     assert geocircle.to_geojson()['geometry'] == geocircle.__geo_interface__
 
 
+def test_geoshape_intersects_shape():
+    shape = GeoCircle(Coordinate(0., 0.), 5_000)
+    assert shape.intersects_shape(GeoPoint(Coordinate(0., 0.)))
+    assert shape.intersects_shape(
+        MultiGeoPoint([
+            GeoPoint(Coordinate(0., 0.)),
+            GeoPoint(Coordinate(0.001, 0.001))
+        ])
+    )
+    assert not shape.intersects_shape(
+        MultiGeoPoint([
+            GeoPoint(Coordinate(1., 0.)),
+            GeoPoint(Coordinate(1., 0.001))
+        ])
+    )
+
+
 def test_geoshape_to_shapely(geobox):
     assert geobox.to_shapely() == shapely.geometry.Polygon(
         [[0.0, 1.0], [0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]

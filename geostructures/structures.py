@@ -3,6 +3,8 @@
 Geospatial shape representations, for use with earth-surface calculations
 """
 
+from __future__ import annotations
+
 __all__ = [
     'GeoBox', 'GeoCircle', 'GeoEllipse', 'GeoLineString', 'GeoPoint', 'GeoPolygon',
     'GeoRing', 'PolygonBase'
@@ -13,7 +15,7 @@ import copy
 from functools import cached_property
 import math
 import statistics
-from typing import cast, Any, Dict, List, Optional, Tuple, Sequence
+from typing import cast, Any, Dict, List, Optional, Tuple, Sequence, TYPE_CHECKING
 
 import numpy as np
 from pydantic import validate_call
@@ -38,6 +40,10 @@ from geostructures._geometry import (
 )
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
+
+
+if TYPE_CHECKING:  # pragma: no cover
+    import shapefile
 
 
 class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
@@ -66,6 +72,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
     @cached_property
     def area(self):
         from pyproj import Geod
+
         geod = Geod(ellps="WGS84")
         area, _ = geod.geometry_area_perimeter(self.to_shapely())
         return area
@@ -561,7 +568,7 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
     @classmethod
     def from_pyshp(
         cls,
-        shape,
+        shape: shapefile.Shape,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
     ):
@@ -1489,7 +1496,12 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
         return GeoLineString(coords, dt=dt, properties=properties)
 
     @classmethod
-    def from_pyshp(cls, shape, dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+    def from_pyshp(
+        cls,
+        shape: shapefile.Shape,
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
         """
         Create a GeoLineString from a pyshyp linestring.
 
@@ -1732,7 +1744,12 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
         return GeoPoint(coord, dt=dt, properties=properties)
 
     @classmethod
-    def from_pyshp(cls, shape, dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+    def from_pyshp(
+        cls,
+        shape: shapefile.Shape,
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
         """
         Create a GeoPoint from a pyshyp point.
 

@@ -1,11 +1,13 @@
 
+from __future__ import annotations
+
 
 __all__ = ['MultiGeoPolygon', 'MultiGeoLineString', 'MultiGeoPoint']
 
 
 import copy
 from functools import cached_property
-from typing import Any, Dict, List, Optional, Tuple, Sequence, cast
+from typing import Any, Dict, List, Optional, Tuple, Sequence, cast, TYPE_CHECKING
 
 import numpy as np
 from pydantic import validate_call
@@ -22,6 +24,9 @@ from geostructures.calc import haversine_distance_meters
 from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, PolygonBase
 from geostructures.utils.functions import get_dt_from_geojson_props
+
+if TYPE_CHECKING:
+    import shapefile
 
 
 class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
@@ -125,7 +130,7 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
     @classmethod
     def from_pyshp(
         cls,
-        shape,
+        shape: shapefile.POLYLINE,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
     ):
@@ -323,7 +328,7 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
     @classmethod
     def from_pyshp(
         cls,
-        shape,
+        shape: shapefile.MULTIPOINT,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
     ):
@@ -564,7 +569,12 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
         )
 
     @classmethod
-    def from_pyshp(cls, shape, dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+    def from_pyshp(
+        cls,
+        shape: shapefile.POLYGON,
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
         """
         Create a MultiGeoShape from a pyshyp multipolygon.
 
