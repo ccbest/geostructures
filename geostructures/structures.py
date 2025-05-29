@@ -16,6 +16,7 @@ import statistics
 from typing import cast, Any, Dict, List, Optional, Tuple, Sequence, TYPE_CHECKING
 
 import numpy as np
+from pydantic import validate_call
 
 from geostructures import LOGGER
 from geostructures._base import (
@@ -46,7 +47,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
 
     def __init__(
         self,
-        holes: Optional[Sequence['PolygonLike']] = None,
+        holes: Optional[Sequence[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -248,10 +249,11 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
 
     """
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(
         self,
         outline: List[Coordinate],
-        holes: Optional[Sequence['PolygonLike']] = None,
+        holes: Optional[Sequence[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
         _is_hole: bool = False,
@@ -644,11 +646,12 @@ class GeoBox(PolygonBase):
 
     """
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(
         self,
         nw_bound: Coordinate,
         se_bound: Coordinate,
-        holes: Optional[List['PolygonLike']] = None,
+        holes: Optional[List[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -789,11 +792,12 @@ class GeoCircle(PolygonBase):
             The length of the circle's radius, in meters
     """
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(
         self,
         center: Coordinate,
         radius: float,
-        holes: Optional[List['PolygonLike']] = None,
+        holes: Optional[List[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -892,13 +896,14 @@ class GeoEllipse(PolygonBase):
 
     """
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(  # pylint: disable=R0913
         self,
         center: Coordinate,
         semi_major: float,
         semi_minor: float,
         rotation: float,
-        holes: Optional[List['PolygonLike']] = None,
+        holes: Optional[List[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -1131,6 +1136,7 @@ class GeoRing(PolygonBase):
 
     """
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(  # pylint: disable=too-many-arguments
         self,
         center: Coordinate,
@@ -1138,7 +1144,7 @@ class GeoRing(PolygonBase):
         outer_radius: float,
         angle_min: float = 0.0,
         angle_max: float = 360.0,
-        holes: Optional[List['PolygonLike']] = None,
+        holes: Optional[List[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -1336,6 +1342,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
     A LineString (or more colloquially, a path) consisting of a series of
     """
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(
         self,
         vertices: List[Coordinate],
@@ -1602,6 +1609,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
 
     """
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(
         self,
         coordinate: Coordinate,

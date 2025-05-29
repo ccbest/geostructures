@@ -8,6 +8,8 @@ from functools import cached_property
 import math
 from typing import List, Optional, Tuple, Union, cast
 
+from pydantic import validate_call
+
 from geostructures.utils.functions import round_half_up
 from geostructures.utils.logging import warn_once
 
@@ -15,31 +17,31 @@ from geostructures.utils.logging import warn_once
 class Coordinate:
     """Representation of a coordinate on the globe (i.e., a lon/lat pair)"""
 
+    @validate_call
     def __init__(
         self,
-        longitude: Union[float, int, str],
-        latitude: Union[float, int, str],
+        longitude: float,
+        latitude: float,
         z: Optional[float] = None,
         m: Optional[float] = None,
         _bounded: bool = True,
     ):
-        lon, lat = float(longitude), float(latitude)
         if _bounded:
-            while not -90 <= lat <= 90:
+            while not -90 <= latitude <= 90:
                 # Crosses one of the poles
-                lat = 90 - (lat - 90) if lat > 90 else -90 - (lat + 90)
-                lon = lon + 180 if lon < 0 else lon - 180
+                latitude = 90 - (latitude - 90) if latitude > 90 else -90 - (latitude + 90)
+                longitude = longitude + 180 if longitude < 0 else longitude - 180
 
-            while not -180 <= lon <= 180:
+            while not -180 <= longitude <= 180:
                 # Crosses the antimeridian
-                lon = lon - 360 if lon > 180 else lon + 360
+                longitude = longitude - 360 if longitude > 180 else longitude + 360
 
         # Longitudes are bounded to [-180, 180)
-        if lon == 180:
-            lon = -180
+        if longitude == 180:
+            longitude = -180
 
-        self.longitude = lon
-        self.latitude = lat
+        self.longitude = longitude
+        self.latitude = latitude
         self.z = z
         self.m = m
 
