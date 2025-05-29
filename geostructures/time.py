@@ -7,8 +7,9 @@ __all__ = ['TimeInterval', 'GEOTIME_TYPE']
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Union
 
+from pydantic import validate_call
 
-GEOTIME_TYPE = Union[datetime, 'TimeInterval']
+
 _DEFAULT_DATE_FORMATS = [
     '%Y-%m-%dT%H:%M:%S.%f%z',
     '%Y-%m-%dT%H:%M:%S.%f',
@@ -23,6 +24,7 @@ _DEFAULT_DATE_FORMATS = [
 class TimeInterval:
     """A class representing a right-open time interval"""
 
+    @validate_call
     def __init__(
         self,
         start: datetime = datetime.min,
@@ -193,3 +195,6 @@ class TimeInterval:
     def union(self, other: TimeInterval) -> TimeInterval:
         """Returns a TimeInterval that spans both time intervals"""
         return TimeInterval(min(self.start, other.start), max(self.end, other.end))
+
+
+GEOTIME_TYPE = Union[datetime, TimeInterval]

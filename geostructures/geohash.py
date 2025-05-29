@@ -460,7 +460,7 @@ class H3Hasher(HasherBase):
             A dictionary of H3 geohashes mapped to the result of the aggregation
             function
         """
-        resolution = kwargs.get('resolution', self.resolution)
+        resolution = cast(Optional[int], kwargs.get('resolution', self.resolution))
         if not resolution:
             raise ValueError('You must pass a H3 resolution.')
 
@@ -491,7 +491,10 @@ class H3Hasher(HasherBase):
             A dictionary of H3 geohashes mapped to the result of the aggregation
             function
         """
-        resolution = kwargs.get('resolution', self.resolution)
+        resolution = cast(Optional[int], kwargs.get('resolution', self.resolution))
+        if not resolution:
+            raise ValueError('You must pass a H3 resolution.')
+
         agg_fn = kwargs.get('agg_fn', len)
         hash_dict: Dict[str, List[Coordinate]] = defaultdict(list)
         for coordinate in coordinates:

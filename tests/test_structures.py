@@ -285,6 +285,8 @@ def test_shape_to_geojson(geocircle):
         }
     }
 
+    assert geocircle.to_geojson()['geometry'] == geocircle.__geo_interface__
+
 
 def test_geoshape_to_shapely(geobox):
     assert geobox.to_shapely() == shapely.geometry.Polygon(

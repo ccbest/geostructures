@@ -8,6 +8,7 @@ from functools import cached_property
 from typing import Any, Dict, List, Optional, Tuple, Sequence, cast
 
 import numpy as np
+from pydantic import validate_call
 
 from geostructures._base import (
     _RE_MULTIPOLYGON_WKT, _RE_MULTIPOINT_WKT,
@@ -25,6 +26,7 @@ from geostructures.utils.functions import get_dt_from_geojson_props
 
 class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(
         self,
         geoshapes: List[GeoLineString],
@@ -230,6 +232,7 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
 
 class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(
         self,
         geoshapes: List[GeoPoint],
@@ -419,6 +422,7 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
 
 class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(
         self,
         geoshapes: Sequence[PolygonBase],

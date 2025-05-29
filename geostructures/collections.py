@@ -14,6 +14,7 @@ from typing import Callable, cast, Any, List, Dict, Optional, Union, Tuple, Type
 from zipfile import ZipFile
 
 import numpy as np
+from pydantic import validate_call
 
 from geostructures import Coordinate, LOGGER
 from geostructures._base import PolygonLikeMixin, PointLikeMixin, LineLikeMixin, MultiShapeBase, BaseShape
@@ -31,6 +32,7 @@ _COL_TYPE = TypeVar('_COL_TYPE', bound='CollectionBase')
 
 class CollectionBase:
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(self, geoshapes: List[BaseShape]):
         super().__init__()
         self.geoshapes = geoshapes
@@ -657,6 +659,7 @@ class Track(CollectionBase):
     A sequence of chronologically-ordered (by start time) GeoShapes
     """
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(self, geoshapes: List[BaseShape]):
         if not all(x.dt for x in geoshapes):
             raise ValueError('All track geoshapes must have an associated time value.')

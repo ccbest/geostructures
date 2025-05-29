@@ -13,14 +13,15 @@ import copy
 from functools import cached_property
 import math
 import statistics
-from typing import cast, Any, Dict, List, Optional, Tuple, Sequence, TYPE_CHECKING
+from typing import cast, Any, Dict, List, Optional, Tuple, Sequence
 
 import numpy as np
+from pydantic import validate_call
 
 from geostructures import LOGGER
 from geostructures._base import (
     _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT,
-    _RE_LINESTRING_WKT, LineLikeMixin, PointLikeMixin, PolygonLikeMixin,
+    _RE_LINESTRING_WKT, BaseShape, LineLikeMixin, PointLikeMixin, PolygonLikeMixin,
     SingleShapeBase, SimpleShapeMixin
 )
 from geostructures.time import GEOTIME_TYPE
@@ -38,15 +39,12 @@ from geostructures._geometry import (
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
 
-if TYPE_CHECKING:  # pragma: no cover
-    from geostructures.typing import GeoShape, PolygonLike
-
 
 class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
 
     def __init__(
         self,
-        holes: Optional[Sequence['PolygonLike']] = None,
+        holes: Optional[Sequence[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -86,7 +84,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
         bounding_coords = self.bounding_coords(**kwargs)
         return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
 
-    def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+    def contains_shape(self, shape: BaseShape, **kwargs) -> bool:
         from geostructures.typing import MultiShape, PointLike, PolygonLike, LineLike
 
         if isinstance(shape, MultiShape):
@@ -140,7 +138,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
             for ring in rings
         ]
 
-    def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+    def intersects_shape(self, shape: BaseShape, **kwargs) -> bool:
         from geostructures.typing import MultiShape, PointLike, PolygonLike, LineLike
 
         if isinstance(shape, MultiShape):
@@ -248,10 +246,11 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
 
     """
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(
         self,
         outline: List[Coordinate],
-        holes: Optional[Sequence['PolygonLike']] = None,
+        holes: Optional[Sequence[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
         _is_hole: bool = False,
@@ -644,11 +643,12 @@ class GeoBox(PolygonBase):
 
     """
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(
         self,
         nw_bound: Coordinate,
         se_bound: Coordinate,
-        holes: Optional[List['PolygonLike']] = None,
+        holes: Optional[List[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -789,11 +789,12 @@ class GeoCircle(PolygonBase):
             The length of the circle's radius, in meters
     """
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(
         self,
         center: Coordinate,
         radius: float,
-        holes: Optional[List['PolygonLike']] = None,
+        holes: Optional[List[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -892,13 +893,14 @@ class GeoEllipse(PolygonBase):
 
     """
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(  # pylint: disable=R0913
         self,
         center: Coordinate,
         semi_major: float,
         semi_minor: float,
         rotation: float,
-        holes: Optional[List['PolygonLike']] = None,
+        holes: Optional[List[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -1131,6 +1133,7 @@ class GeoRing(PolygonBase):
 
     """
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(  # pylint: disable=too-many-arguments
         self,
         center: Coordinate,
@@ -1138,7 +1141,7 @@ class GeoRing(PolygonBase):
         outer_radius: float,
         angle_min: float = 0.0,
         angle_max: float = 360.0,
-        holes: Optional[List['PolygonLike']] = None,
+        holes: Optional[List[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -1336,6 +1339,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
     A LineString (or more colloquially, a path) consisting of a series of
     """
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(
         self,
         vertices: List[Coordinate],
@@ -1405,7 +1409,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
             dt=self.dt,
         )
 
-    def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+    def contains_shape(self, shape: BaseShape, **kwargs) -> bool:
         from geostructures.typing import MultiShape, PolygonLike, PointLike, LineLike
 
         if isinstance(shape, MultiShape):
@@ -1534,7 +1538,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
             properties=properties,
         )
 
-    def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+    def intersects_shape(self, shape: BaseShape, **kwargs) -> bool:
         from geostructures.typing import MultiShape, PolygonLike, PointLike, LineLike
 
         if isinstance(shape, MultiShape):
@@ -1602,6 +1606,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
 
     """
 
+    @validate_call(config=dict(arbitrary_types_allowed=True))
     def __init__(
         self,
         coordinate: Coordinate,
@@ -1652,7 +1657,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
     def contains_coordinate(self, coord: Coordinate) -> bool:
         return coord == self.centroid
 
-    def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+    def contains_shape(self, shape: BaseShape, **kwargs) -> bool:
         from geostructures.typing import MultiShape, PointLike
 
         if isinstance(shape, MultiShape):
@@ -1673,7 +1678,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
             properties=copy.deepcopy(self._properties)
         )
 
-    def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+    def intersects_shape(self, shape: BaseShape, **kwargs) -> bool:
         if isinstance(shape, GeoPoint):
             return self == shape
         return self in shape
