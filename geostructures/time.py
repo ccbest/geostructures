@@ -24,7 +24,7 @@ _DEFAULT_DATE_FORMATS = [
 class TimeInterval:
     """A class representing a right-open time interval"""
 
-    @validate_call(config=dict(arbitrary_types_allowed=True))
+    @validate_call
     def __init__(
         self,
         start: datetime = datetime.min,

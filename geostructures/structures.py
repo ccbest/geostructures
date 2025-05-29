@@ -13,7 +13,7 @@ import copy
 from functools import cached_property
 import math
 import statistics
-from typing import cast, Any, Dict, List, Optional, Tuple, Sequence, TYPE_CHECKING
+from typing import cast, Any, Dict, List, Optional, Tuple, Sequence
 
 import numpy as np
 from pydantic import validate_call
@@ -21,7 +21,7 @@ from pydantic import validate_call
 from geostructures import LOGGER
 from geostructures._base import (
     _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT,
-    _RE_LINESTRING_WKT, LineLikeMixin, PointLikeMixin, PolygonLikeMixin,
+    _RE_LINESTRING_WKT, BaseShape, LineLikeMixin, PointLikeMixin, PolygonLikeMixin,
     SingleShapeBase, SimpleShapeMixin
 )
 from geostructures.time import GEOTIME_TYPE
@@ -38,9 +38,6 @@ from geostructures._geometry import (
 )
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
-
-if TYPE_CHECKING:  # pragma: no cover
-    from geostructures.typing import GeoShape, PolygonLike
 
 
 class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
@@ -87,7 +84,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
         bounding_coords = self.bounding_coords(**kwargs)
         return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
 
-    def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+    def contains_shape(self, shape: BaseShape, **kwargs) -> bool:
         from geostructures.typing import MultiShape, PointLike, PolygonLike, LineLike
 
         if isinstance(shape, MultiShape):
@@ -141,7 +138,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
             for ring in rings
         ]
 
-    def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+    def intersects_shape(self, shape: BaseShape, **kwargs) -> bool:
         from geostructures.typing import MultiShape, PointLike, PolygonLike, LineLike
 
         if isinstance(shape, MultiShape):
@@ -1412,7 +1409,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
             dt=self.dt,
         )
 
-    def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+    def contains_shape(self, shape: BaseShape, **kwargs) -> bool:
         from geostructures.typing import MultiShape, PolygonLike, PointLike, LineLike
 
         if isinstance(shape, MultiShape):
@@ -1541,7 +1538,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
             properties=properties,
         )
 
-    def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+    def intersects_shape(self, shape: BaseShape, **kwargs) -> bool:
         from geostructures.typing import MultiShape, PolygonLike, PointLike, LineLike
 
         if isinstance(shape, MultiShape):
@@ -1660,7 +1657,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
     def contains_coordinate(self, coord: Coordinate) -> bool:
         return coord == self.centroid
 
-    def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+    def contains_shape(self, shape: BaseShape, **kwargs) -> bool:
         from geostructures.typing import MultiShape, PointLike
 
         if isinstance(shape, MultiShape):
@@ -1681,7 +1678,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
             properties=copy.deepcopy(self._properties)
         )
 
-    def intersects_shape(self, shape: 'GeoShape', **kwargs) -> bool:
+    def intersects_shape(self, shape: BaseShape, **kwargs) -> bool:
         if isinstance(shape, GeoPoint):
             return self == shape
         return self in shape
