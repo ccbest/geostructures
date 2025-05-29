@@ -572,7 +572,9 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
     def from_pyshp(
         cls,
         shape: shapefile.POLYGON,
-        dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
         """
         Create a MultiGeoShape from a pyshyp multipolygon.
 
