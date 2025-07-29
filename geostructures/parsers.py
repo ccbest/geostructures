@@ -23,6 +23,8 @@ _PARSER_MAP: Dict[str, SimpleShape] = {
     'MULTIPOLYGON': MultiGeoPolygon,
 }
 
+_TYPE_RE = re.compile(r'\s*([A-Za-z]+)')
+
 
 def parse_fastkml(
     kml,
@@ -142,23 +144,21 @@ def parse_geojson(
     )
 
 
-def parse_wkt(wkt: str) -> GeoShape:
+def parse_wkt(wkt: str, /, **kwargs):
     """
-    Parses a WKT string into its corresponding geostructure.
+    Convert a WKT string to its corresponding geostructure.
 
-    Args:
-        wkt: (str)
-            A well known text string, representing a simplified geometry
-
-    Returns:
-        GeoShape, subtype determined by input
+    Extra keyword arguments are forwarded to the *.from_wkt()* call so you
+    can supply *dt* or *properties* if desired.
     """
-    wkt_type_match = re.match(r'^[a-zA-Z]+', wkt)
-    if wkt_type_match is None:
-        raise ValueError('Invalid WKT')
+    m = _TYPE_RE.match(wkt)
+    if not m:
+        raise ValueError('Invalid WKT – could not find geometry keyword.')
 
-    wkt_type = wkt_type_match.group()
-    if wkt_type not in _PARSER_MAP:
-        raise ValueError('Invalid WKT.')
+    geom_type = m.group(1).upper()
+    try:
+        parser = _PARSER_MAP[geom_type]
+    except KeyError as exc:
+        raise ValueError(f'Unsupported WKT geometry “{geom_type}”.') from exc
 
-    return _PARSER_MAP[wkt_type].from_wkt(wkt)  # type: ignore
+    return parser.from_wkt(wkt, **kwargs)                 # type: ignore[arg-type]
