@@ -25,7 +25,7 @@ from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, PolygonBase
 from geostructures.utils.functions import get_dt_from_geojson_props
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     import shapefile
 
 
