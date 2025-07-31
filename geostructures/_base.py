@@ -57,13 +57,9 @@ _RE_LINESTRING_WKT = re.compile(
 )
 
 _RE_MULTIPOINT_WKT = re.compile(
-    rf'^MULTIPOINT{_RE_ZM_STR}\(\s?'                                  # header
-    rf'(?:'                                                           # first point
-        rf'\(\s?{_RE_COORD_STR}\s?\)'                                 #   ((x y))
-        rf'|{_RE_COORD_STR}'                                          #   or  x y
-    r')'                                                             
-    rf'(?:\s?,\s?(?:\(\s?{_RE_COORD_STR}\s?\)|{_RE_COORD_STR}))*'     # additional
-    rf'\s?\)$',
+    r'^MULTIPOINT\s?\(\s?'  # header
+    r'(?:\(?\s?' + _RE_COORD_STR + r'\)?,?\s?)+' +
+    r'\s?\)$',
     flags=re.IGNORECASE
 )
 _RE_MULTIPOLYGON_WKT = re.compile(

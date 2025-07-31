@@ -7,7 +7,6 @@ __all__ = ['FeatureCollection', 'CollectionBase', 'Track']
 from collections import defaultdict, Counter
 from datetime import date, datetime, time, timedelta
 from functools import cached_property
-import os
 from pathlib import Path
 import tempfile
 from typing import Callable, cast, Any, List, Dict, Iterable, Optional, Union, Tuple, TypeVar

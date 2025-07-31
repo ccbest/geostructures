@@ -6,7 +6,7 @@ __all__ = ['Coordinate']
 
 from functools import cached_property
 import math
-from typing import List, Optional, Tuple, Union, cast
+from typing import List, Optional, Tuple, Union
 
 from pydantic import validate_call
 

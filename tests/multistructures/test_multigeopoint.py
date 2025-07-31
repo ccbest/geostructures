@@ -145,6 +145,20 @@ def test_multigeopoint_from_wkt():
         GeoPoint(Coordinate(1., 1.))
     ]
 
+    wkt = "MULTIPOINT ((0 1), (1 1))"
+    mp = MultiGeoPoint.from_wkt(wkt)
+    assert mp.geoshapes == [
+        GeoPoint(Coordinate(0., 1.)),
+        GeoPoint(Coordinate(1., 1.))
+    ]
+
+    wkt = "MULTIPOINT ((0 1 2 3), (1 1 2 3))"
+    mp = MultiGeoPoint.from_wkt(wkt)
+    assert mp.geoshapes == [
+        GeoPoint(Coordinate(0., 1., z=2., m=3.)),
+        GeoPoint(Coordinate(1., 1., z=2., m=3.)),
+    ]
+
     with pytest.raises(ValueError):
         MultiGeoPoint.from_wkt('test')
 
@@ -210,4 +224,4 @@ def test_multigeopoint_to_wkt():
         GeoPoint(Coordinate(0., 1.)),
         GeoPoint(Coordinate(1., 1.))
     ])
-    assert mp.to_wkt() == "MULTIPOINT(0.0 1.0, 1.0 1.0)"
+    assert mp.to_wkt() == "MULTIPOINT((0.0 1.0), (1.0 1.0))"
