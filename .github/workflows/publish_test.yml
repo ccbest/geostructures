@@ -1,34 +1,56 @@
 name: Publish to Test PYPI
+# Allows tags like v0.13.3-rc1 or 0.13.3-dev.20241001
 
 on:
   push:
-    branches:
-      - test_publish
+    tags:
+      - 'v*rc*'   # e.g., v0.13.3-rc1
+      - 'v*dev*'  # e.g., v0.13.3-dev.20241001
+      - '*rc*'    # also allow tags without leading 'v'
+      - '*dev*'
 
 jobs:
-  build:
+  build-and-publish:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.12'
 
-      - name: Install dependencies
+      - name: Upgrade build tooling
         run: |
-          pip install -U pip setuptools
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install build wheel twine 
+          python -m pip install --upgrade pip
+          pip install build twine
 
-      - name: Build package
+      - name: Verify tag base version matches VERSION
         run: |
-          python setup.py sdist bdist_wheel
+          VERSION_FILE="VERSION"
+          if [ ! -f "$VERSION_FILE" ]; then
+            echo "Missing $VERSION_FILE"; exit 1
+          fi
+          VERSION=$(tr -d ' \n' < "$VERSION_FILE")
+          TAG_RAW="${GITHUB_REF_NAME}"
+          TAG="${TAG_RAW#v}"          # strip optional leading 'v'
+          BASE_TAG="${TAG%%-*}"       # strip any '-rc*' or '-dev*' suffix
+          echo "VERSION=$VERSION"
+          echo "TAG=$TAG_RAW (normalized to base '$BASE_TAG')"
+          if [ "$VERSION" != "$BASE_TAG" ]; then
+            echo "Base tag ($BASE_TAG) does not match VERSION ($VERSION)"; exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Check dist artifacts (twine)
+        run: twine check dist/*
 
       - name: Publish to Test PyPI
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.TEST_PYPI }}
-        run: |
-          twine upload -r testpypi dist/*
-
+        run: twine upload --repository-url https://test.pypi.org/legacy/ dist/*

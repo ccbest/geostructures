@@ -1,38 +1,55 @@
-name: Publish to PYPI
+name: Publish to PyPI
 
 on:
   workflow_run:
     workflows:
       - "Pull Request Quality Check"
+    types: [completed]
   push:
     tags:
       - '*'
 
 jobs:
-  build:
+  build-and-publish:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
 
-      - name: Install dependencies
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Upgrade build tooling
         run: |
           python -m pip install --upgrade pip
-          python -m pip install build wheel twine 
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          pip install build twine
 
-      - name: Build package
+      - name: Verify tag matches VERSION
         run: |
-          python -m build
+          VERSION_FILE="VERSION"
+          if [ ! -f "$VERSION_FILE" ]; then
+            echo "Missing $VERSION_FILE"; exit 1
+          fi
+          VERSION=$(cat "$VERSION_FILE" | tr -d ' \n')
+          TAG="${GITHUB_REF_NAME#v}"     # strip optional leading 'v'
+          echo "VERSION=$VERSION"
+          echo "TAG=$TAG"
+          if [ "$VERSION" != "$TAG" ]; then
+            echo "Tag ($TAG) does not match VERSION ($VERSION)"; exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Check dist artifacts (twine)
+        run: twine check dist/*
 
       - name: Publish to PyPI
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI }}
-        run: |
-          twine upload dist/*
-
+        run: twine upload dist/*

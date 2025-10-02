@@ -7,6 +7,11 @@ authors = [{ name = "Carl Best" }]
 classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
 ]
 dependencies = ["numpy>=2,<3", "pydantic>=2,<3"]
 description = "A lightweight implementation of shapes drawn across a geo-temporal plane."
@@ -15,12 +20,15 @@ name = "geostructures"
 requires-python = ">=3.9"
 
 [project.optional-dependencies]
+all = [
+  ".[df,h3,kml,mgrs,proj,shapely,shapefile]"
+]
 dev = [
     "coverage>=5.5",
     "flake8",
-    "geostructures[df,h3,kml,mgrs,proj,shapely,shapefile]",
+    ".[all]",
     "mypy",
-    "pylint",
+    "pylint>=2.15,<3",
     "pytest",
     "pandas-stubs",
     "types-geopandas",
@@ -40,20 +48,29 @@ file = "README.md"
 
 [project.urls]
 Homepage = "https://github.com/ccbest/geostructures"
+Issues = "https://github.com/ccbest/geostructures/issues"
+Source = "https://github.com/ccbest/geostructures"
+
+[project.license]
+file = "LICENSE"
+
+[tool.mypy]
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
 
 [tool.setuptools]
 include-package-data = false
 
-[tool.setuptools.dynamic.version]
-attr = "geostructures._version.__version__"
+[tool.setuptools.dynamic]
+version = {file = "VERSION"}
 
 [tool.setuptools.package-data]
 geostructures = ["py.typed"]
 
 [tool.setuptools.packages.find]
-exclude = ["*tests"]
+exclude = ["*tests", "tests*"]
 include = ["geostructures*"]
 namespaces = false
 
-[tool.mypy]
-ignore_missing_imports = true
+[tool.setuptools.sdist]
+include = ["VERSION"]
