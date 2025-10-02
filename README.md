@@ -1,7 +1,7 @@
 
 # Geostructures
 
-[![Unit Tests](https://github.com/ccbest/geostructures/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/ccbest/geostructures/actions/workflows/unit-tests.yml)
+[![Unit Tests](https://github.com/ccbest/geostructures/actions/workflows/unit_tests.yml/badge.svg)](https://github.com/ccbest/geostructures/actions/workflows/unit_tests.yml)
 
 A lightweight implementation of shapes drawn across a geo-temporal plane.
 
