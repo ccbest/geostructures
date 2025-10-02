@@ -114,7 +114,7 @@ class BaseShape(ABC):
 
     @property
     @abstractmethod
-    def __geo_interface__(self):
+    def __geo_interface__(self):  # pragma: no cover
         pass
 
     @abstractmethod
@@ -467,7 +467,21 @@ class BaseShape(ABC):
 
     @abstractmethod
     def to_geo_interface(self, **kwargs) -> Dict:
-        pass
+        """
+        Converts the shape to its __geo_interface__, but allows kwargs such as "k"
+        to be passed.
+
+        Keyword Args:
+            include_bbox: bool (default False)
+                If True, will include the `bbox` (bounding box) key in the geo interface
+
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+
+        Returns:
+            Dict
+        """
 
     def to_geojson(
         self,
@@ -543,7 +557,27 @@ class SimpleShapeMixin(BaseShape, ABC):
         time_end_property: str = 'datetime_end',
         time_format: Optional[str] = None,
     ) -> Self:
-        pass
+        """
+        Converts a geojson structure into the corresponding GeoShape
+
+        Args:
+            gjson: Dict[str, Any]
+                A geojson structure
+
+            time_start_property:
+                The name of the geojson feature property that contains the start time, if any
+
+            time_end_property:
+                The name of the geojson feature property that contains the end time, if any
+
+            time_format:
+                The timestamp format, in 1989 C standard format. Reference
+                https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes
+                for additional information.
+
+        Returns:
+            GeoShape
+        """
 
     @classmethod
     def from_fastkml_placemark(cls, placemark: fastkml.Placemark) -> Self:
@@ -553,7 +587,7 @@ class SimpleShapeMixin(BaseShape, ABC):
         """
         import fastkml
 
-        if placemark.geometry is None:
+        if placemark.geometry is None:  # pragma: no cover
             raise ValueError('Malformed KML - placemark is missing geometry data.')
 
         dt = None
@@ -604,7 +638,6 @@ class SimpleShapeMixin(BaseShape, ABC):
         Construct a corresponding geostructure from a Well-Known Text
         (WKT) string.
         """
-        pass
 
 
 class PolygonLikeMixin(BaseShape, ABC):

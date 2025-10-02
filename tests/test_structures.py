@@ -1357,6 +1357,14 @@ def test_geolinestring_bounds():
     )
 
 
+def test_geolinestring_circumscribing_rectangle():
+    ls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)])
+    assert ls.circumscribing_rectangle() == GeoBox(
+        Coordinate(0., 1.),
+        Coordinate(1., 0.)
+    )
+
+
 def test_geolinestring_contains():
     ls = GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.), Coordinate(2., 2.)], dt=datetime(2020, 1, 1))
 
