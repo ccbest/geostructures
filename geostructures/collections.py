@@ -522,12 +522,7 @@ class CollectionBase:
                 for ring in geom.linear_rings():
                     yield from ring
 
-            elif isinstance(geom, MultiGeoPolygon):
-                for poly in geom.geoshapes:
-                    for ring in poly.linear_rings():
-                        yield from ring
-
-            else:  # fallback – should not happen
+            else:  # pragma: no cover  # fallback – should not happen
                 return
 
         def _dimensionality(geom) -> str:
