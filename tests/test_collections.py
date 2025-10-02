@@ -544,22 +544,22 @@ def test_collection_to_from_shapefile(pyshp_round_trip, caplog):
     new = pyshp_round_trip(shapecol)
     assert set(new.geoshapes) == set(shapecol.geoshapes)
 
-    #
-    # # Test that non-polygons get written/read correctly (should be read as a polygon)
-    # shapecol = FeatureCollection([
-    #     GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0), properties={'ID': 0}),
-    #     GeoCircle(Coordinate(0.0, 2.0), 1000, properties={'ID': 1}),
-    #     GeoRing(Coordinate(0.0, 2.0), 1000, 500, properties={'ID': 2}),
-    # ])
-    # with tempfile.TemporaryDirectory() as f:
-    #     with ZipFile(os.path.join(f, 'test.zip'), 'w') as zfile:
-    #         shapecol.to_shapefile(zfile)
-    #
-    #     new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
-    #     assert set(new_shapecol.geoshapes) == set(x.to_polygon() for x in shapecol.geoshapes)
-    #
-    #     new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'), read_layers=['nonexistent'])
-    #     assert new_shapecol.geoshapes == []
+
+    # Test that non-polygons get written/read correctly (should be read as a polygon)
+    shapecol = FeatureCollection([
+        GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0), properties={'ID': 0}),
+        GeoCircle(Coordinate(0.0, 2.0), 1000, properties={'ID': 1}),
+        GeoRing(Coordinate(0.0, 2.0), 1000, 500, properties={'ID': 2}),
+    ])
+    with tempfile.TemporaryDirectory() as f:
+        with ZipFile(os.path.join(f, 'test.zip'), 'w') as zfile:
+            shapecol.to_shapefile(zfile)
+
+        new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
+        assert set(new_shapecol.geoshapes) == set(x.to_polygon() for x in shapecol.geoshapes)
+
+        new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'), read_layers=['nonexistent'])
+        assert new_shapecol.geoshapes == []
 
     # Test writing/reading properties
     pointcol = FeatureCollection([
