@@ -86,6 +86,3 @@ geostructures = ["py.typed"]
 exclude = ["*tests", "tests*"]
 include = ["geostructures*"]
 namespaces = false
-
-[tool.setuptools.sdist]
-include = ["VERSION"]
