@@ -14,7 +14,7 @@ from pydantic import validate_call
 
 from geostructures._base import (
     _RE_MULTIPOLYGON_WKT, _RE_MULTIPOINT_WKT,
-    _RE_MULTILINESTRING_WKT, _RE_LINEAR_RING, _RE_LINEAR_RINGS,
+    _RE_MULTILINESTRING_WKT, _RE_LINEAR_RING, _RE_LINEAR_RINGS, _RE_COORD, _RE_ZM,
     PolygonLikeMixin, MultiShapeBase,
     PointLikeMixin, LineLikeMixin, SimpleShapeMixin
 )
@@ -25,7 +25,7 @@ from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, PolygonBase
 from geostructures.utils.functions import get_dt_from_geojson_props
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     import shapefile
 
 
@@ -375,9 +375,10 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
         if not _RE_MULTIPOINT_WKT.match(wkt_str):
             raise ValueError(f'Invalid WKT MultiPoint: {wkt_str}')
 
-        coords = cls._parse_wkt_linear_ring(wkt_str, _RE_LINEAR_RING.findall(wkt_str)[0])
+        zm = _RE_ZM.findall(wkt_str) or ['ZM']
         shapes = [
-            GeoPoint(coord) for coord in coords
+            GeoPoint(Coordinate.from_wkt(x, zm_order=zm[0]))
+            for x in _RE_COORD.findall(wkt_str)
         ]
 
         return MultiGeoPoint(
@@ -421,7 +422,7 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
         Returns:
             str
         """
-        points = [' '.join(x.centroid.to_str()) for x in self.geoshapes]
+        points = ['(' + ' '.join(x.centroid.to_str()) + ')' for x in self.geoshapes]
         return f'MULTIPOINT({", ".join(points)})'
 
 

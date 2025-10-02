@@ -43,8 +43,8 @@ _NIEMEYER_CONFIG: Dict[int, _NIEMEYER_CONFIG_TYPE] = {
             **{x + 48: x for x in range(10)},
             **{x + 97: x + 10 for x in range(6)},
         },
-        'min_y': -180.,
-        'max_y': 180.,
+        'min_y': -90.,
+        'max_y': 90.,
         'min_x': -180.,
         'max_x': 180.
     },
@@ -71,8 +71,8 @@ _NIEMEYER_CONFIG: Dict[int, _NIEMEYER_CONFIG_TYPE] = {
             **{x + 97: x + 38 for x in range(26)},
             **{61: 10, 95: 37}
         },
-        'min_y': -180.,
-        'max_y': 180.,
+        'min_y': -90.,
+        'max_y': 90.,
         'min_x': -180.,
         'max_x': 180.
     }
@@ -151,7 +151,7 @@ def _coord_to_niemeyer(coordinate: Coordinate, length: int, base: int) -> str:
     lon_interval = [config['min_x'], config['max_x']]
     character, bit = 0, 0
     lon_component = True
-    lon, lat = coordinate.to_float()
+    lon, lat = coordinate.longitude, coordinate.latitude
 
     geohash_position = 0
     while geohash_position < length:
@@ -393,12 +393,11 @@ class H3Hasher(HasherBase):
                 h3.latlng_to_cell(segment[0].latitude, segment[0].longitude, resolution),
                 h3.latlng_to_cell(segment[1].latitude, segment[1].longitude, resolution)
             )
+
             # Add single ring buffer
-            all_hexes = set(
-                _geohash
-                for geohash in line_hashes
-                for _geohash in h3.grid_ring(geohash, 1)
-            )
+            all_hexes = set(line_hashes)
+            for geohash in line_hashes:
+                all_hexes.update(h3.grid_ring(geohash, 1))
 
             # Test which hexes actually intersect the line
             for _hex in all_hexes:
@@ -517,7 +516,9 @@ class H3Hasher(HasherBase):
             The unique list of hashes that comprise the shape
         """
         if isinstance(shape, MultiShape):
-            return set().union(*[self.hash_shape(x) for x in shape.geoshapes])
+            return set().union(
+                *(self.hash_shape(x, resolution=self.resolution) for x in shape.geoshapes)
+            )
 
         resolution = kwargs.get('resolution', self.resolution)
         if not resolution:
@@ -569,14 +570,14 @@ class NiemeyerHasher(HasherBase):
 
         return [
             # from directly above, then clockwise
-            _coord_to_niemeyer(Coordinate(lon, lat + lat_err * 2), length, base),
-            _coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat + lat_err * 2), length, base),
-            _coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat), length, base),
-            _coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat - lat_err * 2), length, base),
-            _coord_to_niemeyer(Coordinate(lon, lat - lat_err * 2), length, base),
-            _coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat - lat_err * 2), length, base),
-            _coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat), length, base),
-            _coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat + lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon,                  lat + lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon + lon_err * 2,    lat + lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon + lon_err * 2,    lat), length, base),
+            _coord_to_niemeyer(Coordinate(lon + lon_err * 2,    lat - lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon,                  lat - lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon - lon_err * 2,    lat - lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon - lon_err * 2,    lat), length, base),
+            _coord_to_niemeyer(Coordinate(lon - lon_err * 2,    lat + lat_err * 2), length, base),
         ]
 
     def _hash_linestring(

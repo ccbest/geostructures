@@ -51,7 +51,7 @@ def bearing_degrees(coord1: Coordinate, coord2: Coordinate, **kwargs) -> float:
 
 def haversine_distance_meters(coord1: Coordinate, coord2: Coordinate) -> float:
     """
-    Calculate the Haversine distance in km between two points
+    Calculate the Haversine distance in meters between two points
 
     Args:
         coord1:

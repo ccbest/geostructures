@@ -336,7 +336,7 @@ def ensure_edge_bounds(coord1: Coordinate, coord2: Coordinate) -> Tuple[Coordina
     """
     if abs(coord1.longitude - coord2.longitude) > 180:
         adjusted_lon = coord2.longitude - 360 if coord1.longitude < 0 else coord2.longitude + 360
-        return coord1, Coordinate(adjusted_lon, coord2.latitude, _bounded=False)
+        return coord1, Coordinate(adjusted_lon, coord2.latitude, coord2.z, coord2.m, _bounded=False)
     return coord1, coord2
 
 

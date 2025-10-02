@@ -7,10 +7,9 @@ __all__ = ['FeatureCollection', 'CollectionBase', 'Track']
 from collections import defaultdict, Counter
 from datetime import date, datetime, time, timedelta
 from functools import cached_property
-import os
 from pathlib import Path
 import tempfile
-from typing import Callable, cast, Any, List, Dict, Optional, Union, Tuple, TypeVar
+from typing import Callable, cast, Any, List, Dict, Iterable, Optional, Union, Sequence, Tuple, TypedDict, TypeVar
 from zipfile import ZipFile
 
 import numpy as np
@@ -494,114 +493,143 @@ class CollectionBase:
         include_properties: Optional[List[str]] = None,
     ) -> None:
         """
-        Writes the collection to a ESRI shapefile. Note that shape"file"s actually
-        consist of several files, so you should provide a directory rather than
-        a file name.
+        Write the collection to a zip-archived ESRI shapefile set.
 
-        Requires the pyshp library (canonically imported as 'shapefile').
-
-        Args:
-            zip_file:
-                The zipfile to write shape files to.
-
-            include_properties: (Default None)
-                A list of properties to include. If None, all properties will be included.
-
-        Returns:
-            None
+        Each geometry family (points, multipoints, lines, polygons) is **further
+        split** by its dimensionality (XY / XYM / XYZ) so that every writer
+        receives only *one* shape type – required by pyshp.
         """
         import shapefile
 
-        def _convert_dt(val: Any):
-            """Convert date/datetime values to string"""
-            if isinstance(val, (datetime, date)):
-                return val.isoformat()
-            return val
+        # 1. Split the collection into geometry families
+        def _iter_coords(geom) -> Iterable["Coordinate"]:
+            """Yield every Coordinate contained in *geom* (recursively)."""
+            if isinstance(geom, GeoPoint):
+                yield geom.centroid
 
-        points: List[GeoPoint] = []
-        multipoints: List[MultiGeoPoint] = []
-        lines: List[LineLikeMixin] = []
-        shapes: List[PolygonLikeMixin] = []
-        for shape in self.geoshapes:
-            if isinstance(shape, GeoPoint):
-                points.append(shape)
+            elif isinstance(geom, MultiGeoPoint):
+                for pt in geom.geoshapes:
+                    yield pt.centroid
 
-            elif isinstance(shape, MultiGeoPoint):
-                multipoints.append(shape)
+            elif isinstance(geom, GeoLineString):
+                yield from geom.vertices
 
-            elif isinstance(shape, LineLikeMixin):
-                lines.append(shape)
+            elif isinstance(geom, MultiGeoLineString):
+                for line in geom.geoshapes:
+                    yield from line.vertices
 
-            elif isinstance(shape, PolygonLikeMixin):
-                shapes.append(shape)
+            elif isinstance(geom, PolygonLikeMixin):
+                for ring in geom.linear_rings():
+                    yield from ring
 
+            else:  # pragma: no cover  # fallback – should not happen
+                return
+
+        def _dimensionality(geom) -> str:
+            """Return 'XYZ' (has Z), 'XYM' (has M, no Z) or 'XY'."""
+            has_z = has_m = False
+            for c in _iter_coords(geom):
+                has_z |= getattr(c, "z", None) is not None
+                has_m |= getattr(c, "m", None) is not None
+                if has_z:  # once True the result cannot change
+                    break
+            if has_z:
+                return "XYZ"
+            if has_m:
+                return "XYM"
+            return "XY"
+
+        def _convert_dt(val: Any) -> Any:
+            """Convert date / datetime to ISO strings so dBASE does not choke."""
+            return val.isoformat() if isinstance(val, (date, datetime)) else val
+
+        class Families(TypedDict):
+            points: list[GeoPoint]
+            multipoints: list[MultiGeoPoint]
+            lines: list[LineLikeMixin]
+            shapes: list[PolygonLikeMixin]
+
+        families: Families = {
+            "points": [],
+            "multipoints": [],
+            "lines": [],
+            "shapes": [],
+        }
+        for g in self.geoshapes:
+            if isinstance(g, GeoPoint):
+                families["points"].append(g)
+            elif isinstance(g, MultiGeoPoint):
+                families["multipoints"].append(g)
+            elif isinstance(g, LineLikeMixin):
+                families["lines"].append(g)
+            elif isinstance(g, PolygonLikeMixin):
+                families["shapes"].append(g)
             else:
-                raise ValueError(f'Unrecognized shape type {type(shape)}')
+                raise ValueError(f"Unrecognised geometry type: {type(g)}")
 
-        with tempfile.TemporaryDirectory() as tempdir:
-            for shapetype, shape_group in (
-                ('points', points), ('multipoints', multipoints),
-                ('lines', lines), ('shapes', shapes)
-            ):
-                if not shape_group:
-                    continue
+        # 2. Work in a temp directory so we can zip afterwards
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
 
-                writer = shapefile.Writer(os.path.join(tempdir, shapetype))
+            for fam_name, geoms in families.items():
+                # 2a. Further split by dimensionality
+                dims = defaultdict(list)  # key: 'XY' / 'XYM' / 'XYZ'
+                for g in cast(Sequence, geoms):
+                    dims[_dimensionality(g)].append(g)
 
-                # 2-Tuples of properties and their datatypes
-                _types = set(
-                    (_key, type(_val))
-                    for x in shape_group
-                    for _key, _val in x.properties.items()
-                    if (not include_properties) or _key in include_properties
-                )
-                typemap = dict(_types)
+                for dim_key, sublist in dims.items():
+                    # 2b. Create writer for this (family, dimensionality)
+                    base = tmpdir_path / f"{fam_name}_{dim_key.lower()}"
+                    with shapefile.Writer(base) as w:
+                        # Collect properties & declare dBASE fields
+                        dtype_pairs = {
+                            (k, type(v))
+                            for geom in sublist
+                            for k, v in geom.properties.items()
+                            if include_properties is None or k in include_properties
+                        }
+                        dtype_map = dict(dtype_pairs)
 
-                # Declare fields
-                for field, _type in typemap.items():
-                    if issubclass(_type, bool):
-                        # bools are subclasses of int (WAT) - have to check first
-                        writer.field(field, 'L')
-                    elif issubclass(_type, (float, int)) and not issubclass(_type, datetime):
-                        # datetimes are subclasses of ints too
-                        writer.field(field, 'N')
-                    else:
-                        writer.field(field, 'C')
+                        for field, dtype in dtype_map.items():
+                            if issubclass(dtype, bool):
+                                w.field(field, "L")
+                            elif issubclass(dtype, (int, float)) and not issubclass(dtype, datetime):
+                                w.field(field, "N")
+                            else:
+                                w.field(field, "C")
+                        w.field("ID", "N")
 
-                writer.field('ID', 'N')
+                        # Warn about inconsistent property types
+                        if dtype_pairs:
+                            mc = Counter(k for k, _ in dtype_pairs).most_common(1)[0]
+                            if mc[1] > 1:
+                                LOGGER.warning(
+                                    "Conflicting data types found in properties; "
+                                    "your shapefile may not be written correctly."
+                                )
 
-                if _types:
-                    # Check to make sure data types are consistent
-                    c = Counter(x[0] for x in _types)
-                    if c.most_common(1)[0][1] > 1:
-                        # Just log a warning - still want to try to write the file
-                        LOGGER.warning(
-                            'Conflicting data types found in properties; '
-                            'your shapefile may not get written correctly'
-                        )
+                        # Write features
+                        for idx, geom in enumerate(sublist):
+                            props = geom.properties
+                            w.record(*[_convert_dt(props.get(k)) for k in dtype_map], idx)
+                            geom.to_pyshp(w)
 
-                # Write shapes to file
-                for idx, shape in enumerate(shape_group):  # type: ignore
-                    # Write out properties
-                    props = shape.properties
-                    writer.record(*[_convert_dt(props.get(k)) for k in typemap], idx)
-                    shape.to_pyshp(writer)  # type: ignore
+                    # 2c. Add the four components to the zip
+                    for ext in (".shp", ".shx", ".dbf"):
+                        comp_path = f"{base}{ext}"
+                        zip_file.write(comp_path, f"{base.name}{ext}")
 
-                writer.close()
-                zip_file.write(writer.shx.name, writer.shx.name.split(os.sep)[-1])
-                zip_file.write(writer.shp.name, writer.shp.name.split(os.sep)[-1])
-                zip_file.write(writer.dbf.name, writer.dbf.name.split(os.sep)[-1])
+                    prj = tmpdir_path / f"{base.name}.prj"
+                    prj.write_text(
+                        'GEOGCS["WGS 84",'
+                        'DATUM["WGS_1984",'
+                        'SPHEROID["WGS 84",6378137,298.257223563]],'
+                        'PRIMEM["Greenwich",0],'
+                        'UNIT["degree",0.0174532925199433]]'
+                    )
+                    zip_file.write(prj, prj.name)
 
-                with open(os.path.join(tempdir, f'{shapetype}.prj'), 'w+') as f:
-                    # Taken from pyshp's readme
-                    wkt = 'GEOGCS["WGS 84",'
-                    wkt += 'DATUM["WGS_1984",'
-                    wkt += 'SPHEROID["WGS 84",6378137,298.257223563]]'
-                    wkt += ',PRIMEM["Greenwich",0],'
-                    wkt += 'UNIT["degree",0.0174532925199433]]'
-                    f.write(wkt)
-                    zip_file.write(f.name, f.name.split(os.sep)[-1])
-
+        # nothing to return
         return
 
 

@@ -1,3 +1,4 @@
+# geostructures/structures.py
 # pylint: disable=C0302
 """
 Geospatial shape representations, for use with earth-surface calculations
@@ -75,7 +76,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
 
         geod = Geod(ellps="WGS84")
         area, _ = geod.geometry_area_perimeter(self.to_shapely())
-        return area
+        return abs(area)
 
     @property
     def has_m(self) -> bool:
@@ -292,35 +293,12 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
         if len(self.outline) != len(other.outline):
             return False  # Can't match if not the same number of points
 
-        s_outline = self.outline[0:-1]
-        o_outline = other.outline[0:-1]
-        outline_eq = False
-        for _ in range(0, len(o_outline)):
-            # Rotate the outline
-            if s_outline in (o_outline, o_outline[::-1]):
-                outline_eq = True
-                break
-            o_outline = o_outline[1:] + [o_outline[0]]
-
-        if not outline_eq:
+        if self._canonical() != other._canonical():
             return False
 
-        if len(self.holes) != len(other.holes):
-            return False
-
-        s_holes = set(
-            [
-                tuple({(x, y) for x, y in zip(hole.bounding_coords(), hole.bounding_coords()[1:])})
-                for hole in self.holes
-            ]
-        )
-        o_holes = set(
-            [
-                tuple({(x, y) for x, y in zip(hole.bounding_coords(), hole.bounding_coords()[1:])})
-                for hole in other.holes
-            ]
-        )
-        return s_holes == o_holes
+        # holes – treat each as its own canonical ring
+        return {h.to_polygon()._canonical() for h in self.holes} == \
+            {h.to_polygon()._canonical() for h in other.holes}
 
     def __hash__(self):
         return hash((tuple(self.outline), self.dt))
@@ -362,6 +340,15 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
     @property
     def has_z(self) -> bool:
         return any(x.z is not None for x in self.outline)
+
+    def _canonical(self):
+        """Return rotation- & orientation-invariant tuple of (lon,lat,z?) tuples."""
+        coords = [c.to_float() for c in self.bounding_coords()[:-1]]  # drop duplicate last
+        n = len(coords)
+        i0 = min(range(n), key=lambda i: coords[i])  # lexicographically min
+        fwd = tuple(coords[(i0 + k) % n] for k in range(n))
+        rev = tuple(coords[(i0 - k) % n] for k in range(n))
+        return min(fwd, rev)  # now compares plain tuples
 
     @staticmethod
     def _point_in_polygon(
@@ -826,14 +813,13 @@ class GeoCircle(PolygonBase):
         return f'<GeoCircle at {self.centroid.to_float()}; radius {self.radius} meters>'
 
     @cached_property
-    def bounds(self) -> Tuple[float, float, float, float]:
-        nw_bound = inverse_haversine_degrees(
-            self.center, 315, self.radius * math.sqrt(2)
-        )
-        se_bound = inverse_haversine_degrees(
-            self.center, 135, self.radius * math.sqrt(2)
-        )
-        return nw_bound.longitude, se_bound.latitude, se_bound.longitude, nw_bound.latitude
+    def bounds(self) -> tuple[float, float, float, float]:
+        # cardinal directions – no √2 expansion
+        north = inverse_haversine_degrees(self.center, 0, self.radius)
+        east = inverse_haversine_degrees(self.center, 90, self.radius)
+        south = inverse_haversine_degrees(self.center, 180, self.radius)
+        west = inverse_haversine_degrees(self.center, 270, self.radius)
+        return west.longitude, south.latitude, east.longitude, north.latitude
 
     @property
     def centroid(self) -> Coordinate:

@@ -6,7 +6,7 @@ __all__ = ['Coordinate']
 
 from functools import cached_property
 import math
-from typing import List, Optional, Tuple, Union, cast
+from typing import List, Optional, Tuple, Union
 
 from pydantic import validate_call
 
@@ -48,12 +48,8 @@ class Coordinate:
     def __eq__(self, other):
         if not isinstance(other, Coordinate):
             return False
-
-        return (
-            self.latitude == other.latitude and
-            self.longitude == other.longitude and
-            self.z == other.z
-        )
+        return (self.latitude, self.longitude, self.z, self.m) == \
+            (other.latitude, other.longitude, other.z, other.m)
 
     def __hash__(self):
         return hash((self.longitude, self.latitude, self.z, self.m))
@@ -130,13 +126,8 @@ class Coordinate:
 
         """
         from pyproj import Transformer
-        transformer = Transformer.from_crs(crs, 'EPSG:4326')
-        x, y = transformer.transform(lat, lon)
-
-        return Coordinate(
-            round_half_up(y, 6),
-            round_half_up(x, 6),
-        )
+        lon, lat = Transformer.from_crs(crs, "EPSG:4326", always_xy=True).transform(lon, lat)
+        return Coordinate(round_half_up(lon, 6), round_half_up(lat, 6))
 
     @classmethod
     def from_qdms(cls, lon: str, lat: str):
@@ -183,14 +174,15 @@ class Coordinate:
         Returns:
             Coordinate
         """
-        parts, zm = wkt_str.split(' '), {}
+        parts = wkt_str.split()
+        lon, lat = map(float, parts[:2])
+        z = m = None
         if len(parts) > 2:
-            warn_once(
-                'Z/M values are not supported for geometric operations and will be ignored.'
-            )
-            zm = dict(zip(list(zm_order.lower()), map(float, parts[2:])))
-
-        return Coordinate(*cast(Tuple[float, float], parts[:2]), z=zm.get('z'), m=zm.get('m'))
+            warn_once('Z/M values are not supported for geometric operations and will be ignored.')
+            zm_vals = list(map(float, parts[2:]))
+            z_map = dict(zip(list(zm_order.lower()), zm_vals))
+            z, m = z_map.get("z"), z_map.get("m")
+        return Coordinate(lon, lat, z=z, m=m)
 
     def to_dms(self) -> Tuple[Tuple[int, int, float, str], Tuple[int, int, float, str]]:
         """
@@ -228,9 +220,9 @@ class Coordinate:
         if reverse:
             out = out[::-1]
 
-        if self.z:
+        if self.z is not None:
             out.append(self.z)
-        if self.m:
+        if self.m is not None:
             out.append(self.m)
         return tuple(out)
 
@@ -253,14 +245,10 @@ class Coordinate:
             A coordinate in the target projection system.
         """
         from pyproj import Transformer
-        transformer = Transformer.from_crs('EPSG:4326', crs)
-        x, y = transformer.transform(self.latitude, self.longitude)
-
-        return Coordinate(
-            round_half_up(y, 6),
-            round_half_up(x, 6),
-            False
+        lon, lat = Transformer.from_crs("EPSG:4326", crs, always_xy=True).transform(
+            self.longitude, self.latitude
         )
+        return Coordinate(round_half_up(lon, 6), round_half_up(lat, 6), _bounded=False)
 
     def to_qdms(self, reverse: bool = False) -> Tuple[str, str]:
         """

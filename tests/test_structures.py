@@ -131,6 +131,27 @@ def test_geoshape_end():
         _ = GeoCircle(Coordinate('0.0', '0.0'), 50).end
 
 
+def test_geoshape_has_m():
+    geo = GeoCircle(Coordinate('0.0', '0.0'), 500, dt=default_test_datetime)
+    assert not geo.has_m
+
+    geo = GeoPolygon([
+        Coordinate('0.0', '0.0', m=1),
+        Coordinate('1.0', '1.0', m=1),
+        Coordinate('1.0', '0.0', m=1),
+        Coordinate('0.0', '0.0', m=1),
+    ])
+    assert geo.has_m
+
+
+def test_geoshape_has_z():
+    geo = GeoCircle(Coordinate('0.0', '0.0'), 500)
+    assert not geo.has_z
+
+    geo = GeoCircle(Coordinate('0.0', '0.0', z=1), 500)
+    assert geo.has_z
+
+
 def test_geoshape_volume():
     assert GeoBox(
         Coordinate(0.0, 1.0),
@@ -1333,6 +1354,14 @@ def test_geolinestring_bounds():
     ls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)])
     assert ls.bounds == (
         0., 0., 1., 1.
+    )
+
+
+def test_geolinestring_circumscribing_rectangle():
+    ls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)])
+    assert ls.circumscribing_rectangle() == GeoBox(
+        Coordinate(0., 1.),
+        Coordinate(1., 0.)
     )
 
 

@@ -57,7 +57,9 @@ _RE_LINESTRING_WKT = re.compile(
 )
 
 _RE_MULTIPOINT_WKT = re.compile(
-    r'^MULTIPOINT' + _RE_ZM_STR + _RE_LINEAR_RING_STR + '$',
+    r'^MULTIPOINT\s?\(\s?'  # header
+    r'(?:\(?\s?' + _RE_COORD_STR + r'\)?,?\s?)+' +
+    r'\s?\)$',
     flags=re.IGNORECASE
 )
 _RE_MULTIPOLYGON_WKT = re.compile(
@@ -93,7 +95,10 @@ class BaseShape(ABC):
             self.dt = dt
 
         self._properties = properties or {}
-        self.to_shapely = lru_cache(maxsize=1)(self._to_shapely)
+        self.to_shapely = lru_cache(maxsize=1)(lambda: self._to_shapely())
+
+    def __contains__(self, other: Union['GeoShape', Coordinate]):
+        return self.contains(other)  # pragma: no cover
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -101,15 +106,15 @@ class BaseShape(ABC):
         return state
 
     def __setstate__(self, state):
-        state['to_shapely'] = lru_cache(maxsize=1)(self._to_shapely)
         self.__dict__ = state
+        self.to_shapely = self._make_shp_proxy()
 
-    def __contains__(self, other: Union['GeoShape', Coordinate]):
-        return self.contains(other)  # pragma: no cover
+    def __reduce_ex__(self, protocol):
+        return (self.__class__._rebuild_from_state, (self.__getstate__(),))
 
     @property
     @abstractmethod
-    def __geo_interface__(self):
+    def __geo_interface__(self):  # pragma: no cover
         pass
 
     @abstractmethod
@@ -195,6 +200,10 @@ class BaseShape(ABC):
         """
         return f'({",".join(" ".join(coord.to_str()) for coord in ring)})'
 
+    def _make_shp_proxy(self):
+        """Create a 1-slot LRU wrapper around _to_shapely()."""
+        return lru_cache(maxsize=1)(self._to_shapely)
+
     @staticmethod
     def _parse_wkt_linear_ring(wkt_str: str, wkt_coords: str):
         """
@@ -218,6 +227,12 @@ class BaseShape(ABC):
         zm = _RE_ZM.findall(wkt_str) or ['ZM']
         parsed_coords = [Coordinate.from_wkt(coord, zm_order=zm[0]) for coord in coords]
         return parsed_coords
+
+    @classmethod
+    def _rebuild_from_state(cls, state):
+        obj = cls.__new__(cls)
+        obj.__setstate__(state)
+        return obj
 
     def buffer_dt(
         self: SHAPE_VAR,
@@ -273,6 +288,8 @@ class BaseShape(ABC):
     def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
         """
         Tests whether this shape fully contains another one.
+
+        Does not test for time containment. To test for time and shape overlap, use .contains()
 
         Args:
             shape:
@@ -450,7 +467,21 @@ class BaseShape(ABC):
 
     @abstractmethod
     def to_geo_interface(self, **kwargs) -> Dict:
-        pass
+        """
+        Converts the shape to its __geo_interface__, but allows kwargs such as "k"
+        to be passed.
+
+        Keyword Args:
+            include_bbox: bool (default False)
+                If True, will include the `bbox` (bounding box) key in the geo interface
+
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+
+        Returns:
+            Dict
+        """
 
     def to_geojson(
         self,
@@ -526,7 +557,27 @@ class SimpleShapeMixin(BaseShape, ABC):
         time_end_property: str = 'datetime_end',
         time_format: Optional[str] = None,
     ) -> Self:
-        pass
+        """
+        Converts a geojson structure into the corresponding GeoShape
+
+        Args:
+            gjson: Dict[str, Any]
+                A geojson structure
+
+            time_start_property:
+                The name of the geojson feature property that contains the start time, if any
+
+            time_end_property:
+                The name of the geojson feature property that contains the end time, if any
+
+            time_format:
+                The timestamp format, in 1989 C standard format. Reference
+                https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes
+                for additional information.
+
+        Returns:
+            GeoShape
+        """
 
     @classmethod
     def from_fastkml_placemark(cls, placemark: fastkml.Placemark) -> Self:
@@ -536,7 +587,7 @@ class SimpleShapeMixin(BaseShape, ABC):
         """
         import fastkml
 
-        if placemark.geometry is None:
+        if placemark.geometry is None:  # pragma: no cover
             raise ValueError('Malformed KML - placemark is missing geometry data.')
 
         dt = None
@@ -587,7 +638,6 @@ class SimpleShapeMixin(BaseShape, ABC):
         Construct a corresponding geostructure from a Well-Known Text
         (WKT) string.
         """
-        pass
 
 
 class PolygonLikeMixin(BaseShape, ABC):
@@ -847,8 +897,6 @@ class MultiShapeBase(SimpleShapeMixin, BaseShape, ABC):
         for self_shape in self.geoshapes:
             if self_shape.intersects_shape(shape):
                 return True
-
-            return False
 
         return False
 
