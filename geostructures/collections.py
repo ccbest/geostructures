@@ -9,7 +9,7 @@ from datetime import date, datetime, time, timedelta
 from functools import cached_property
 from pathlib import Path
 import tempfile
-from typing import Callable, cast, Any, List, Dict, Iterable, Optional, Union, Tuple, TypeVar
+from typing import Callable, cast, Any, List, Dict, Iterable, Optional, Union, Sequence, Tuple, TypedDict, TypeVar
 from zipfile import ZipFile
 
 import numpy as np
@@ -543,7 +543,18 @@ class CollectionBase:
             """Convert date / datetime to ISO strings so dBASE does not choke."""
             return val.isoformat() if isinstance(val, (date, datetime)) else val
 
-        families = defaultdict(list)
+        class Families(TypedDict):
+            points: list[GeoPoint]
+            multipoints: list[MultiGeoPoint]
+            lines: list[LineLikeMixin]
+            shapes: list[PolygonLikeMixin]
+
+        families: Families = {
+            "points": [],
+            "multipoints": [],
+            "lines": [],
+            "shapes": [],
+        }
         for g in self.geoshapes:
             if isinstance(g, GeoPoint):
                 families["points"].append(g)
@@ -558,17 +569,17 @@ class CollectionBase:
 
         # 2. Work in a temp directory so we can zip afterwards
         with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir = Path(tmpdir)
+            tmpdir_path = Path(tmpdir)
 
             for fam_name, geoms in families.items():
                 # 2a. Further split by dimensionality
                 dims = defaultdict(list)  # key: 'XY' / 'XYM' / 'XYZ'
-                for g in geoms:
+                for g in cast(Sequence, geoms):
                     dims[_dimensionality(g)].append(g)
 
                 for dim_key, sublist in dims.items():
                     # 2b. Create writer for this (family, dimensionality)
-                    base = tmpdir / f"{fam_name}_{dim_key.lower()}"
+                    base = tmpdir_path / f"{fam_name}_{dim_key.lower()}"
                     with shapefile.Writer(base) as w:
                         # Collect properties & declare dBASE fields
                         dtype_pairs = {
@@ -608,7 +619,7 @@ class CollectionBase:
                         comp_path = f"{base}{ext}"
                         zip_file.write(comp_path, f"{base.name}{ext}")
 
-                    prj = tmpdir / f"{base.name}.prj"
+                    prj = tmpdir_path / f"{base.name}.prj"
                     prj.write_text(
                         'GEOGCS["WGS 84",'
                         'DATUM["WGS_1984",'

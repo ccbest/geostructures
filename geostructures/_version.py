@@ -7,7 +7,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 
-def _read_version_file() -> str | None:
+def _read_version_file() -> str:
     """
     Fallback when running from a source tree without installed metadata. Tries repo-root
     VERSION first, then a copy inside the package.
@@ -22,7 +22,7 @@ def _read_version_file() -> str | None:
             return p.read_text(encoding="utf-8").strip()
         except Exception:
             pass
-    return None
+    raise FileNotFoundError('geostructures version file not found')
 
 
 try:
