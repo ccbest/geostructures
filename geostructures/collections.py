@@ -276,6 +276,9 @@ class CollectionBase:
             ):
                 return None
 
+            if isinstance(dt_start, str) and isinstance(dt_start, str):
+                return TimeInterval.from_str(dt_start, dt_end)
+
             if not (dt_start and dt_end) or dt_start == dt_end:
                 return dt_start or dt_end
 
