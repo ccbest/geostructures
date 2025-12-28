@@ -10,6 +10,7 @@ from pygeoif import MultiPolygon
 import pytest
 import shapely
 
+from build.lib.geostructures.distance import destination_point
 from geostructures import *
 from geostructures.multistructures import *
 from geostructures.time import TimeInterval
@@ -259,7 +260,7 @@ def test_shapelike_edges():
 
 def test_shapelike_intersects_shape():
     circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000)
-    circle2 = GeoCircle(Coordinate(0.0899322, 0.0), 5_000)  # Exactly 10km to the right
+    circle2 = GeoCircle(destination_point(Coordinate(0.0, 0.0), 90., 5_000), 5_000)
     # Exactly one point where shapes intersect (boundary)
     assert circle1.intersects_shape(circle2)
     assert circle2.intersects_shape(circle1)
@@ -270,7 +271,7 @@ def test_shapelike_intersects_shape():
     assert circle2.intersects_shape(circle1)
 
     circle1 = GeoCircle(Coordinate(0.0, 0.0), 5_000)
-    circle2 = GeoCircle(Coordinate(0.0899323, 0.0), 5_000)  # Nudged just barely to the right
+    circle2 = GeoCircle(Coordinate(0.0899324, 0.0), 5_000)  # Nudged just barely to the right
     assert not circle1.intersects_shape(circle2)
     assert not circle2.intersects_shape(circle1)
 

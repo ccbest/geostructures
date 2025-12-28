@@ -111,7 +111,7 @@ class Coordinate:
         return Coordinate(lon, lat)
 
     @classmethod
-    def from_projection(cls, lon: float, lat: float, crs: str):
+    def from_projection(cls, lon: float, lat: float, crs: str, precision: Optional[int] = None):
         """
         Creates a Coordinate from a lon, lat pair
         in a different projection than WGS84
@@ -125,9 +125,15 @@ class Coordinate:
                 A string representing the target EPSG code. e.g EPSG:3857
 
         """
-        from pyproj import Transformer
-        lon, lat = Transformer.from_crs(crs, "EPSG:4326", always_xy=True).transform(lon, lat)
-        return Coordinate(round_half_up(lon, 6), round_half_up(lat, 6))
+        from pyproj import CRS, Transformer
+
+        transformer = Transformer.from_crs(CRS(crs), "EPSG:4326", always_xy=True)
+        lon, lat = transformer.transform(lon, lat)
+
+        if precision is not None:
+            lon, lat = round(lon, precision), round(lat, precision)
+
+        return Coordinate(lon, lat)
 
     @classmethod
     def from_qdms(cls, lon: str, lat: str):
@@ -233,22 +239,30 @@ class Coordinate:
 
         return _MGRS.toMGRS(self.latitude, self.longitude)
 
-    def to_projection(self, crs: str):
+    def to_projection(self, crs: str, precision: Optional[int] = None):
         """
         Reproject a coordinate from the WGS84 projection to another.
 
         Args:
-           crs:
-           A string representing the target EPSG code e,g EPSG:3857.
+            crs: (str)
+                A string representing the target EPSG code e,g EPSG:3857.
+
+            precision: (int)
+                (Default None) The number of decimal places to round to. If None, does not round.
 
         Return:
             A coordinate in the target projection system.
         """
-        from pyproj import Transformer
-        lon, lat = Transformer.from_crs("EPSG:4326", crs, always_xy=True).transform(
-            self.longitude, self.latitude
-        )
-        return Coordinate(round_half_up(lon, 6), round_half_up(lat, 6), _bounded=False)
+        from pyproj import CRS, Transformer
+
+        # Wrap the input string in CRS()
+        transformer = Transformer.from_crs("EPSG:4326", CRS(crs), always_xy=True)
+        lon, lat = transformer.transform(self.longitude, self.latitude)
+
+        if precision is not None:
+            lon, lat = round_half_up(self.longitude, precision), round_half_up(self.latitude, precision)
+
+        return Coordinate(lon, lat, _bounded=False)
 
     def to_qdms(self, reverse: bool = False) -> Tuple[str, str]:
         """
@@ -282,7 +296,7 @@ class Coordinate:
 
         return f'{lon[3]}{"".join(_lon)}', f'{lat[3]}{"".join(_lat)}'
 
-    def to_str(self, reverse: bool = False) -> Tuple:
+    def to_str(self, reverse: bool = False, precision: Optional[int] = None) -> Tuple:
         """
         Converts the coordinate to a tuple of strings (longitude, latitude).
         If the Coordinate contains Z and/or M datapoints, the tuple will be extended
@@ -292,10 +306,17 @@ class Coordinate:
             reverse: (bool)
                 (Default False) If True, reverses the coordinate order to (latitude, longitude)
 
+            precision: (bool)
+                (Default None) The number of decimal places to round to. If None, does not round.
+
         Returns:
             Tuple of up to length 4, consisting of (longitude, latitude, altitude, M)
         """
-        out = [str(self.longitude), str(self.latitude)]
+        lon, lat = self.longitude, self.latitude
+        if precision is not None:
+            lon, lat = round(self.longitude, precision), round(self.latitude, precision)
+
+        out = [str(lon), str(lat)]
         if reverse:
             out = out[::-1]
 
