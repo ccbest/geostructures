@@ -29,7 +29,7 @@ from geostructures._base import (
 )
 from geostructures.time import GEOTIME_TYPE
 from geostructures.coordinates import Coordinate
-from geostructures.distance import bearing_degrees, destination_point, distance_meters
+from geostructures.geodesic import bearing_degrees, destination_point, distance_meters
 from geostructures._geometry import (
     convert_trig_angle, circumscribing_circle_for_polygon,
     do_edges_intersect, find_line_intersection, is_counter_clockwise,

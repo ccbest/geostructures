@@ -11,7 +11,7 @@ import pytest
 import shapely
 
 from geostructures import *
-from geostructures.distance import destination_point
+from geostructures.geodesic import destination_point
 from geostructures.multistructures import *
 from geostructures.time import TimeInterval
 

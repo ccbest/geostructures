@@ -14,6 +14,7 @@ from geostructures._const import EARTH_RADIUS_METERS
 from geostructures._geometry import ensure_edge_bounds
 from geostructures.coordinates import Coordinate
 from geostructures.utils.functions import round_half_up
+from geostructures.utils.logging import LOGGER
 
 
 def bearing_degrees(coord1: Coordinate, coord2: Coordinate, **kwargs) -> float:
@@ -34,6 +35,10 @@ def bearing_degrees(coord1: Coordinate, coord2: Coordinate, **kwargs) -> float:
     Returns:
         (float) the bearing in degrees
     """
+    LOGGER.warning(
+        'geostructures.calc.bearing_degrees is deprecated. Please update your import to use '
+        'geostructures.geodesic.bearing_degrees'
+    )
     d_lon = coord2.longitude - coord1.longitude
     x_val = math.cos(math.radians(coord2.latitude)) * math.sin(
         math.radians(d_lon)
@@ -63,6 +68,10 @@ def haversine_distance_meters(coord1: Coordinate, coord2: Coordinate) -> float:
     Returns:
         (float) the bearing in degrees
     """
+    LOGGER.warning(
+        'geostructures.calc.haversine_distance_meters is deprecated. Please update your import to '
+        'use geostructures.geodesic.distance_meters'
+    )
     coord1, coord2 = ensure_edge_bounds(coord1, coord2)
 
     lon1, lat1 = math.radians(coord1.longitude), math.radians(coord1.latitude)
@@ -97,6 +106,10 @@ def inverse_haversine_degrees(
     Returns:
         (Coordinate)
     """
+    LOGGER.warning(
+        'geostructures.calc.inverse_haversine_degrees is deprecated. Please update your import to '
+        'use geostructures.geodesic.destination_point'
+    )
     return inverse_haversine_radians(
         start, math.radians(angle_degrees), distance_meters
     )
@@ -124,6 +137,10 @@ def inverse_haversine_radians(
     Returns:
         (Coordinate)
     """
+    LOGGER.warning(
+        'geostructures.calc.inverse_haversine_radians is deprecated. Please update your import to '
+        'use geostructures.geodesic.destination_point'
+    )
     _rad = distance_meters / EARTH_RADIUS_METERS
 
     x0 = start.longitude * math.pi / 180

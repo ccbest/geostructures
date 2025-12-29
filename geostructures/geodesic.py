@@ -1,4 +1,4 @@
-# geostructures/calc.py
+# geostructures/geodesic.py
 """
 Geodesic calculation dispatch module.
 Supports switching between Haversine (sphere) and Vincenty (ellipsoid) calculations.

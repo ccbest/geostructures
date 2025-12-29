@@ -20,7 +20,7 @@ from geostructures._base import (
 )
 from geostructures.time import GEOTIME_TYPE
 from geostructures._geometry import convex_hull
-from geostructures.distance import distance_meters
+from geostructures.geodesic import distance_meters
 from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, PolygonBase
 from geostructures.utils.functions import get_dt_from_geojson_props
