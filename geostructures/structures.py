@@ -27,10 +27,6 @@ from geostructures._base import (
     _RE_LINESTRING_WKT, BaseShape, LineLikeMixin, PointLikeMixin, PolygonLikeMixin,
     SingleShapeBase, SimpleShapeMixin
 )
-from geostructures._geometry import (
-    convert_trig_angle, circumscribing_circle_for_polygon,
-    do_edges_intersect, find_line_intersection, is_counter_clockwise,
-)
 from geostructures.time import GEOTIME_TYPE
 from geostructures.coordinates import Coordinate
 from geostructures.calc import (
@@ -39,8 +35,10 @@ from geostructures.calc import (
     haversine_distance_meters,
     bearing_degrees
 )
-from geostructures.distance import destination_point
-
+from geostructures._geometry import (
+    convert_trig_angle, circumscribing_circle_for_polygon,
+    do_edges_intersect, find_line_intersection, is_counter_clockwise,
+)
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
 
@@ -229,12 +227,8 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
         Returns:
             str
         """
-        precision = kwargs.get('precision')
         bbox_str = ', '.join(
-            [
-                self._linear_ring_to_wkt(ring, precision=precision)
-                for ring in self.linear_rings(**kwargs)
-            ]
+            [self._linear_ring_to_wkt(ring) for ring in self.linear_rings(**kwargs)]
         )
         return f'POLYGON({bbox_str})'
 
@@ -837,11 +831,7 @@ class GeoCircle(PolygonBase):
 
         for i in range(k, -1, -1):
             angle = math.pi * 2 / k * i
-            coord = destination_point(
-                self.center,
-                math.degrees(angle),
-                self.radius
-            )
+            coord = inverse_haversine_radians(self.center, angle, self.radius)
             coords.append(coord)
 
         return coords
@@ -1322,16 +1312,14 @@ class GeoRing(PolygonBase):
 
     def to_wkt(self, **kwargs) -> str:
         if self.angle_min == 0 and self.angle_max == 360:
-            precision = kwargs.get('precision')
-
             # Return as a polygon with hole
             outer_circle = GeoCircle(self.center, self.outer_radius).bounding_coords(**kwargs)
             outer_bbox_str = ",".join(
-                " ".join(x.to_str(precision=precision)) for x in outer_circle
+                " ".join(x.to_str()) for x in outer_circle
             )
             inner_circle = GeoCircle(self.center, self.inner_radius).bounding_coords(**kwargs)
             inner_bbox_str = ",".join(
-                " ".join(x.to_str(precision=precision)) for x in inner_circle
+                " ".join(x.to_str()) for x in inner_circle
             )
             return f'POLYGON(({outer_bbox_str}), ({inner_bbox_str}))'
 
@@ -1601,7 +1589,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
         return shapely.LineString([x.to_float() for x in self.vertices])
 
     def to_wkt(self, **kwargs) -> str:
-        bbox_str = self._linear_ring_to_wkt(self.vertices, precision=kwargs.get('precision'))
+        bbox_str = self._linear_ring_to_wkt(self.vertices)
         return f'LINESTRING{bbox_str}'
 
 
@@ -1810,5 +1798,5 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
         import shapely
         return shapely.Point(self.centroid.longitude, self.centroid.latitude)
 
-    def to_wkt(self, **kwargs) -> str:
-        return f'POINT({" ".join(self.coordinate.to_str(precision=kwargs.get('precision')))})'
+    def to_wkt(self, **_) -> str:
+        return f'POINT({" ".join(self.coordinate.to_str())})'

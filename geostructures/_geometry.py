@@ -8,7 +8,7 @@ from typing import List, Tuple, Optional, cast, Set
 import numpy as np
 from numpy.linalg import norm
 
-from geostructures._const import EARTH_RADIUS_METERS
+from geostructures._const import EARTH_RADIUS
 from geostructures.coordinates import Coordinate
 from geostructures.utils.functions import round_half_up
 
@@ -140,7 +140,7 @@ def circumscribing_circle_for_triangle(
     cc_num = np.cross(a, b) + np.cross(b, c) + np.cross(c, a)
     cc_norm = norm(cc_num)
     ctr = Coordinate._from_xyz([i/cc_norm for i in cc_num])
-    rad = math.acos(np.dot(a, np.cross(b, c))/cc_norm) * EARTH_RADIUS_METERS
+    rad = math.acos(np.dot(a, np.cross(b, c))/cc_norm) * EARTH_RADIUS
     return ctr, rad
 
 
@@ -198,7 +198,7 @@ def dist_xyz_meters(coord1: Coordinate, coord2: Coordinate) -> float:
     Returns:
         (float) the distance in meters
     """
-    return math.acos(sum([an*bn for an, bn in zip(coord1.xyz, coord2.xyz)])) * EARTH_RADIUS_METERS
+    return math.acos(sum([an*bn for an, bn in zip(coord1.xyz, coord2.xyz)])) * EARTH_RADIUS
 
 
 def do_bounds_overlap(bounds1: Tuple[float, float], bounds2: Tuple[float, float]):

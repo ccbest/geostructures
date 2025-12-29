@@ -10,7 +10,7 @@ from typing import List, Tuple, cast
 
 import numpy as np
 
-from geostructures._const import EARTH_RADIUS_METERS
+from geostructures._const import EARTH_RADIUS
 from geostructures._geometry import ensure_edge_bounds
 from geostructures.coordinates import Coordinate
 from geostructures.utils.functions import round_half_up
@@ -72,7 +72,7 @@ def haversine_distance_meters(coord1: Coordinate, coord2: Coordinate) -> float:
     var1 = (math.sin(d_lat / 2) ** 2) + math.cos(lat1) * math.cos(lat2) * (
         math.sin(d_long / 2) ** 2
     )
-    return EARTH_RADIUS_METERS * 2 * math.atan2(math.sqrt(var1), math.sqrt(1 - var1))
+    return EARTH_RADIUS * 2 * math.atan2(math.sqrt(var1), math.sqrt(1 - var1))
 
 
 def inverse_haversine_degrees(
@@ -124,7 +124,7 @@ def inverse_haversine_radians(
     Returns:
         (Coordinate)
     """
-    _rad = distance_meters / EARTH_RADIUS_METERS
+    _rad = distance_meters / EARTH_RADIUS
 
     x0 = start.longitude * math.pi / 180
     y0 = start.latitude * math.pi / 180

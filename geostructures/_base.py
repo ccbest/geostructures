@@ -186,7 +186,7 @@ class BaseShape(ABC):
         return self.dt.start
 
     @staticmethod
-    def _linear_ring_to_wkt(ring: List[Coordinate], precision: Optional[int] = None) -> str:
+    def _linear_ring_to_wkt(ring: List[Coordinate]) -> str:
         """
         Converts a list of coordinates (a linear ring, self-closing) into
         a wkt string.
@@ -198,7 +198,7 @@ class BaseShape(ABC):
         Returns:
             The wkt-formatted string,
         """
-        return f'({",".join(" ".join(coord.to_str(precision=precision)) for coord in ring)})'
+        return f'({",".join(" ".join(coord.to_str()) for coord in ring)})'
 
     def _make_shp_proxy(self):
         """Create a 1-slot LRU wrapper around _to_shapely()."""

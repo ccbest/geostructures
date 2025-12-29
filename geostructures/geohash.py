@@ -358,7 +358,7 @@ class H3Hasher(HasherBase):
         """
         import h3
         poly = h3.LatLngPoly(
-            *[[(x.latitude, x.longitude) for x in ring] for ring in polygon.linear_rings()]
+            *[[x.to_float(reverse=True) for x in ring] for ring in polygon.linear_rings()]
         )
         return set(h3.polygon_to_cells(
             poly,
