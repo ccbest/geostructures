@@ -20,7 +20,7 @@ from geostructures._base import (
 )
 from geostructures.time import GEOTIME_TYPE
 from geostructures._geometry import convex_hull
-from geostructures.calc import haversine_distance_meters
+from geostructures.distance import distance_meters
 from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, PolygonBase
 from geostructures.utils.functions import get_dt_from_geojson_props
@@ -73,7 +73,7 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
     def circumscribing_circle(self) -> 'GeoCircle':
         centroid = self.centroid
         max_dist = max(
-            haversine_distance_meters(coord, centroid)
+            distance_meters(coord, centroid)
             for shape in self.geoshapes
             for coord in shape.vertices
         )
@@ -274,7 +274,7 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
     def circumscribing_circle(self) -> 'GeoCircle':
         centroid = self.centroid
         max_dist = max(
-            haversine_distance_meters(point.centroid, centroid)
+            distance_meters(point.centroid, centroid)
             for point in self.geoshapes
         )
         return GeoCircle(centroid, max_dist, dt=self.dt)
@@ -481,7 +481,7 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
     def circumscribing_circle(self) -> 'GeoCircle':
         centroid = self.centroid
         max_dist = max(
-            haversine_distance_meters(x, centroid)
+            distance_meters(x, centroid)
             for poly in self.geoshapes
             for x in poly.bounding_coords()
         )

@@ -4,29 +4,25 @@ Geodesic calculation dispatch module.
 Supports switching between Haversine (sphere) and Vincenty (ellipsoid) calculations.
 """
 
+__all__ = [
+    'haversine_bearing', 'haversine_destination', 'haversine_distance',
+    'karney_bearing', 'karney_destination', 'karney_distance',
+    'vincenty_bearing', 'vincenty_destination', 'vincenty_distance',
+    'bearing_degrees', 'destination_point', 'distance_meters',
+]
+
 import math
 from typing import Tuple, Literal
 
+from geostructures._const import WGS84_A, WGS84_B, WGS84_F, EARTH_RADIUS_METERS
 from geostructures.coordinates import Coordinate
-
-# -------------------------------------------------------------------------
-# Constants
-# -------------------------------------------------------------------------
-
-# WGS84 Ellipsoid Constants
-WGS84_A = 6378137.0  # Major axis (meters)
-WGS84_F = 1 / 298.257223563  # Flattening
-WGS84_B = (1 - WGS84_F) * WGS84_A
-
-# Mean Earth Radius (approximate for Haversine)
-EARTH_RADIUS_METERS = 6371000.0
 
 
 # -------------------------------------------------------------------------
 # Haversine Implementation (Spherical)
 # -------------------------------------------------------------------------
 
-def _haversine_distance(coord1: Coordinate, coord2: Coordinate) -> float:
+def haversine_distance(coord1: Coordinate, coord2: Coordinate) -> float:
     """Calculate distance using the Haversine formula (spherical earth)."""
     lon1, lat1 = math.radians(coord1.longitude), math.radians(coord1.latitude)
     lon2, lat2 = math.radians(coord2.longitude), math.radians(coord2.latitude)
@@ -41,8 +37,11 @@ def _haversine_distance(coord1: Coordinate, coord2: Coordinate) -> float:
     return EARTH_RADIUS_METERS * c
 
 
-def _haversine_destination(start: Coordinate, bearing_degrees: float,
-                           distance: float) -> Coordinate:
+def haversine_destination(
+        start: Coordinate,
+        bearing_degrees: float,
+        distance: float,
+) -> Coordinate:
     """Calculate destination point using spherical trigonometry."""
     lon1 = math.radians(start.longitude)
     lat1 = math.radians(start.latitude)
@@ -59,7 +58,7 @@ def _haversine_destination(start: Coordinate, bearing_degrees: float,
     return Coordinate(math.degrees(lon2), math.degrees(lat2))
 
 
-def _haversine_bearing(start: Coordinate, end: Coordinate) -> float:
+def haversine_bearing(start: Coordinate, end: Coordinate) -> float:
     """Calculate initial bearing using spherical trigonometry."""
     lon1, lat1 = math.radians(start.longitude), math.radians(start.latitude)
     lon2, lat2 = math.radians(end.longitude), math.radians(end.latitude)
@@ -77,7 +76,7 @@ def _haversine_bearing(start: Coordinate, end: Coordinate) -> float:
 # Vincenty Implementation (Ellipsoidal)
 # -------------------------------------------------------------------------
 
-def _vincenty_distance(coord1: Coordinate, coord2: Coordinate) -> float:
+def vincenty_distance(coord1: Coordinate, coord2: Coordinate) -> float:
     """
     Calculate distance using Vincenty's inverse formula (WGS84 ellipsoid).
     Falls back to Haversine if points are coincident or convergence fails.
@@ -125,7 +124,7 @@ def _vincenty_distance(coord1: Coordinate, coord2: Coordinate) -> float:
             break
     else:
         # Convergence failure (usually antipodal points); fall back to Haversine
-        return _haversine_distance(coord1, coord2)
+        return haversine_distance(coord1, coord2)
 
     uSq = cosSqAlpha * (WGS84_A ** 2 - WGS84_B ** 2) / (WGS84_B ** 2)
     A = 1 + uSq / 16384 * (4096 + uSq * (-768 + uSq * (320 - 175 * uSq)))
@@ -140,7 +139,7 @@ def _vincenty_distance(coord1: Coordinate, coord2: Coordinate) -> float:
     return WGS84_B * A * (sigma - deltaSigma)
 
 
-def _vincenty_destination(start: Coordinate, bearing_degrees: float, distance: float) -> Coordinate:
+def vincenty_destination(start: Coordinate, bearing_degrees: float, distance: float) -> Coordinate:
     """Calculate destination using Vincenty's direct formula."""
     if distance == 0:
         return start
@@ -200,7 +199,7 @@ def _vincenty_destination(start: Coordinate, bearing_degrees: float, distance: f
     return Coordinate(math.degrees(lon2), math.degrees(lat2))
 
 
-def _vincenty_bearing(start: Coordinate, end: Coordinate) -> float:
+def vincenty_bearing(start: Coordinate, end: Coordinate) -> float:
     """
     Calculate the initial bearing (forward azimuth) using Vincenty's inverse formula.
 
@@ -269,7 +268,7 @@ def _vincenty_bearing(start: Coordinate, end: Coordinate) -> float:
             break
     else:
         # Convergence failure (usually antipodal points); fall back to Haversine
-        return _haversine_bearing(start, end)
+        return haversine_bearing(start, end)
 
     # -------------------------------------------------------------------------
     # Azimuth Calculation
@@ -285,29 +284,84 @@ def _vincenty_bearing(start: Coordinate, end: Coordinate) -> float:
 
 
 # -------------------------------------------------------------------------
+# Karney Implementation (Ellipsoidal)
+# -------------------------------------------------------------------------
+
+def karney_distance(coord1: Coordinate, coord2: Coordinate) -> float:
+    """
+    Calculate distance using Karney's algorithm (via geographiclib).
+    Robust against antipodal points and convergence failures.
+    """
+    from geographiclib.geodesic import Geodesic
+
+    # Inverse returns a dict with 's12' (distance in meters), 'azi1', etc.
+    res = Geodesic.WGS84.Inverse(
+        coord1.latitude, coord1.longitude,
+        coord2.latitude, coord2.longitude
+    )
+    return res['s12']
+
+
+def karney_destination(start: Coordinate, bearing_degrees: float, distance: float) -> Coordinate:
+    """
+    Calculate destination using Karney's algorithm (via geographiclib).
+    """
+    from geographiclib.geodesic import Geodesic
+
+    # Direct takes (lat1, lon1, azi1, s12)
+    res = Geodesic.WGS84.Direct(
+        start.latitude, start.longitude,
+        bearing_degrees, distance
+    )
+
+    return Coordinate(res['lon2'], res['lat2'])
+
+
+def karney_bearing(start: Coordinate, end: Coordinate) -> float:
+    """
+    Calculate initial bearing using Karney's algorithm (via geographiclib).
+    """
+    from geographiclib.geodesic import Geodesic
+
+    res = Geodesic.WGS84.Inverse(
+        start.latitude, start.longitude,
+        end.latitude, end.longitude
+    )
+
+    # geographiclib returns azimuth in range [-180, 180]; normalize to [0, 360]
+    return (res['azi1'] + 360) % 360
+
+
+# -------------------------------------------------------------------------
 # Dynamic Dispatch & Configuration
 # -------------------------------------------------------------------------
 
-# The Generic Interface Variables
-distance_meters = _haversine_distance
-destination_point = _haversine_destination
-bearing_degrees = _haversine_bearing
+# These declare the distance algo in use (default haversine)
+distance_meters = haversine_distance
+destination_point = haversine_destination
+bearing_degrees = haversine_bearing
 
-ALGORITHMS = {
+
+_ALGORITHMS = {
     'haversine': (
-        _haversine_distance,
-        _haversine_destination,
-        _haversine_bearing
+        haversine_distance,
+        haversine_destination,
+        haversine_bearing
     ),
     'vincenty': (
-        _vincenty_distance,
-        _vincenty_destination,
-        _vincenty_bearing
+        vincenty_distance,
+        vincenty_destination,
+        vincenty_bearing
     ),
+    'karney': (
+        karney_distance,
+        karney_destination,
+        karney_bearing
+    )
 }
 
 
-def set_geodesic_algorithm(algorithm: Literal['haversine', 'vincenty']):
+def set_geodesic_algorithm(algorithm: Literal['haversine', 'vincenty', 'karney']):
     """
     Set the global geodesic calculation method.
 
@@ -316,10 +370,10 @@ def set_geodesic_algorithm(algorithm: Literal['haversine', 'vincenty']):
     """
     global distance_meters, destination_point, bearing_degrees
 
-    if algorithm not in ALGORITHMS:
-        raise ValueError(f"Unknown algorithm '{algorithm}'. Options: {list(ALGORITHMS.keys())}")
+    if algorithm not in _ALGORITHMS:
+        raise ValueError(f"Unknown algorithm '{algorithm}'. Options: {list(_ALGORITHMS.keys())}")
 
-    funcs = ALGORITHMS[algorithm]
+    funcs = _ALGORITHMS[algorithm]
     distance_meters = funcs[0]
     destination_point = funcs[1]
     bearing_degrees = funcs[2]

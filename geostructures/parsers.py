@@ -153,12 +153,12 @@ def parse_wkt(wkt: str, /, **kwargs):
     """
     m = _TYPE_RE.match(wkt)
     if not m:
-        raise ValueError('Invalid WKT – could not find geometry keyword.')
+        raise ValueError('Invalid WKT. could not find geometry keyword.')
 
     geom_type = m.group(1).upper()
     try:
         parser = _PARSER_MAP[geom_type]
     except KeyError as exc:
-        raise ValueError(f'Unsupported WKT geometry “{geom_type}”.') from exc
+        raise ValueError(f'Unsupported WKT geometry {geom_type}.') from exc
 
     return parser.from_wkt(wkt, **kwargs)                 # type: ignore[arg-type]

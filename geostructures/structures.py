@@ -29,12 +29,7 @@ from geostructures._base import (
 )
 from geostructures.time import GEOTIME_TYPE
 from geostructures.coordinates import Coordinate
-from geostructures.calc import (
-    inverse_haversine_radians,
-    inverse_haversine_degrees,
-    haversine_distance_meters,
-    bearing_degrees
-)
+from geostructures.distance import bearing_degrees, destination_point, distance_meters
 from geostructures._geometry import (
     convert_trig_angle, circumscribing_circle_for_polygon,
     do_edges_intersect, find_line_intersection, is_counter_clockwise,
@@ -176,7 +171,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
     def linear_rings(self, **kwargs) -> List[List[Coordinate]]:
         return [
             self.bounding_coords(**kwargs),
-            *[list(reversed(shape.bounding_coords())) for shape in self.holes]
+            *[list(reversed(shape.bounding_coords(**kwargs))) for shape in self.holes]
         ]
 
     def to_geo_interface(self, **kwargs):
@@ -704,7 +699,7 @@ class GeoBox(PolygonBase):
     def circumscribing_circle(self) -> 'GeoCircle':
         return GeoCircle(
             self.centroid,
-            haversine_distance_meters(self.nw_bound, self.centroid),
+            distance_meters(self.nw_bound, self.centroid),
             dt=self.dt,
         )
 
@@ -764,8 +759,12 @@ class GeoBox(PolygonBase):
         return niemeyer_to_geobox(geohash, base, dt, properties)
 
     def to_polygon(self, **kwargs) -> GeoPolygon:
-        outer_bound = self.bounding_coords(**kwargs)
-        return GeoPolygon(outer_bound, holes=self.holes, dt=self.dt)
+        return GeoPolygon(
+            self.bounding_coords(**kwargs),
+            holes=self.holes,
+            dt=self.dt,
+            properties=copy.deepcopy(self._properties),
+        )
 
 
 class GeoCircle(PolygonBase):
@@ -815,10 +814,10 @@ class GeoCircle(PolygonBase):
     @cached_property
     def bounds(self) -> tuple[float, float, float, float]:
         # cardinal directions – no √2 expansion
-        north = inverse_haversine_degrees(self.center, 0, self.radius)
-        east = inverse_haversine_degrees(self.center, 90, self.radius)
-        south = inverse_haversine_degrees(self.center, 180, self.radius)
-        west = inverse_haversine_degrees(self.center, 270, self.radius)
+        north = destination_point(self.center, 0, self.radius)
+        east = destination_point(self.center, 90, self.radius)
+        south = destination_point(self.center, 180, self.radius)
+        west = destination_point(self.center, 270, self.radius)
         return west.longitude, south.latitude, east.longitude, north.latitude
 
     @property
@@ -829,18 +828,18 @@ class GeoCircle(PolygonBase):
         k = kwargs.get('k') or 36
         coords = []
 
-        for i in range(k, -1, -1):
-            angle = math.pi * 2 / k * i
-            coord = inverse_haversine_radians(self.center, angle, self.radius)
+        for i in range(k, 0, -1):
+            angle = math.degrees(math.pi * 2 / k * i)
+            coord = destination_point(self.center, angle, self.radius)
             coords.append(coord)
 
-        return coords
+        return [*coords, coords[0]]
 
     def circumscribing_circle(self) -> 'GeoCircle':
         return self
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
-        if not haversine_distance_meters(coord, self.center) <= self.radius:
+        if not distance_meters(coord, self.center) <= self.radius:
             return False
 
         for hole in self.holes:
@@ -859,7 +858,12 @@ class GeoCircle(PolygonBase):
         )
 
     def to_polygon(self, **kwargs) -> GeoPolygon:
-        return GeoPolygon(self.bounding_coords(**kwargs), holes=self.holes, dt=self.dt)
+        return GeoPolygon(
+            self.bounding_coords(**kwargs),
+            holes=self.holes,
+            dt=self.dt,
+            properties=copy.deepcopy(self._properties),
+        )
 
 
 class GeoEllipse(PolygonBase):
@@ -939,10 +943,10 @@ class GeoEllipse(PolygonBase):
         dx = math.sqrt(semi_major_sq * sin_rot_sq + semi_minor_sq * cos_rot_sq)
         dy = math.sqrt(semi_major_sq * cos_rot_sq + semi_minor_sq * sin_rot_sq)
 
-        max_lat = inverse_haversine_degrees(self.centroid, 0, dy).latitude
-        max_lon = inverse_haversine_degrees(self.centroid, 90, dx).longitude
-        min_lat = inverse_haversine_degrees(self.centroid, 180, dy).latitude
-        min_lon = inverse_haversine_degrees(self.centroid, 270, dx).longitude
+        max_lat = destination_point(self.centroid, 0, dy).latitude
+        max_lon = destination_point(self.centroid, 90, dx).longitude
+        min_lat = destination_point(self.centroid, 180, dy).latitude
+        min_lon = destination_point(self.centroid, 270, dx).longitude
 
         return min_lon, min_lat, max_lon, max_lat
 
@@ -978,8 +982,8 @@ class GeoEllipse(PolygonBase):
         for i in range(k, -1, -1):
             angle = (math.pi * 2 / k) * i
             radius = self._radius_at_angle(angle)
-            coord = inverse_haversine_radians(
-                self.center, angle + rotation, radius
+            coord = destination_point(
+                self.center, math.degrees(angle + rotation), radius
             )
             coords.append(coord)
 
@@ -991,7 +995,7 @@ class GeoEllipse(PolygonBase):
     def contains_coordinate(self, coord: Coordinate) -> bool:
         bearing = bearing_degrees(self.center, coord)
         radius = self._radius_at_angle(math.radians(bearing - self.rotation))
-        if not haversine_distance_meters(self.center, coord) <= radius:
+        if not distance_meters(self.center, coord) <= radius:
             return False
 
         for hole in self.holes:
@@ -1093,7 +1097,12 @@ class GeoEllipse(PolygonBase):
         )
 
     def to_polygon(self, **kwargs) -> GeoPolygon:
-        return GeoPolygon(self.bounding_coords(**kwargs), holes=self.holes, dt=self.dt)
+        return GeoPolygon(
+            self.bounding_coords(**kwargs),
+            holes=self.holes,
+            dt=self.dt,
+            properties=copy.deepcopy(self._properties),
+        )
 
 
 class GeoRing(PolygonBase):
@@ -1180,10 +1189,10 @@ class GeoRing(PolygonBase):
     @cached_property
     def bounds(self) -> Tuple[float, float, float, float]:
         if self.angle_max - self.angle_min >= 360:
-            nw_bound = inverse_haversine_degrees(
+            nw_bound = destination_point(
                 self.center, 315, self.outer_radius * math.sqrt(2)
             )
-            se_bound = inverse_haversine_degrees(
+            se_bound = destination_point(
                 self.center, 135, self.outer_radius * math.sqrt(2)
             )
             return nw_bound.longitude, se_bound.latitude, se_bound.longitude, nw_bound.latitude
@@ -1213,13 +1222,13 @@ class GeoRing(PolygonBase):
                 * (self.angle_min + (self.angle_max - self.angle_min) / k * i)
                 / 180
             )
-            coord = inverse_haversine_radians(
-                self.center, angle, self.outer_radius
+            coord = destination_point(
+                self.center, math.degrees(angle), self.outer_radius
             )
             outer_coords.append(coord)
 
-            coord = inverse_haversine_radians(
-                self.center, angle, self.inner_radius
+            coord = destination_point(
+                self.center, math.degrees(angle), self.inner_radius
             )
             inner_coords.append(coord)
 
@@ -1230,7 +1239,7 @@ class GeoRing(PolygonBase):
 
         # Is a ring
         if self.angle_min == 0 and self.angle_max == 360:
-            return outer_bounds
+            return [*outer_bounds, outer_bounds[0]]
 
         # Is a wedge
         return [*outer_bounds, *inner_bounds[::-1], outer_bounds[0]]
@@ -1243,7 +1252,7 @@ class GeoRing(PolygonBase):
             return GeoCircle(
                 _centroid,
                 max(
-                    haversine_distance_meters(x, _centroid)
+                    distance_meters(x, _centroid)
                     for x in self.bounding_coords()
                 ),
                 dt=self.dt,
@@ -1258,7 +1267,7 @@ class GeoRing(PolygonBase):
             if not self.angle_min <= bearing <= self.angle_max:
                 return False
 
-        radius = haversine_distance_meters(self.center, coord)
+        radius = distance_meters(self.center, coord)
         if not self.inner_radius <= radius <= self.outer_radius:
             return False
 
@@ -1307,7 +1316,7 @@ class GeoRing(PolygonBase):
             rings[0],
             holes=holes,
             dt=self.dt,
-            properties=self._properties
+            properties=copy.deepcopy(self._properties),
         )
 
     def to_wkt(self, **kwargs) -> str:
@@ -1391,7 +1400,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
 
     def circumscribing_circle(self) -> GeoCircle:
         centroid = self.centroid
-        max_dist = max(haversine_distance_meters(x, centroid) for x in self.vertices)
+        max_dist = max(distance_meters(x, centroid) for x in self.vertices)
         return GeoCircle(centroid, max_dist, dt=self.dt)
 
     def circumscribing_rectangle(self) -> GeoBox:

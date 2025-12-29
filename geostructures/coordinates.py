@@ -282,25 +282,49 @@ class Coordinate:
 
         return f'{lon[3]}{"".join(_lon)}', f'{lat[3]}{"".join(_lat)}'
 
-    def to_str(self, reverse: bool = False) -> Tuple:
+    def to_str(self, reverse: bool = False, precision: Optional[int] = None) -> Tuple:
         """
         Converts the coordinate to a tuple of strings (longitude, latitude).
         If the Coordinate contains Z and/or M datapoints, the tuple will be extended
-        to include both (in that order)
+        to include both (in that order).
+
+        Scientific notation (e.g., 1e-18) is strictly suppressed.
 
         Args:
             reverse: (bool)
                 (Default False) If True, reverses the coordinate order to (latitude, longitude)
 
+            precision: (int) (Optional)
+                The number of decimal places to round to. If None, defaults to 12
+                to ensure high precision while suppressing scientific notation.
+
         Returns:
             Tuple of up to length 4, consisting of (longitude, latitude, altitude, M)
         """
-        out = [str(self.longitude), str(self.latitude)]
+
+        def _fmt(val: float) -> str:
+            # Force fixed-point notation. 16 is approx standard float precision.
+            # Using str(val) is dangerous because it defaults to scientific notation
+            # for very small numbers (e.g., 2.2e-18).
+            _prec = precision if precision is not None else 12
+            formatted = f"{val:.{_prec}f}"
+
+            # If user didn't request a specific precision, we trim trailing zeros
+            # to keep the string compact but accurate.
+            if precision is None:
+                formatted = formatted.rstrip('0').rstrip('.')
+                # Edge case: if value was 0.0, rstrip leaves empty string or just "0"
+                if formatted == '':
+                    return '0.0'
+
+            return formatted
+
+        out = [_fmt(self.longitude), _fmt(self.latitude)]
         if reverse:
             out = out[::-1]
 
-        if self.z:
-            out.append(str(self.z))
-        if self.m:
-            out.append(str(self.m))
+        if self.z is not None:
+            out.append(_fmt(self.z))
+        if self.m is not None:
+            out.append(_fmt(self.m))
         return tuple(out)
