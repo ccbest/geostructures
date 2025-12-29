@@ -6,7 +6,7 @@ from pytest import approx
 import shapely
 from shapely import wkt
 
-from build.lib.geostructures.distance import destination_point
+from geostructures.geodesic import destination_point
 from geostructures.structures import *
 from geostructures.coordinates import Coordinate
 from geostructures.multistructures import *
