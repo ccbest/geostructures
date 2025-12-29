@@ -5,6 +5,7 @@ Supports switching between Haversine (sphere) and Vincenty (ellipsoid) calculati
 """
 
 __all__ = [
+    'set_geodesic_algorithm',
     'haversine_bearing', 'haversine_destination', 'haversine_distance',
     'karney_bearing', 'karney_destination', 'karney_distance',
     'vincenty_bearing', 'vincenty_destination', 'vincenty_distance',
@@ -12,7 +13,7 @@ __all__ = [
 ]
 
 import math
-from typing import Tuple, Literal
+from typing import Literal
 
 from geostructures._const import WGS84_A, WGS84_B, WGS84_F, EARTH_RADIUS_METERS
 from geostructures.coordinates import Coordinate
@@ -130,10 +131,10 @@ def vincenty_distance(coord1: Coordinate, coord2: Coordinate) -> float:
     A = 1 + uSq / 16384 * (4096 + uSq * (-768 + uSq * (320 - 175 * uSq)))
     B = uSq / 1024 * (256 + uSq * (-128 + uSq * (74 - 47 * uSq)))
     deltaSigma = B * sinSigma * (
-            cos2SigmaM + B / 4 * (
+        cos2SigmaM + B / 4 * (
             cosSigma * (-1 + 2 * cos2SigmaM ** 2) -
             B / 6 * cos2SigmaM * (-3 + 4 * sinSigma ** 2) * (-3 + 4 * cos2SigmaM ** 2)
-    )
+        )
     )
 
     return WGS84_B * A * (sigma - deltaSigma)
@@ -167,10 +168,10 @@ def vincenty_destination(start: Coordinate, bearing_degrees: float, distance: fl
         cos2SigmaM = math.cos(2 * sigma1 + sigma)
         sinSigma, cosSigma = math.sin(sigma), math.cos(sigma)
         deltaSigma = B * sinSigma * (
-                cos2SigmaM + B / 4 * (
+            cos2SigmaM + B / 4 * (
                 cosSigma * (-1 + 2 * cos2SigmaM ** 2) -
                 B / 6 * cos2SigmaM * (-3 + 4 * sinSigma ** 2) * (-3 + 4 * cos2SigmaM ** 2)
-        )
+            )
         )
         sigma_prev = sigma
         sigma = distance / (WGS84_B * A) + deltaSigma
