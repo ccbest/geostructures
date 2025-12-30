@@ -102,7 +102,7 @@ def vincenty_distance(coord1: Coordinate, coord2: Coordinate) -> float:
         sinSigma = math.sqrt((cosU2 * sinLambda) ** 2 +
                              (cosU1 * sinU2 - sinU1 * cosU2 * cosLambda) ** 2)
 
-        if sinSigma == 0:
+        if sinSigma == 0:  # pragma: no cover
             return 0.0  # Coincident points
 
         cosSigma = sinU1 * sinU2 + cosU1 * cosU2 * cosLambda
@@ -236,7 +236,7 @@ def vincenty_bearing(start: Coordinate, end: Coordinate) -> float:
         sinSigma = math.sqrt((cosU2 * sinLambda) ** 2 +
                              (cosU1 * sinU2 - sinU1 * cosU2 * cosLambda) ** 2)
 
-        if sinSigma == 0:
+        if sinSigma == 0:  # pragma: no cover
             return 0.0  # Coincident points
 
         # eq. 15
@@ -336,11 +336,23 @@ def karney_bearing(start: Coordinate, end: Coordinate) -> float:
 # -------------------------------------------------------------------------
 # Dynamic Dispatch & Configuration
 # -------------------------------------------------------------------------
+def distance_meters(coord1: Coordinate, coord2: Coordinate) -> float:
+    """Calculates distance using the currently active algorithm."""
+    return _active_distance(coord1, coord2)
+
+def destination_point(start: Coordinate, bearing_degrees: float, distance: float) -> Coordinate:
+    """Calculates destination using the currently active algorithm."""
+    return _active_destination(start, bearing_degrees, distance)
+
+def bearing_degrees(start: Coordinate, end: Coordinate) -> float:
+    """Calculates bearing using the currently active algorithm."""
+    return _active_bearing(start, end)
+
 
 # These declare the distance algo in use (default haversine)
-distance_meters = haversine_distance
-destination_point = haversine_destination
-bearing_degrees = haversine_bearing
+_active_distance = haversine_distance
+_active_destination = haversine_destination
+_active_bearing = haversine_bearing
 
 
 _ALGORITHMS = {
@@ -369,12 +381,12 @@ def set_geodesic_algorithm(algorithm: Literal['haversine', 'vincenty', 'karney']
     Args:
         algorithm: 'haversine' or 'vincenty'
     """
-    global distance_meters, destination_point, bearing_degrees
+    global _active_distance, _active_destination, _active_bearing
 
     if algorithm not in _ALGORITHMS:
         raise ValueError(f"Unknown algorithm '{algorithm}'. Options: {list(_ALGORITHMS.keys())}")
 
     funcs = _ALGORITHMS[algorithm]
-    distance_meters = funcs[0]
-    destination_point = funcs[1]
-    bearing_degrees = funcs[2]
+    _active_distance = funcs[0]
+    _active_destination = funcs[1]
+    _active_bearing = funcs[2]
