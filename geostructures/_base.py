@@ -31,7 +31,7 @@ _RE_COORD_STR = r'(?:-?\d{1,3}(?:\.?\d*)?\s?){2,4}\s?'
 _RE_COORD = re.compile(_RE_COORD_STR)
 
 # A single linear ring, e.g. '(0.0 0.0, 1.0 1.0, ... )'
-_RE_LINEAR_RING_STR = r'\((?:\s?' + _RE_COORD_STR + r'\s?\,?)+\)'
+_RE_LINEAR_RING_STR = r'\([\d\.\s,-]+\)'
 _RE_LINEAR_RING = re.compile(_RE_LINEAR_RING_STR)
 
 # A group of linear rings (shell and holes), e.g. '((0.0 0.0, 1.0 1.0, ... ), ( ... ))'

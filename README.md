@@ -38,6 +38,9 @@ installing these dependencies using the below commands will ensure the correct v
 * `pip install geostructures[df]`
   * Add dataframe support for geopandas and pandas
 
+* `pip install geostructures[karney]`
+  * Add support for Karney geodesic measures 
+
 * `pip install geostructures[kml]`
   * Add KML read/write support using FastKML
 
@@ -424,33 +427,48 @@ geobox = niemeyer_to_geobox(set_of_geohashes.pop(), base=16)
 hashmap = hasher.hash_collection(collection)
 ```
 
-#### Common Geospatial Calculations
+#### Geodesics and Transformations
+
+Geostructures supports geodesic calculations using the Haversine, Vincenty, and Karney formulae. 
+These functions can be called individually, or you can set them globally to be used across the 
+library.
+
+By default, geostructures will use Haversine formulae for geodesic calculations.
+
 ```python
 from geostructures import Coordinate
 from geostructures.calc import *
-
-# The straight-line direction of travel to get from point A to point B
-bearing_degrees(Coordinate(-0.154092, 51.539865), Coordinate(-0.140592, 51.505665))
-
-# The great-sphere distance between two points
-haversine_distance_meters(Coordinate(-0.154092, 51.539865), Coordinate(-0.140592, 51.505665))
-
-# The resulting coordinate of traveling some distance from point A in a given direction
-inverse_haversine_degrees(
-    Coordinate(-0.154092, 51.539865),
-    45,  # degrees clockwise from true north
-    200  # the distance traveled (in meters)
+from geostructures.geodesic import (
+    set_geodesic_algorithm,
+    haversine_distance, vincenty_distance, karney_distance,
+    haversine_bearing, vincenty_bearing, karney_bearing,
+    haversine_destination, vincenty_destination, karney_destination,
 )
 
-# The same, except using radians for direction of travel
-inverse_haversine_radians(Coordinate(-0.154092, 51.539865), 0.7853981633974483, 200)
+# Tell geostructures to use Vincenty formula for all geodesic calculations
+# Supports: 'haversine', 'vincenty', 'karney'
+set_geodesic_algorithm('vincenty')
+
+c1 = Coordinate(-0.154092, 51.539865)
+c2 = Coordinate(-0.140592, 51.505665)
+
+# Manually call functions without overriding geostructures' behavior
+h_dist = haversine_distance(c1, c2)
+v_dist = vincenty_distance(c1, c2)
+k_dist = karney_distance(c1, c2)
+
+h_bearing = haversine_bearing(c1, c2)
+v_bearing = vincenty_bearing(c1, c2)
+k_bearing = karney_bearing(c1, c2)
+
+h_dest = haversine_destination(c1, 90, 1_000) # Start at c1 and travel 1km straight east
+v_dest = vincenty_destination(c1, 90, 1_000)
+k_dest = karney_destination(c1, 90, 1_000)
+
 
 # Rotate coordinates around a defined origin
 rotate_coordinates(
-    [
-        Coordinate(-0.154092, 51.539865), 
-        Coordinate(-0.140592, 51.505665)
-    ],
+    [c1, c2],
     origin=Coordinate(-0.16, 50.24),
     degrees=45,
 )

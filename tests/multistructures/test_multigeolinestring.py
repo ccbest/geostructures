@@ -278,4 +278,4 @@ def test_multigeolinestring_to_wkt():
         GeoLineString([Coordinate(0.0, 1.0), Coordinate(0.5, 0.5), Coordinate(1.0, 0.0)]),
         GeoLineString([Coordinate(1.0, 1.0), Coordinate(0.5, 0.5), Coordinate(0.0, 0.0)])
     ])
-    assert mls.to_wkt() == "MULTILINESTRING((0.0 1.0,0.5 0.5,1.0 0.0), (1.0 1.0,0.5 0.5,0.0 0.0))"
+    assert mls.to_wkt() == "MULTILINESTRING((0 1,0.5 0.5,1 0), (1 1,0.5 0.5,0 0))"

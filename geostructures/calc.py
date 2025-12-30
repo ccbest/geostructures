@@ -10,10 +10,11 @@ from typing import List, Tuple, cast
 
 import numpy as np
 
-from geostructures._const import EARTH_RADIUS
+from geostructures._const import EARTH_RADIUS_METERS
 from geostructures._geometry import ensure_edge_bounds
 from geostructures.coordinates import Coordinate
 from geostructures.utils.functions import round_half_up
+from geostructures.utils.logging import LOGGER
 
 
 def bearing_degrees(coord1: Coordinate, coord2: Coordinate, **kwargs) -> float:
@@ -34,6 +35,10 @@ def bearing_degrees(coord1: Coordinate, coord2: Coordinate, **kwargs) -> float:
     Returns:
         (float) the bearing in degrees
     """
+    LOGGER.warning(
+        'geostructures.calc.bearing_degrees is deprecated. Please update your import to use '
+        'geostructures.geodesic.bearing_degrees'
+    )
     d_lon = coord2.longitude - coord1.longitude
     x_val = math.cos(math.radians(coord2.latitude)) * math.sin(
         math.radians(d_lon)
@@ -63,6 +68,10 @@ def haversine_distance_meters(coord1: Coordinate, coord2: Coordinate) -> float:
     Returns:
         (float) the bearing in degrees
     """
+    LOGGER.warning(
+        'geostructures.calc.haversine_distance_meters is deprecated. Please update your import to '
+        'use geostructures.geodesic.distance_meters'
+    )
     coord1, coord2 = ensure_edge_bounds(coord1, coord2)
 
     lon1, lat1 = math.radians(coord1.longitude), math.radians(coord1.latitude)
@@ -72,7 +81,7 @@ def haversine_distance_meters(coord1: Coordinate, coord2: Coordinate) -> float:
     var1 = (math.sin(d_lat / 2) ** 2) + math.cos(lat1) * math.cos(lat2) * (
         math.sin(d_long / 2) ** 2
     )
-    return EARTH_RADIUS * 2 * math.atan2(math.sqrt(var1), math.sqrt(1 - var1))
+    return EARTH_RADIUS_METERS * 2 * math.atan2(math.sqrt(var1), math.sqrt(1 - var1))
 
 
 def inverse_haversine_degrees(
@@ -97,6 +106,10 @@ def inverse_haversine_degrees(
     Returns:
         (Coordinate)
     """
+    LOGGER.warning(
+        'geostructures.calc.inverse_haversine_degrees is deprecated. Please update your import to '
+        'use geostructures.geodesic.destination_point'
+    )
     return inverse_haversine_radians(
         start, math.radians(angle_degrees), distance_meters
     )
@@ -124,7 +137,11 @@ def inverse_haversine_radians(
     Returns:
         (Coordinate)
     """
-    _rad = distance_meters / EARTH_RADIUS
+    LOGGER.warning(
+        'geostructures.calc.inverse_haversine_radians is deprecated. Please update your import to '
+        'use geostructures.geodesic.destination_point'
+    )
+    _rad = distance_meters / EARTH_RADIUS_METERS
 
     x0 = start.longitude * math.pi / 180
     y0 = start.latitude * math.pi / 180

@@ -14,7 +14,7 @@ from geostructures import GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
 from geostructures.collections import Track, FeatureCollection
 
-from tests.functions import pyshp_round_trip
+from tests.functions import pyshp_round_trip, assert_geopolygons_equal
 
 
 def test_collection_bool():
@@ -544,22 +544,53 @@ def test_collection_to_from_shapefile(pyshp_round_trip, caplog):
     new = pyshp_round_trip(shapecol)
     assert set(new.geoshapes) == set(shapecol.geoshapes)
 
-
     # Test that non-polygons get written/read correctly (should be read as a polygon)
     shapecol = FeatureCollection([
         GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0), properties={'ID': 0}),
         GeoCircle(Coordinate(0.0, 2.0), 1000, properties={'ID': 1}),
-        GeoRing(Coordinate(0.0, 2.0), 1000, 500, properties={'ID': 2}),
+        GeoRing(
+            Coordinate(0.0, 2.0),
+            1000,
+            500,
+            angle_min=10,
+            angle_max=350,
+            properties={'ID': 2}
+        ),
     ])
+
+    # Convert original shapes to expected polygons (Shapefiles don't support circles/boxes natively)
+    expected_shapes = [x.to_polygon() for x in shapecol.geoshapes]
+
     with tempfile.TemporaryDirectory() as f:
-        with ZipFile(os.path.join(f, 'test.zip'), 'w') as zfile:
+        zip_path = os.path.join(f, 'test.zip')
+
+        # Write
+        with ZipFile(zip_path, 'w') as zfile:
             shapecol.to_shapefile(zfile)
 
-        new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
-        assert set(new_shapecol.geoshapes) == set(x.to_polygon() for x in shapecol.geoshapes)
+        # Read
+        new_shapecol = FeatureCollection.from_shapefile(zip_path)
 
-        new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'), read_layers=['nonexistent'])
-        assert new_shapecol.geoshapes == []
+        # 1. Verify counts
+        assert len(new_shapecol) == len(expected_shapes)
+
+        # 2. Match by ID and verify geometry approximately
+        # Note: Shapefile properties are read back, so we use ID to align the shapes
+        new_map = {int(s.properties['ID']): s for s in new_shapecol}
+        exp_map = {int(s.properties['ID']): s for s in expected_shapes}
+
+        assert new_map.keys() == exp_map.keys()
+
+        for sid, new_shape in new_map.items():
+            exp_shape = exp_map[sid]
+            assert_geopolygons_equal(new_shape, exp_shape)
+
+        # 3. Test nonexistent layer filter
+        new_shapecol_empty = FeatureCollection.from_shapefile(
+            zip_path,
+            read_layers=['nonexistent']
+        )
+        assert new_shapecol_empty.geoshapes == []
 
     # Test writing/reading properties
     pointcol = FeatureCollection([

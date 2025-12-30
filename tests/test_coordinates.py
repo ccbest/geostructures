@@ -53,7 +53,8 @@ def test_coordinate_to_float():
 
 
 def test_coordinate_to_str():
-    assert Coordinate(0., 1.).to_str() == ('0.0', '1.0')
+    assert Coordinate(0., 1.).to_str() == ('0', '1')
+    assert Coordinate(0.1, 1.1).to_str() == ('0.1', '1.1')
 
 
 def test_coordinate_to_mgrs():

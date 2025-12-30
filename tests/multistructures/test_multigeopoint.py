@@ -224,4 +224,4 @@ def test_multigeopoint_to_wkt():
         GeoPoint(Coordinate(0., 1.)),
         GeoPoint(Coordinate(1., 1.))
     ])
-    assert mp.to_wkt() == "MULTIPOINT((0.0 1.0), (1.0 1.0))"
+    assert mp.to_wkt() == "MULTIPOINT((0 1), (1 1))"

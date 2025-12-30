@@ -16,6 +16,7 @@ from geostructures.utils.conditional_imports import ConditionalPackageIntercepto
 ConditionalPackageInterceptor.permit_packages(
     {
         'geopandas': 'geostructures[df]',
+        'geographiclib': 'geostructures[karney]',
         'h3': 'geostructures[h3]',
         'fastkml': 'geostructures[kml]',
         'mgrs': 'geostructures[mgrs]',
