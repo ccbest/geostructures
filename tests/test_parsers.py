@@ -94,3 +94,15 @@ def test_parse_wkt():
 
     with pytest.raises(ValueError):
         parse_wkt('worse')
+
+
+def test_read_kml():
+    mock_kml = read_kml('./tests/test_files/test_kml.kml')
+    assert len(mock_kml) == 19
+
+    mock_kmz = read_kml('./tests/test_files/test_kmz.kmz')
+    assert len(mock_kmz) == 83
+
+    with pytest.raises(FileNotFoundError):
+        read_kml('./bad_path.kml')
+

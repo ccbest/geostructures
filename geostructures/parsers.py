@@ -1,10 +1,11 @@
 """Module for parsing external structures into geostructures"""
 
 __all__ = [
-    'parse_fastkml', 'parse_geojson', 'parse_wkt'
+    'parse_fastkml', 'parse_geojson', 'parse_wkt', 'read_kml'
 ]
 
 import json
+from pathlib import Path
 import re
 from typing import cast, Any, Dict, List, Optional, Union
 
@@ -162,3 +163,55 @@ def parse_wkt(wkt: str, /, **kwargs):
         raise ValueError(f'Unsupported WKT geometry {geom_type}.') from exc
 
     return parser.from_wkt(wkt, **kwargs)                 # type: ignore[arg-type]
+
+
+def read_kml(fpath: Union[str, Path], encoding: str = 'utf8') -> FeatureCollection:
+    """
+    Reads a KML or KMZ file and parses it into a FeatureCollection.
+    If a KMZ is provided, all KML files within it are parsed and combined.
+
+    Args:
+        fpath:
+            The file path to the .kml or .kmz file.
+
+        encoding:
+            The file encoding
+
+    Returns:
+        FeatureCollection
+    """
+    from zipfile import ZipFile
+    from fastkml import KML
+
+    fpath = Path(fpath)
+    if not fpath.exists():
+        raise FileNotFoundError(fpath)
+
+    shapes: List[GeoShape] = []
+
+    def _parse_content(content: bytes):
+        # fastkml/lxml prefers bytes for XML parsing to handle encoding declarations correctly
+        k = KML().from_string(content.decode(encoding))
+        return parse_fastkml(k)
+
+    if fpath.suffix.lower() == '.kmz':
+        with ZipFile(fpath, 'r') as z:
+            # Filter for .kml files inside the zip
+            kml_files = [x for x in z.namelist() if x.lower().endswith('.kml')]
+            for kml_f in kml_files:
+                parsed = _parse_content(z.read(kml_f))
+                for shape in parsed:
+                    shape.set_property('filepath', fpath)
+                    shape.set_property('filename', kml_f)
+
+                shapes.extend(parsed)
+    else:
+        # Assume plain KML
+        with open(fpath, 'rb') as f:
+            parsed = _parse_content(f.read())
+            for shape in parsed:
+                shape.set_property('filepath', fpath)
+
+            shapes.extend(parsed)
+
+    return FeatureCollection(shapes)
