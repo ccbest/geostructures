@@ -340,16 +340,18 @@ def distance_meters(coord1: Coordinate, coord2: Coordinate) -> float:
     """Calculates distance using the currently active algorithm."""
     return _active_distance(coord1, coord2)
 
+
 def destination_point(start: Coordinate, bearing_degrees: float, distance: float) -> Coordinate:
     """Calculates destination using the currently active algorithm."""
     return _active_destination(start, bearing_degrees, distance)
+
 
 def bearing_degrees(start: Coordinate, end: Coordinate) -> float:
     """Calculates bearing using the currently active algorithm."""
     return _active_bearing(start, end)
 
 
-# These declare the distance algo in use (default haversine)
+# These declare the algos in use (default haversine)
 _active_distance = haversine_distance
 _active_destination = haversine_destination
 _active_bearing = haversine_bearing
