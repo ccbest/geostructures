@@ -6,7 +6,7 @@ from pytest import approx
 import shapely
 from shapely import wkt
 
-from geostructures.geodesic import destination_point
+from geostructures.geodesic import destination_point, distance_meters
 from geostructures.structures import *
 from geostructures.coordinates import Coordinate
 from geostructures.multistructures import *
@@ -14,7 +14,7 @@ from geostructures.utils.functions import round_half_up
 from geostructures.time import TimeInterval
 
 from tests import assert_shape_equivalence
-from tests.functions import assert_coordinates_equal, assert_geopolygons_equal
+from tests.functions import assert_coordinates_equal, assert_geopolygons_equal, assert_geolinestrings_equal
 
 
 default_test_datetime = datetime(1970, 1, 1, 0, 0, tzinfo=timezone.utc)
@@ -1443,6 +1443,13 @@ def test_geolinestring_bounds():
     )
 
 
+def test_geolinestring_length():
+    c1, c2, c3 = Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)
+    ls = GeoLineString([c1, c2, c3])
+    expected = distance_meters(c1, c2) + distance_meters(c2, c3)
+    assert ls.length == expected
+
+
 def test_geolinestring_circumscribing_rectangle():
     ls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)])
     assert ls.circumscribing_rectangle() == GeoBox(
@@ -1600,6 +1607,32 @@ def test_geolinestring_from_wkt():
     with pytest.raises(ValueError):
         _ = GeoLineString.from_wkt('LINESTRING(30 10,10 30,40 40) (1 2, 3 4)')
 
+
+def test_geolinestring_split_by_len():
+    c1 = Coordinate(0.0, 0.0)
+    c2 = destination_point(c1, 90., 1000)
+    c3 = destination_point(c2, 0., 1000)
+
+    c1_mid = destination_point(c1, 90, 750)
+    c2_mid = destination_point(c2, 0, 500)
+
+    ls = GeoLineString([c1, c2, c3])
+    expected = [
+        GeoLineString([c1, c1_mid]),
+        GeoLineString([c1_mid, c2, c2_mid]),
+        GeoLineString([c2_mid, c3]),
+    ]
+    actual = ls.split_by_length(750)
+
+    assert len(actual) == len(expected)
+    for l1, l2 in zip(actual, expected):
+        assert_geolinestrings_equal(l1, l2)
+
+    with pytest.raises(ValueError):
+        ls.split_by_length(0)
+
+    with pytest.raises(ValueError):
+        ls.split_by_length(-5)
 
 def test_geolinestring_to_wkt(geolinestring):
     assert geolinestring.to_wkt() == 'LINESTRING(0 0,1 0,1 1)'

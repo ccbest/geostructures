@@ -1398,6 +1398,16 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
     def segments(self) -> List[Tuple[Coordinate, Coordinate]]:
         return list(zip(self.vertices, self.vertices[1:]))
 
+    @cached_property
+    def length(self) -> float:
+        """
+        Calculates the total length of the LineString in meters.
+        """
+        return sum(
+            distance_meters(p1, p2)
+            for p1, p2 in self.segments
+        )
+
     def circumscribing_circle(self) -> GeoCircle:
         centroid = self.centroid
         max_dist = max(distance_meters(x, centroid) for x in self.vertices)
@@ -1584,6 +1594,77 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
             properties=copy.deepcopy(self._properties),
             dt=self.dt
         )
+
+    def split_by_length(self, meters: float) -> List['GeoLineString']:
+        """
+        Splits the GeoLineString into smaller GeoLineStrings of the specified length.
+        The final segment will contain the remainder if the total length is not
+        evenly divisible.
+
+        Args:
+            meters:
+                The length of each segment in meters.
+
+        Returns:
+            List[GeoLineString]
+        """
+        if meters <= 0:
+            raise ValueError("Split length must be greater than 0.")
+
+        results = []
+        # Start the pending segment with the first vertex
+        current_chunk_coords = [self.vertices[0]]
+        current_chunk_len = 0.0
+
+        for start, end in self.segments:
+            edge_dist = distance_meters(start, end)
+
+            # only calculate bearing if we know we need to cut this edge
+            bearing = None
+
+            # While the current edge + accumulated length is enough to form a full chunk
+            while current_chunk_len + edge_dist >= meters:
+                needed = meters - current_chunk_len
+
+                if bearing is None:
+                    bearing = bearing_degrees(start, end)
+
+                # Find the cut point along the path
+                cut_point = destination_point(start, bearing, needed)
+
+                # Close off the current chunk
+                current_chunk_coords.append(cut_point)
+                results.append(
+                    GeoLineString(
+                        current_chunk_coords,
+                        dt=self.dt,
+                        properties=copy.deepcopy(self._properties)
+                    )
+                )
+
+                # Reset for the next chunk, starting from the cut point
+                current_chunk_coords = [cut_point]
+                current_chunk_len = 0.0
+
+                # Advance our "start" to the cut point and reduce remaining edge distance
+                start = cut_point
+                edge_dist -= needed
+
+            # Add the end of the current edge to the pending chunk
+            current_chunk_coords.append(end)
+            current_chunk_len += edge_dist
+
+        # If there's any remainder (more than just the start point), return it
+        if len(current_chunk_coords) > 1:
+            results.append(
+                GeoLineString(
+                    current_chunk_coords,
+                    dt=self.dt,
+                    properties=copy.deepcopy(self._properties)
+                )
+            )
+
+        return results
 
     def to_pyshp(self, writer):
         formatted = [[list(x.to_float()) for x in self.vertices]]
