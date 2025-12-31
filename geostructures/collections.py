@@ -185,6 +185,184 @@ class CollectionBase:
         return FeatureCollection(parse_fastkml(folder))
 
     @classmethod
+    def from_arcgis_featureclass(
+        cls,
+        feature_class_path: str,
+        time_start_property: Optional[str] = None,
+        time_end_property: Optional[str] = None,
+        time_fmt: Optional[Union[str, List[str]]] = None,
+    ):
+        """
+        Creates an instance of the class from an ArcGIS feature class.
+
+        Args:
+            feature_class_path (str):
+                The path to the feature class.
+            time_start_property (Optional[str]):
+                The name of the field containing the start time data. Defaults to None.
+            time_end_property (Optional[str]):
+                The name of the field containing the end time data. Defaults to None.
+            time_fmt (Optional[str] or [List[str]]):
+                The string format(s) of the time properties if they are strs. Defaults to None.
+
+        Returns:
+            An instance of the class populated with geoshapes parsed from the feature class.
+        """
+        from arcgis.features import GeoAcessor  # noqa: F401
+        import pandas as pd
+        from geostructures.parsers import parse_arcgis_featureclass
+
+        _shapes = []
+        # Convert the feature class into a Spatially Enabled DataFrame (SEDF) for further processing
+        sedf = pd.DataFrame.spatial.from_featureclass(feature_class_path)
+        property_columns = [col for col in sedf.columns if col != 'SHAPE']
+
+        # Get time values to determine the fmt needed if they are not strings and fmt was not provided
+        time_start_value, time_end_value = None, None
+        if time_start_property is not None:
+            time_start_value = getattr(sedf.iloc[0], time_start_property, None)
+
+        if time_end_property is not None:
+            time_end_value = getattr(sedf.iloc[0], time_start_property, None)
+
+        # Pull time format for time_start_property, if it is a string.
+        if time_start_value and isinstance(time_start_value, str):
+            if time_fmt is None:
+                time_fmt = [TimeInterval._get_timeformat(time_start_value)]
+
+            if time_end_value and not isinstance(time_end_value, str):
+                raise TypeError(
+                    f'Time formats cannot be mixed, '
+                    f'Start Time: {type(time_start_value)}, '
+                    f'End Time: {type(time_end_value)}'
+                )
+
+        # Pull time format for time_end_property, if it is a string.
+        if time_end_value and isinstance(time_end_value, str):
+            end_time_fmt = [TimeInterval._get_timeformat(time_end_value)]
+            if time_fmt != end_time_fmt:
+                if end_time_fmt not in time_fmt:
+                    time_fmt.append(fmt for fmt in end_time_fmt)
+
+            if time_start_value and not isinstance(time_start_value, str):
+                raise TypeError(
+                    f'Time formats cannot be mixed, '
+                    f'Start Time: {type(time_start_value)}, '
+                    f'End Time: {type(time_end_value)}'
+                )
+
+        # Parse each row in SEDF to extract geoshapes and convert them into GeoShapes
+        for row in sedf.itertuples():
+            _shapes.append(
+                parse_arcgis_featureclass(
+                    row,
+                    property_columns,
+                    time_start_property,
+                    time_end_property,
+                    time_fmt
+                )
+            )
+
+        return cls(_shapes)
+
+    @classmethod
+    def from_arcpy_featureclass(
+        cls,
+        feature_class_path: str,
+        time_start_property: Optional[str] = None,
+        time_end_property: Optional[str] = None,
+        time_fmt: Optional[Union[str, List[str]]] = None,
+    ):
+        """
+        Creates an instance of the class from an ArcGIS feature class.
+
+        Args:
+            feature_class_path (str):
+                The path to the feature class.
+            time_start_property (Optional[str]):
+                The name of the field containing the start time data. Defaults to None.
+            time_end_property (Optional[str]):
+                The name of the field containing the end time data. Defaults to None.
+            time_fmt (Optional[str] or [List[str]]):
+                The string format(s) of the time properties if they are strs. Defaults to None.
+
+        Returns:
+            An instance of the class populated with geoshapes parsed from the feature class.
+        """
+        import arcpy  # noqa: F401
+        from geostructures.parsers import parse_arcpy_featureclass
+
+        _shapes = []
+        # Convert the feature class into a Spatially Enabled DataFrame (SEDF) for further processing
+        fields = ['SHAPE@']
+        fields.extend([f.name for f in arcpy.ListFields(feature_class_path) if f.name not in fields])
+        cursor = arcpy.da.SearchCursor(feature_class_path, fields)
+        if time_start_property and time_start_property not in fields:
+            raise ValueError(f'Invalid start time provided: {time_start_property}.')
+
+        if time_end_property and time_end_property not in fields:
+            raise ValueError(f'Invalid end time provided: {time_end_property}.')
+
+        # Get time values to determine the fmt needed if they are not strings and fmt was not provided
+        for row in cursor:
+            time_start_index, time_end_index = None, None
+            if time_start_property is not None:
+                time_start_index = fields.index(time_start_property)
+
+            if time_end_property is not None:
+                time_end_index = fields.index(time_end_property)
+
+            time_start_value, time_end_value = None, None
+            if time_start_index is not None:
+                time_start_value = row[time_start_index]
+
+            if time_end_index is not None:
+                time_end_value = row[time_end_value]
+
+            # Pull time format for time_start_property, if it is a string.
+            if time_start_value and isinstance(time_start_value, str):
+                if time_fmt is None:
+                    time_fmt = [TimeInterval._get_timeformat(time_start_value)]
+
+                if time_end_value and not isinstance(time_end_value, str):
+                    raise TypeError(
+                        f'Time formats cannot be mixed, '
+                        f'Start Time: {type(time_start_value)}, '
+                        f'End Time: {type(time_end_value)}'
+                    )
+
+            # Pull time format for time_end_property, if it is a string.
+            if time_end_value and isinstance(time_end_value, str):
+                end_time_fmt = [TimeInterval._get_timeformat(time_end_value)]
+                if time_fmt != end_time_fmt:
+                    if end_time_fmt not in time_fmt:
+                        time_fmt.append(fmt for fmt in end_time_fmt)
+
+                if time_start_value and not isinstance(time_start_value, str):
+                    raise TypeError(
+                        f'Time formats cannot be mixed, '
+                        f'Start Time: {type(time_start_value)}, '
+                        f'End Time: {type(time_end_value)}'
+                    )
+
+            break
+
+        cursor.reset()
+        # Parse each row in cursor to extract geoshapes
+        for row in cursor:
+            _shapes.append(
+                parse_arcpy_featureclass(
+                    row,
+                    fields,
+                    time_start_property,
+                    time_end_property,
+                    time_fmt
+                )
+            )
+
+        return cls(_shapes)
+
+    @classmethod
     def from_geojson(
         cls,
         gjson: Dict[str, Any],
@@ -452,6 +630,13 @@ class CollectionBase:
             name=folder_name,
             features=[x.to_fastkml_placemark() for x in self.geoshapes]
         )
+
+    def to_featureclass(self, geodatabase, filename):
+        from arcgis.features import GeoAccessor
+
+        gdf = self.to_geopandas()
+        sedf = GeoAccessor.from_geodataframe(gdf)
+        sedf.spatial.to_featureclass(f'{geodatabase}\\{filename}')
 
     def to_geojson(self, properties: Optional[Dict] = None, **kwargs):
         return {

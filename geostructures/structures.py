@@ -429,6 +429,103 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
         )
 
     @classmethod
+    def from_featureclass(
+        cls,
+        geometry,
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[dict] = None,
+    ) -> 'GeoShape':
+        """
+        Creates a GeoPolygon or MultiGeoPolygon from ESRI formatted geometry
+
+        Args:
+            geometry:
+                The geometry of the feature
+
+            dt: (Optional)
+                TimeInterval from the parser
+
+            properties: (Optional)
+                the columns and values of the attributes of the feature
+        """
+        from geostructures._geometry import is_counter_clockwise
+        from geostructures.multistructures import MultiGeoPolygon
+
+        def _get_rings_from_part(part):
+            idx, rings = 0, []
+            while idx < len(part):
+                ring = []
+                while idx < len(part) and part[idx] is not None:
+                    ring.append(part[idx])
+                    idx += 1
+
+                rings.append(ring)
+                idx += 1
+
+            return rings
+
+        shapes = []
+        if isinstance(geometry, dict) and 'rings' in geometry:
+            holes, idx, outline = [], 0, None
+            while idx < len(geometry['rings']):
+                ring = [Coordinate(*x) for x in geometry['rings'][idx]]
+
+                if is_counter_clockwise(ring):
+                    holes.append(GeoPolygon(ring))
+                    idx += 1
+                    continue
+
+                if outline is not None:
+                    shapes.append(GeoPolygon(outline, holes=holes or None))
+                    holes = []
+
+                outline = ring
+                idx += 1
+
+            if (not shapes) or outline != shapes[-1].bounds:
+                shapes.append(GeoPolygon(outline, holes=holes or None))
+
+        elif hasattr(geometry[0][0], 'X') and hasattr(geometry[0][0], 'Y'):
+            for part in geometry:
+                rings = _get_rings_from_part(part)
+                outline = [Coordinate(point.X, point.Y) for point in rings[0]]
+                holes = None
+                if len(rings) > 1:
+                    holes = [
+                        GeoPolygon([
+                            Coordinate(point.X, point.Y) for point in ring
+                        ]) for ring in rings[1:]
+                    ]
+
+                shapes.append(GeoPolygon(outline, holes=holes))
+
+        elif hasattr(geometry[0][0], 'centroid'):
+            for part in geometry:
+                rings = _get_rings_from_part(part)
+                outline = [Coordinate(point.centroid.X, point.centroid.Y) for point in rings[0]]
+                holes = None
+                if len(rings) > 1:
+                    holes = [
+                        GeoPolygon([
+                            Coordinate(point.centroid.X, point.centroid.Y) for point in ring
+                        ]) for ring in rings[1:]
+                    ]
+
+                shapes.append(GeoPolygon(outline, holes=holes))
+
+        else:
+            raise ValueError('Unable to extract shape from provided format.')
+
+        if len(shapes) > 1:
+            return MultiGeoPolygon(shapes, dt=dt, properties=properties)
+
+        shape = shapes[0]
+        shape._properties = properties
+        shape.dt = dt
+
+        return shape
+
+    @classmethod
     def from_geojson(
         cls,
         gjson: Dict[str, Any],
@@ -1451,6 +1548,56 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
         )
 
     @classmethod
+    def from_featureclass(
+        cls,
+        geometry,
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[dict] = None,
+    ) -> 'GeoShape':
+        """
+        Creates a GeoLineString or MultiGeoLineString from ESRI formatted geometry
+
+        Args:
+            geometry:
+                The geometry of the feature
+
+            dt: (Optional)
+                TimeInterval from the parser
+
+            properties: (Optional)
+                the columns and values of the attributes of the feature
+        """
+        from geostructures.multistructures import MultiGeoLineString
+
+        lines = []
+        if isinstance(geometry, dict) and 'paths' in geometry:
+            for part in geometry['paths']:
+                line = [Coordinate(point[0], point[1]) for point in part]
+                lines.append(GeoLineString(line))
+
+        elif hasattr(geometry[0][0], 'X') and hasattr(geometry[0][0], 'Y'):
+            for part in geometry:
+                line = [Coordinate(point.X, point.Y) for point in part]
+                lines.append(GeoLineString(line))
+
+        elif hasattr(geometry[0][0], 'centroid'):
+            for part in geometry:
+                line = [Coordinate(point.centroid.X, point.centroid.Y) for point in part]
+                lines.append(GeoLineString(line))
+
+        else:
+            raise ValueError('Unable to extract shape from provided format.')
+
+        if len(lines) > 1:
+            return MultiGeoLineString(lines, dt=dt, properties=properties)
+
+        line = lines[0]
+        line._properties = properties
+        line.dt = dt
+
+        return lines
+
+    @classmethod
     def from_geojson(
         cls,
         gjson: Dict[str, Any],
@@ -1770,6 +1917,40 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
         if isinstance(shape, GeoPoint):
             return self == shape
         return self in shape
+
+    @classmethod
+    def from_featureclass(
+        cls,
+        geometry,
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[dict] = None,
+    ) -> 'GeoPoint':
+        """
+        Creates a GeoPoint from ESRI formatted geometry
+
+        Args:
+            geometry:
+                The geometry of the feature
+
+            dt: (Optional)
+                TimeInterval from the parser
+
+            properties: (Optional)
+                the columns and values of the attributes of the feature
+        """
+        if isinstance(geometry, dict) and 'x' in geometry and 'y' in geometry:
+            coord = Coordinate(geometry['x'], geometry['y'])
+
+        elif hasattr(geometry, 'X') and hasattr(geometry, 'Y'):
+            coord = Coordinate(geometry.X, geometry.Y)
+
+        elif hasattr(geometry, 'centroid'):
+            coord = Coordinate(geometry.centroid.X, geometry.centroid.Y)
+
+        else:
+            raise ValueError('Unable to extract shape from provided format.')
+
+        return GeoPoint(coord, dt=dt, properties=properties)
 
     @classmethod
     def from_geojson(
