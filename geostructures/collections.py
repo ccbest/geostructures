@@ -18,7 +18,7 @@ from pydantic import validate_call
 from geostructures import Coordinate, LOGGER
 from geostructures._base import PolygonLikeMixin, PointLikeMixin, LineLikeMixin, MultiShapeBase, BaseShape
 from geostructures._geometry import convex_hull
-from geostructures.calc import haversine_distance_meters
+from geostructures.calc import bearing_degrees, haversine_distance_meters, inverse_haversine_degrees
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
@@ -275,6 +275,9 @@ class CollectionBase:
                 (not pd.isnull(dt_end) and isinstance(dt_end, datetime))
             ):
                 return None
+
+            if isinstance(dt_start, str) and isinstance(dt_start, str):
+                return TimeInterval.from_str(dt_start, dt_end)
 
             if not (dt_start and dt_end) or dt_start == dt_end:
                 return dt_start or dt_end
@@ -822,6 +825,63 @@ class Track(CollectionBase):
             (y.start - x.start)
             for x, y in zip(self.geoshapes, self.geoshapes[1:])
         ])
+
+    def extrapolate(self, time_traveled: 'timedelta') -> 'Track':
+        last_shape = self.geoshapes[-1].copy()
+        if not isinstance(last_shape, (GeoPoint, GeoLineString)):
+            raise TypeError('Can only extrapolate a Points or LineStrings.')
+
+        if isinstance(last_shape, GeoLineString):
+            segments = last_shape.segments
+            start_time = last_shape.dt.start
+            end_time = last_shape.dt.end
+            total_duration_seconds = (end_time - start_time).total_seconds()
+            total_length_meters = sum(haversine_distance_meters(*segment) for segment in segments)
+            speed = total_length_meters / total_duration_seconds
+            bearing = bearing_degrees(*segments[0])
+            extrapolated_point = inverse_haversine_degrees(
+                segments[0][1],
+                bearing,
+                speed * time_traveled.total_seconds()
+            )
+            new_track = Track([
+                GeoLineString(
+                    [last_shape.vertices[-1], extrapolated_point],
+                    dt=TimeInterval(end_time, end_time + time_traveled),
+                    properties=last_shape.properties.copy()
+                )
+            ])
+
+        if isinstance(last_shape, GeoPoint):
+            second_last_shape = self.geoshapes[-2]
+            if last_shape.dt.start == last_shape.dt.end:
+                start_time = second_last_shape.dt.end
+                end_time = last_shape.dt.end
+
+            else:
+                start_time, end_time = last_shape.dt.start, last_shape.dt.end
+
+            total_duration_seconds = (end_time - start_time).total_seconds()
+            total_length_meters = haversine_distance_meters(
+                second_last_shape.coordinate,
+                last_shape.coordinate
+            )
+            speed = total_length_meters / total_duration_seconds
+            bearing = bearing_degrees(second_last_shape.coordinate, last_shape.coordinate)
+            extrapolated_point = inverse_haversine_degrees(
+                last_shape.coordinate,
+                bearing,
+                speed * time_traveled.total_seconds()
+            )
+            new_track = Track([
+                GeoPoint(
+                    extrapolated_point,
+                    dt=TimeInterval(end_time, end_time + time_traveled),
+                    properties=last_shape.properties.copy()
+                )
+            ])
+
+        return self.__add__(new_track)
 
     def copy(self):
         """Returns a shallow copy of self"""
