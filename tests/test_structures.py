@@ -1804,3 +1804,83 @@ def test_geopoint_from_wkt():
 def test_geopoint_to_wkt(geopoint):
     assert geopoint.to_wkt() == 'POINT(0 0)'
 
+
+@pytest.fixture
+def basic_line():
+    # A basic GeoLineString without time
+    return GeoLineString([
+        Coordinate(0, 0),
+        Coordinate(1, 1),
+        Coordinate(2, 2)
+    ])
+
+
+@pytest.fixture
+def timed_line():
+    # A GeoLineString with a time interval
+    return GeoLineString(
+        [
+            Coordinate(0, 0),
+            Coordinate(1, 1),
+            Coordinate(2, 2)
+        ],
+        dt=TimeInterval(
+            start=datetime(2025, 1, 1, 0, 0, 0),
+            end=datetime(2025, 1, 1, 2, 0, 0)
+        )
+    )
+
+
+def test_split_no_split_needed(basic_line):
+    # Distance is greater than the total length of the line
+    result = basic_line.split(200000)
+    assert len(result) == 1
+    assert result[0] == basic_line
+
+
+def test_split_even_segments(basic_line):
+    # Splitting into segments close to half the total length
+    half_length = 157237.40665500844  # Approximate 1/2 total length of line
+    result = basic_line.split(half_length)
+
+    # Check if the segments are created
+    assert len(result) == 2
+
+    # Validate the first segment
+    assert result[0].vertices[0] == basic_line.vertices[0]
+    assert result[0].vertices[-1].longitude != basic_line.vertices[-1].longitude  # Shouldn't reach the end
+
+    # Validate the second segment starts where the first ended
+    assert result[1].vertices[0] == result[0].vertices[-1]
+    assert result[1].vertices[-1] == basic_line.vertices[-1]
+
+
+def test_split_with_remainder(basic_line):
+    # Distance doesn't evenly divide the total length
+    result = basic_line.split(5000)
+    assert len(result) > 1
+    assert all(len(segment.vertices) > 1 for segment in result)
+
+
+def test_split_with_time_intervals(timed_line):
+    # Ensure time intervals are proportional
+    result = timed_line.split(157249)
+    assert len(result) == 2
+    assert result[0].dt.start == timed_line.dt.start
+    assert result[1].dt.end == timed_line.dt.end
+    assert result[0].dt.end == result[1].dt.start
+    assert result[0].dt.end < result[1].dt.end
+    assert result[0].dt.start < result[1].dt.start
+
+
+def test_warning_on_large_distance(basic_line):
+    # Warning if the split distance exceeds the total length
+    with pytest.warns(UserWarning):
+        result = basic_line.split(400000)
+        assert len(result) == 1
+
+
+def test_split_exact_division(basic_line):
+    # Distance perfectly divides the line
+    result = basic_line.split(157249 * 2)
+    assert len(result) == 1
