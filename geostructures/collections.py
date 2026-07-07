@@ -31,7 +31,7 @@ _COL_TYPE = TypeVar('_COL_TYPE', bound='CollectionBase')
 
 class CollectionBase:
 
-    @validate_call(config=dict(arbitrary_types_allowed=True))
+    @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(self, geoshapes: List[BaseShape]):
         super().__init__()
         self.geoshapes = geoshapes
@@ -156,7 +156,9 @@ class CollectionBase:
         """
         return type(self)([x for x in self.geoshapes if x.contains(shape)])
 
-    def filter_by_property(self: _COL_TYPE, property: str, func: Callable[[Any], bool]) -> _COL_TYPE:
+    def filter_by_property(  # pylint: disable=redefined-builtin
+        self: _COL_TYPE, property: str, func: Callable[[Any], bool]
+    ) -> _COL_TYPE:
         """
         Filter based on property and the given function.
         Args:
@@ -467,6 +469,16 @@ class CollectionBase:
 
     def to_geopandas(self, include_properties: Optional[List[str]] = None):
         """
+        Convert the collection to a geopandas GeoDataFrame, with shape
+        properties included as columns.
+
+        Args:
+            include_properties: (Optional)
+                The property keys to include as columns. Defaults to all
+                properties present on any shape.
+
+        Returns:
+            geopandas.GeoDataFrame
         """
         import pandas as pd
         import geopandas as gpd
@@ -522,8 +534,7 @@ class CollectionBase:
                 for ring in geom.linear_rings():
                     yield from ring
 
-            else:  # pragma: no cover  # fallback – should not happen
-                return
+            # Unrecognized shape types yield nothing
 
         def _dimensionality(geom) -> str:
             """Return 'XYZ' (has Z), 'XYM' (has M, no Z) or 'XY'."""
@@ -629,9 +640,6 @@ class CollectionBase:
                     )
                     zip_file.write(prj, prj.name)
 
-        # nothing to return
-        return
-
 
 class FeatureCollection(CollectionBase):
 
@@ -687,7 +695,7 @@ class Track(CollectionBase):
     A sequence of chronologically-ordered (by start time) GeoShapes
     """
 
-    @validate_call(config=dict(arbitrary_types_allowed=True))
+    @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(self, geoshapes: List[BaseShape]):
         if not all(x.dt for x in geoshapes):
             raise ValueError('All track geoshapes must have an associated time value.')

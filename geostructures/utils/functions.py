@@ -33,7 +33,7 @@ def get_dt_from_geojson_props(
     """Grabs datetime data and returns appropriate struct"""
     def _convert(dt: Optional[str], _format: Optional[str] = None):
         if not dt:
-            return
+            return None
 
         if _format:
             return datetime.strptime(dt, _format)

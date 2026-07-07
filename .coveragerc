@@ -1,2 +1,0 @@
-[run]
-omit = geostructures/visualization/plotly.py

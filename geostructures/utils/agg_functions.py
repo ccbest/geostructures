@@ -19,7 +19,7 @@ def total_time(shapes: List[BaseShape]) -> float:
         float
     """
     return sum(
-        [shape.dt.elapsed.total_seconds() if shape.dt else 0 for shape in shapes]
+        shape.dt.elapsed.total_seconds() if shape.dt else 0 for shape in shapes
     )
 
 

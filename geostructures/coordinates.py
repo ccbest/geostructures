@@ -103,7 +103,7 @@ class Coordinate:
     @classmethod
     def from_mgrs(cls, mgrs_str: str):
         """Create a Coordinate object from a MGRS string"""
-        import mgrs  # pylint: disable=import-outside-toplevel
+        import mgrs
         _MGRS = mgrs.MGRS()
 
         # Spaces in the mgrs string can produce inaccurate coordinates
@@ -228,7 +228,7 @@ class Coordinate:
 
     def to_mgrs(self) -> str:
         """Convert this coordinate to a MGRS string"""
-        import mgrs  # pylint: disable=import-outside-toplevel
+        import mgrs
         _MGRS = mgrs.MGRS()
 
         return _MGRS.toMGRS(self.latitude, self.longitude)

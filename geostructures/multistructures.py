@@ -31,7 +31,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
 
-    @validate_call(config=dict(arbitrary_types_allowed=True))
+    @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
         geoshapes: List[GeoLineString],
@@ -211,7 +211,7 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
         """
         Converts the geoshape into a Shapely shape.
         """
-        import shapely  # pylint: disable=import-outside-toplevel
+        import shapely
 
         lines = [
             [x.to_float() for x in shape.vertices]
@@ -237,7 +237,7 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
 
 class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
 
-    @validate_call(config=dict(arbitrary_types_allowed=True))
+    @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
         geoshapes: List[GeoPoint],
@@ -402,7 +402,7 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
         """
         Converts the geoshape into a Shapely shape.
         """
-        import shapely  # pylint: disable=import-outside-toplevel
+        import shapely
 
         points = [x.centroid.to_float() for x in self.geoshapes]
 
@@ -425,7 +425,7 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
 
 class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
 
-    @validate_call(config=dict(arbitrary_types_allowed=True))
+    @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
         geoshapes: Sequence[PolygonBase],
@@ -592,7 +592,7 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
         shapes = []
         z = shape.z if hasattr(shape, 'z') else None
         m = shape.m if hasattr(shape, 'm') else None
-        for shape in shape.__geo_interface__.get('coordinates', []):
+        for polygon in shape.__geo_interface__.get('coordinates', []):
             linear_rings = [
                 [
                     Coordinate(
@@ -600,7 +600,7 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
                         z=z.pop(0) if z else None,
                         m=m.pop(0) if m else None,
                     ) for coord in linear_ring
-                ] for linear_ring in shape
+                ] for linear_ring in polygon
             ]
             holes = [GeoPolygon(x) for x in linear_rings[1:]] if len(linear_rings) > 1 else None
             shapes.append(
@@ -694,7 +694,7 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
         """
         Converts the geoshape into a Shapely shape.
         """
-        import shapely  # pylint: disable=import-outside-toplevel
+        import shapely
 
         converted = []
         for shape in self.linear_rings(**kwargs):

@@ -20,7 +20,7 @@ def _read_version_file() -> str:
     for p in candidates:
         try:
             return p.read_text(encoding="utf-8").strip()
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             pass
     raise FileNotFoundError('geostructures version file not found')
 

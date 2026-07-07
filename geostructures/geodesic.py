@@ -381,9 +381,10 @@ def set_geodesic_algorithm(algorithm: Literal['haversine', 'vincenty', 'karney']
     Set the global geodesic calculation method.
 
     Args:
-        algorithm: 'haversine' or 'vincenty'
+        algorithm: 'haversine', 'vincenty', or 'karney'
     """
-    global _active_distance, _active_destination, _active_bearing
+    # Deliberate module-level dispatch state
+    global _active_distance, _active_destination, _active_bearing  # pylint: disable=global-statement
 
     if algorithm not in _ALGORITHMS:
         raise ValueError(f"Unknown algorithm '{algorithm}'. Options: {list(_ALGORITHMS.keys())}")

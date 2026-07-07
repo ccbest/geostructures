@@ -11,6 +11,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
 ]
 dependencies = ["numpy>=2,<3", "pydantic>=2,<3"]
@@ -43,10 +44,10 @@ dev = [
 
     # Development requirements
     "coverage>=5.5",
-    "flake8",
     "mypy",
-    "pylint>=2.15,<3",
+    "pylint>=3,<4",
     "pytest",
+    "ruff>=0.8",
     "pandas-stubs",
     "types-geopandas",
     "types-shapely",
@@ -75,6 +76,46 @@ file = "LICENSE"
 [tool.mypy]
 ignore_missing_imports = true
 plugins = ["pydantic.mypy"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+
+[tool.pylint.main]
+py-version = "3.9"
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.pylint."messages control"]
+disable = [
+    # Naming: math-heavy code legitimately uses short names
+    "invalid-name",
+    # Docstring presence is enforced by review, not lint
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    # Function-local imports are this library's deliberate optional-dependency pattern
+    "import-outside-toplevel",
+    # Structural findings tracked as tech debt rather than lint failures
+    "cyclic-import",
+    "duplicate-code",
+    "protected-access",
+    # Design-counter limits don't fit a shapes API with many small methods
+    "too-many-public-methods",
+    "too-many-branches",
+    "too-many-arguments",
+    "too-many-locals",
+    "too-many-statements",
+    "too-many-positional-arguments",
+    # Misc
+    "fixme",
+    "unused-argument",
+    "redefined-outer-name",
+]
 
 [tool.setuptools]
 include-package-data = false

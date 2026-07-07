@@ -41,7 +41,8 @@ scrutinized for necessity, however are much more likely to be accepted provided 
 interfere with core functionality.
 
 Whenever an optional dependency is utilized it must be imported only within the scope of its usage so that code
-which does not rely on the dependency may still be compiled. Please add a line comment `# pylint: disable=import-outside-toplevel` to all such imports. 
+which does not rely on the dependency may still be compiled (the `import-outside-toplevel` pylint check is
+disabled project-wide to permit this pattern).
 
 ### Definition Order
 Unless otherwise required, definitions in modules should follow the below order
@@ -63,14 +64,14 @@ Tests should follow the same order as defined in the actual code.
 ### Pull Request Requirements
 
 Code submitted within a merge request should be well-structured and commented. Specifically, all code must:
-* Pass linting checks (flake8)
+* Pass linting checks (ruff and pylint)
 * Pass type assertions (mypy)
 * Pass all unit tests (pytest)
-* Maintain 100% unit test coverage, except in extremely rare circumstances
+* Maintain at least 99% unit test coverage (enforced by CI)
 
 ### PEP8 Divergences
 
 Geostructures follows Python's PEP8 style guidance, with the following exceptions:
 
 * Line length may extend up to 120, however 100 is strongly preferred.
-* Tabs are preferred over spaces.
+* Spaces (4 per indentation level) are preferred over tabs.

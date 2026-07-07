@@ -337,7 +337,9 @@ class H3Hasher(HasherBase):
         self,
         resolution: Optional[int] = None,
     ):
-        import h3  # noqa: F401
+        # Deliberate fail-fast so users without the extra fail at
+        # construction rather than mid-pipeline
+        import h3  # noqa: F401  # pylint: disable=unused-import
 
         self.resolution = resolution
 

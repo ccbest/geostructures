@@ -95,7 +95,7 @@ class BaseShape(ABC):
             self.dt = dt
 
         self._properties = properties or {}
-        self.to_shapely = lru_cache(maxsize=1)(lambda: self._to_shapely())
+        self.to_shapely = self._make_shp_proxy()
 
     def __contains__(self, other: Union['GeoShape', Coordinate]):
         return self.contains(other)  # pragma: no cover

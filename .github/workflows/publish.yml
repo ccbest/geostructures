@@ -1,13 +1,20 @@
 name: Publish to PyPI
+# Publishes release tags (e.g. v0.14.0 or 0.14.0) whose version matches
+# the VERSION file. Pre-release tags (rc/dev) are handled by the
+# "Publish to Test PYPI" workflow instead.
 
 on:
   push:
     tags:
       - '*'
 
+permissions:
+  contents: read
+
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
+    if: ${{ !contains(github.ref_name, 'rc') && !contains(github.ref_name, 'dev') }}
 
     steps:
       - name: Checkout
@@ -29,7 +36,7 @@ jobs:
           if [ ! -f "$VERSION_FILE" ]; then
             echo "Missing $VERSION_FILE"; exit 1
           fi
-          VERSION=$(cat "$VERSION_FILE" | tr -d ' \n')
+          VERSION=$(tr -d ' \n' < "$VERSION_FILE")
           TAG="${GITHUB_REF_NAME#v}"     # strip optional leading 'v'
           echo "VERSION=$VERSION"
           echo "TAG=$TAG"

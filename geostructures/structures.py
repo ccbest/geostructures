@@ -200,7 +200,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
         """
         Converts the geoshape into a Shapely shape.
         """
-        import shapely  # pylint: disable=import-outside-toplevel
+        import shapely
         rings = self.linear_rings()
         holes = []
         if len(rings) > 1:
@@ -249,7 +249,7 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
 
     """
 
-    @validate_call(config=dict(arbitrary_types_allowed=True))
+    @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
         outline: List[Coordinate],
@@ -662,7 +662,7 @@ class GeoBox(PolygonBase):
 
     """
 
-    @validate_call(config=dict(arbitrary_types_allowed=True))
+    @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
         nw_bound: Coordinate,
@@ -820,7 +820,7 @@ class GeoCircle(PolygonBase):
             The length of the circle's radius, in meters
     """
 
-    @validate_call(config=dict(arbitrary_types_allowed=True))
+    @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
         center: Coordinate,
@@ -928,8 +928,8 @@ class GeoEllipse(PolygonBase):
 
     """
 
-    @validate_call(config=dict(arbitrary_types_allowed=True))
-    def __init__(  # pylint: disable=R0913
+    @validate_call(config={'arbitrary_types_allowed': True})
+    def __init__(
         self,
         center: Coordinate,
         semi_major: float,
@@ -1175,8 +1175,8 @@ class GeoRing(PolygonBase):
 
     """
 
-    @validate_call(config=dict(arbitrary_types_allowed=True))
-    def __init__(  # pylint: disable=too-many-arguments
+    @validate_call(config={'arbitrary_types_allowed': True})
+    def __init__(
         self,
         center: Coordinate,
         inner_radius: float,
@@ -1386,7 +1386,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
     A LineString (or more colloquially, a path) consisting of a series of
     """
 
-    @validate_call(config=dict(arbitrary_types_allowed=True))
+    @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
         vertices: List[Coordinate],
@@ -1739,7 +1739,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
 
     """
 
-    @validate_call(config=dict(arbitrary_types_allowed=True))
+    @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
         coordinate: Coordinate,
