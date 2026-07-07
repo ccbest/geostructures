@@ -32,7 +32,7 @@ from geostructures.coordinates import Coordinate
 from geostructures.geodesic import bearing_degrees, destination_point, distance_meters
 from geostructures._geometry import (
     convert_trig_angle, circumscribing_circle_for_polygon,
-    do_edges_intersect, find_line_intersection, is_counter_clockwise,
+    do_edges_intersect, ensure_edge_bounds, is_counter_clockwise,
 )
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
@@ -296,7 +296,9 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
             {h.to_polygon()._canonical() for h in other.holes}
 
     def __hash__(self):
-        return hash((tuple(self.outline), self.dt))
+        # Hash the canonical form so that equal polygons (which __eq__
+        # treats as rotation- and orientation-invariant) hash identically
+        return hash((self._canonical(), self.dt))
 
     def __repr__(self):
         return f'<GeoPolygon of {len(self.outline) - 1} coordinates>'
@@ -370,28 +372,56 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
                 A list of coordinates (self-closing) representing a linear ring
 
             include_boundary:
-                Whether to count boundaries as intersecting (parallel overlapping
-                lines still do not count)
+                Whether points lying exactly on the polygon boundary count
+                as contained
 
         Returns:
             bool
         """
-        test_line = (coord, Coordinate(180, float(coord.latitude)))
+        test_lat = coord.latitude
         _intersections = 0
         for edge in zip(polygon, [*polygon[1:], polygon[0]]):
-            intersection = find_line_intersection(test_line, edge)
-            if not intersection:
+            # Adjust edges if they cross the antimeridian
+            start, end = ensure_edge_bounds(edge[0], edge[1])
+            lat_a, lat_b = start.latitude, end.latitude
+            lon_a, lon_b = start.longitude, end.longitude
+
+            # Shift the test point into the edge's longitudinal frame, in case
+            # the edge was unbounded across the antimeridian
+            p_lon = coord.longitude
+            mid_lon = (lon_a + lon_b) / 2
+            if p_lon - mid_lon > 180:
+                p_lon -= 360
+            elif mid_lon - p_lon > 180:
+                p_lon += 360
+
+            if lat_a == lat_b:
+                # Horizontal edge; the ray can only lie along it, never cross it
+                if lat_a == test_lat and min(lon_a, lon_b) <= p_lon <= max(lon_a, lon_b):
+                    # Test point lies on this edge
+                    return include_boundary
                 continue
 
-            if intersection[1] and not include_boundary:
-                # Lies on boundary, no need to continue
-                return False
+            # Longitude at which the edge's line crosses the test latitude
+            lon_cross = round_half_up(
+                lon_a + (test_lat - lat_a) * (lon_b - lon_a) / (lat_b - lat_a),
+                10
+            )
 
-            if include_boundary or not intersection[1]:
-                # If boundaries are allowed, or is not a boundary intersection
+            if (
+                min(lat_a, lat_b) <= test_lat <= max(lat_a, lat_b)
+                and lon_cross == round_half_up(p_lon, 10)
+            ):
+                # Test point lies on this edge
+                return include_boundary
+
+            # Count edges crossed by the eastward ray using a half-open rule,
+            # so an edge endpoint exactly at the test latitude is attributed
+            # to only one of its two adjacent edges
+            if (lat_a > test_lat) != (lat_b > test_lat) and lon_cross > p_lon:
                 _intersections += 1
 
-        return _intersections > 0 and _intersections % 2 != 0
+        return _intersections % 2 != 0
 
     def bounding_coords(self, **kwargs) -> List[Coordinate]:
         return self.outline
@@ -642,6 +672,14 @@ class GeoBox(PolygonBase):
         properties: Optional[Dict] = None,
     ):
         super().__init__(holes=holes, dt=dt, properties=properties)
+        if nw_bound.longitude > se_bound.longitude:
+            raise ValueError(
+                'The northwest corner must lie west of the southeast corner; boxes '
+                'spanning the antimeridian are not supported'
+            )
+        if nw_bound.latitude < se_bound.latitude:
+            raise ValueError('The northwest corner must lie north of the southeast corner')
+
         self.nw_bound = nw_bound
         self.se_bound = se_bound
 
@@ -672,7 +710,7 @@ class GeoBox(PolygonBase):
     def centroid(self) -> Coordinate:
         _nw = self.nw_bound.to_float()
         _se = self.se_bound.to_float()
-        z = self.nw_bound.z or self.se_bound.z or None
+        z = self.nw_bound.z if self.nw_bound.z is not None else self.se_bound.z
         return Coordinate(
             round_half_up(statistics.mean([_nw[0], _se[0]]), 7),
             round_half_up(statistics.mean([_nw[1], _se[1]]), 7),
@@ -682,7 +720,7 @@ class GeoBox(PolygonBase):
     def bounding_coords(self, **kwargs) -> List[Coordinate]:
         _nw = self.nw_bound.to_float()
         _se = self.se_bound.to_float()
-        z = self.nw_bound.z or self.se_bound.z or None
+        z = self.nw_bound.z if self.nw_bound.z is not None else self.se_bound.z
 
         # Is self-closing
         return [
@@ -1073,7 +1111,9 @@ class GeoEllipse(PolygonBase):
         Returns:
             GeoEllipse
         """
-        eigenvalues, _ = np.linalg.eig(matrix)
+        # Use eigvalsh (for symmetric matrices) rather than eig, which can
+        # return complex values on some numpy versions
+        eigenvalues = np.linalg.eigvalsh(matrix)
         l1, l2 = eigenvalues.max(), eigenvalues.min()
 
         a: float
@@ -1180,10 +1220,11 @@ class GeoRing(PolygonBase):
         )
 
     def __repr__(self) -> str:
+        is_wedge = self.angle_max - self.angle_min < 360
         return (
             f'<GeoRing at {self.center.to_float()}; '
             f'radii {self.inner_radius}/{self.outer_radius}'
-            f'{f"; {self.angle_min}-{self.angle_max} degrees" if self.angle_min else ""}>'
+            f'{f"; {self.angle_min}-{self.angle_max} degrees" if is_wedge else ""}>'
         )
 
     @cached_property
@@ -1205,7 +1246,8 @@ class GeoRing(PolygonBase):
 
     @property
     def centroid(self) -> Coordinate:
-        if self.angle_min and self.angle_max:
+        if self.angle_max - self.angle_min < 360:
+            # Is a wedge; centroid is not the ring center
             return self.to_polygon().centroid
 
         return self.center
@@ -1245,7 +1287,7 @@ class GeoRing(PolygonBase):
         return [*outer_bounds, *inner_bounds[::-1], outer_bounds[0]]
 
     def circumscribing_circle(self) -> GeoCircle:
-        if self.angle_min and self.angle_max:
+        if self.angle_max - self.angle_min < 360:
             # declare as variable to avoid recomputing
             _centroid = self.centroid
 
@@ -1264,7 +1306,9 @@ class GeoRing(PolygonBase):
         # Make sure bearing within wedge, if a wedge
         if self.angle_max - self.angle_min < 360:
             bearing = bearing_degrees(self.center, coord)
-            if not self.angle_min <= bearing <= self.angle_max:
+            # Compare modularly so wedges spanning due north (e.g. 315-405
+            # degrees) test bearings correctly
+            if not (bearing - self.angle_min) % 360 <= self.angle_max - self.angle_min:
                 return False
 
         radius = distance_meters(self.center, coord)
@@ -1308,9 +1352,10 @@ class GeoRing(PolygonBase):
 
     def to_polygon(self, **kwargs) -> GeoPolygon:
         rings = self.linear_rings(**kwargs)
-        holes = self.holes
-        if len(rings) > 1:
-            holes += [GeoPolygon(x) for x in rings[1:]]
+        # rings[1:] already contains this shape's holes in addition to the
+        # inner ring (when present), so build the polygon's holes from it
+        # rather than from self.holes, which would double-count them
+        holes = [GeoPolygon(x) for x in rings[1:]]
 
         return GeoPolygon(
             rings[0],

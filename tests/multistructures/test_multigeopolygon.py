@@ -395,14 +395,31 @@ def test_multigeoshape_to_wkt():
             GeoBox(
                 Coordinate(0., 1.),
                 Coordinate(1., 0.),
-                holes=[GeoBox(Coordinate(1.0, 0.0), Coordinate(0.0, 1.0))]
+                holes=[GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0))]
             ),
             GeoBox(Coordinate(1., 2.), Coordinate(2., 1.)),
         ]
     )
     assert mp.to_wkt() == (
         "MULTIPOLYGON("
-        "((0 1,0 0,1 0,1 1,0 1), (1 0,0 0,0 1,1 1,1 0)), "
+        "((0 1,0 0,1 0,1 1,0 1), (0 1,1 1,1 0,0 0,0 1)), "
         "((1 2,1 1,2 1,2 2,1 2))"
         ")"
     )
+
+
+def test_multigeopolygon_from_wkt_distinct_hole():
+    # The hole ring used to overwrite the shell ring during parsing
+    wkt = (
+        'MULTIPOLYGON (((0 0, 10 0, 10 10, 0 10, 0 0), '
+        '(2 2, 2 3, 3 3, 3 2, 2 2)))'
+    )
+    result = MultiGeoPolygon.from_wkt(wkt)
+    poly = result.geoshapes[0]
+
+    assert poly.bounds == (0., 0., 10., 10.)
+    assert len(poly.holes) == 1
+    assert poly.holes[0].bounds == (2., 2., 3., 3.)
+
+    assert poly.contains_coordinate(Coordinate(5., 5.))
+    assert not poly.contains_coordinate(Coordinate(2.5, 2.5))

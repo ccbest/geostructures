@@ -172,3 +172,15 @@ def test_convert_trig_angle():
 
     assert convert_trig_angle(180) == 270.
     assert convert_trig_angle(270) == 180.
+
+
+def test_dist_xyz_meters_identical_coordinates():
+    # Floating point error can push the dot product of a unit vector with
+    # itself just above 1.0, which used to raise a math domain error in acos
+    for lon in range(-180, 180, 7):
+        for lat in range(-89, 90, 7):
+            coord1 = Coordinate(lon + 0.123456789, lat + 0.987654321)
+            coord2 = Coordinate(lon + 0.123456789, lat + 0.987654321)
+            # acos of a near-1.0 dot product magnifies float error, so allow
+            # sub-meter noise; the important part is that it never raises
+            assert dist_xyz_meters(coord1, coord2) < 1.

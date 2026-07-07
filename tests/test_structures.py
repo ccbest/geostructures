@@ -557,13 +557,13 @@ def test_geopolygon_from_h3_geohash():
     geohash = "88754e6499fffff"
     expected = GeoPolygon(
         [
-            Coordinate(-0.000695, -0.005249),
-            Coordinate(0.001237, -0.001207),
-            Coordinate(-0.000777, 0.002231),
-            Coordinate(-0.004725, 0.001630),
-            Coordinate(-0.006658, -0.002410),
-            Coordinate(-0.004643, -0.005850),
-            Coordinate(-0.000695, -0.005249)
+            Coordinate(-0.0006950065, -0.0052490565),
+            Coordinate(0.0012379757, -0.0012078765),
+            Coordinate(-0.0007774661, 0.0022317121),
+            Coordinate(-0.0047256093, 0.0016301653),
+            Coordinate(-0.0066584556, -0.0024107268),
+            Coordinate(-0.0046432944, -0.0058503599),
+            Coordinate(-0.0006950065, -0.0052490565)
         ]
     )
     assert_shape_equivalence(
@@ -575,9 +575,12 @@ def test_geopolygon_from_h3_geohash():
 
 def test_geopolygon_from_niemeyer_geohash():
     geohash = "3fffffff"
+    # A base-16, length-8 geohash encodes 16 bits of longitude and 16 bits of
+    # latitude, so the cell spans 360/2**16 degrees of longitude but only
+    # 180/2**16 degrees of latitude
     expected = GeoBox(
-        Coordinate(-0.005493, 0.0),
-        Coordinate(0.0, -0.005493)
+        Coordinate(-0.0054931640625, 0.0),
+        Coordinate(0.0, -0.00274658203125)
     ).to_polygon()
     assert_shape_equivalence(
         GeoPolygon.from_niemeyer_geohash(geohash, 16),
@@ -808,8 +811,8 @@ def test_geobox_contains_coordinate(geobox):
 def test_geobox_from_niemeyer_geohash():
     geohash = "3fffffff"
     expected = GeoBox(
-        Coordinate(-0.005493, 0.0),
-        Coordinate(0.0, -0.005493)
+        Coordinate(-0.0054931640625, 0.0),
+        Coordinate(0.0, -0.00274658203125)
     )
     assert_shape_equivalence(
         GeoBox.from_niemeyer_geohash(geohash, 16),
@@ -1803,4 +1806,95 @@ def test_geopoint_from_wkt():
 
 def test_geopoint_to_wkt(geopoint):
     assert geopoint.to_wkt() == 'POINT(0 0)'
+
+
+def test_georing_to_polygon_does_not_mutate():
+    # to_polygon() used to alias and extend self.holes, compounding on each call
+    ring = GeoRing(Coordinate(0., 0.), 1_000, 2_000)
+    assert ring.holes == []
+
+    poly1 = ring.to_polygon()
+    assert ring.holes == []
+    assert len(poly1.holes) == 1  # The inner ring
+
+    poly2 = ring.to_polygon()
+    assert len(poly2.holes) == 1
+
+    # Explicit holes should appear exactly once, alongside the inner ring
+    ring = GeoRing(
+        Coordinate(0., 0.), 1_000, 2_000,
+        holes=[GeoCircle(Coordinate(0.015, 0.), 100)]
+    )
+    assert len(ring.to_polygon().holes) == 2
+    assert len(ring.to_polygon().holes) == 2
+    assert len(ring.holes) == 1
+
+
+def test_geopolygon_contains_coordinate_vertex_ray():
+    # The eastward test ray passes through the vertex at (5, 0); this used to
+    # be misread as "point on boundary" and return False for interior points
+    diamond = GeoPolygon([
+        Coordinate(0., -1.), Coordinate(5., 0.), Coordinate(0., 1.),
+        Coordinate(-5., 0.), Coordinate(0., -1.)
+    ])
+    assert diamond.contains_coordinate(Coordinate(0., 0.))
+    assert diamond.contains_coordinate(Coordinate(-2., 0.))
+    assert not diamond.contains_coordinate(Coordinate(6., 0.))
+    assert not diamond.contains_coordinate(Coordinate(-6., 0.))
+
+    # Points exactly on the boundary are not contained
+    assert not diamond.contains_coordinate(Coordinate(5., 0.))
+    assert not diamond.contains_coordinate(Coordinate(2.5, 0.5))
+
+
+def test_geopolygon_hash_matches_equality():
+    # __eq__ is rotation/orientation-invariant, so __hash__ must be as well
+    p1 = GeoPolygon([
+        Coordinate(0., 0.), Coordinate(1., 0.), Coordinate(1., 1.),
+        Coordinate(0., 1.), Coordinate(0., 0.)
+    ])
+    p2 = GeoPolygon([
+        Coordinate(1., 1.), Coordinate(0., 1.), Coordinate(0., 0.),
+        Coordinate(1., 0.), Coordinate(1., 1.)
+    ])
+    assert p1 == p2
+    assert hash(p1) == hash(p2)
+    assert len({p1, p2}) == 1
+
+
+def test_geobox_corner_validation():
+    with pytest.raises(ValueError):
+        # NW corner east of SE corner (antimeridian-spanning)
+        GeoBox(Coordinate(170., 10.), Coordinate(-170., -10.))
+
+    with pytest.raises(ValueError):
+        # NW corner south of SE corner
+        GeoBox(Coordinate(0., 0.), Coordinate(1., 1.))
+
+
+def test_geobox_zero_z_preserved():
+    box = GeoBox(Coordinate(0., 1., z=0.), Coordinate(1., 0., z=0.))
+    assert box.centroid.z == 0.
+    assert all(c.z == 0. for c in box.bounding_coords())
+
+
+def test_georing_wedge_with_zero_angle_min():
+    # angle_min=0 used to be treated as falsy, i.e. "not a wedge"
+    wedge = GeoRing(Coordinate(0., 0.), 1_000, 2_000, angle_min=0., angle_max=90.)
+    assert wedge.centroid != Coordinate(0., 0.)
+    assert '0.0-90.0 degrees' in repr(wedge)
+
+    full_ring = GeoRing(Coordinate(0., 0.), 1_000, 2_000)
+    assert 'degrees' not in repr(full_ring)
+    assert full_ring.centroid == Coordinate(0., 0.)
+
+
+def test_georing_wedge_spanning_north():
+    # Bearings must be compared modularly for wedges that span due north
+    wedge = GeoRing(Coordinate(0., 0.), 1_000, 2_000, angle_min=315., angle_max=405.)
+
+    # ~1.5km due north (bearing 0)
+    assert wedge.contains_coordinate(Coordinate(0., 0.0135))
+    # ~1.5km due south (bearing 180)
+    assert not wedge.contains_coordinate(Coordinate(0., -0.0135))
 

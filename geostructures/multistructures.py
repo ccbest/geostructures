@@ -257,9 +257,6 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
             ]
         }
 
-    def __hash__(self) -> int:
-        return hash(tuple(hash(x) for x in self.geoshapes))
-
     def __repr__(self):
         pl = "s" if len(self.geoshapes) != 1 else ""
         return f'<MultiGeoPoint of {len(self.geoshapes)} point{pl}>'
@@ -634,8 +631,8 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
             holes = []
             if len(linear_rings) > 1:
                 for hole in linear_rings[1:]:
-                    coords = cls._parse_wkt_linear_ring(wkt_str, hole)
-                    holes.append(GeoPolygon(coords))
+                    hole_coords = cls._parse_wkt_linear_ring(wkt_str, hole)
+                    holes.append(GeoPolygon(hole_coords))
 
             shapes.append(GeoPolygon(coords, holes=holes or None))
 

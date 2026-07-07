@@ -64,8 +64,9 @@ def parse_fastkml(
     if isinstance(kml, (KML, Document, Folder)):
         # Recurse
         if isinstance(kml, Folder):
-            # Inject subfolder name into props for traceability
-            _props[f'sub_folder_{_depth}'] = kml.name or 'Unnamed Folder'
+            # Inject subfolder name into props for traceability. Use a copy so
+            # the folder name does not leak to siblings outside this folder
+            _props = {**_props, f'sub_folder_{_depth}': kml.name or 'Unnamed Folder'}
 
         for feature in kml.features:
             parse_fastkml(feature, _shapes, _depth + 1, _props)
@@ -80,8 +81,8 @@ def parse_fastkml(
 
         parser = _PARSER_MAP[kml.geometry.__geo_interface__['type'].upper()]  # type: ignore
         shape = parser.from_fastkml_placemark(kml)
-        props = shape._properties or {}
-        props.update(_props)
+        for key, value in _props.items():
+            shape.set_property(key, value, inplace=True)
         for prop in ('name', 'description', 'address', 'phone_number'):
             # Inject KML properties into shape properties
             if getattr(kml, prop) is not None:
@@ -201,7 +202,8 @@ def read_kml(fpath: Union[str, Path], encoding: str = 'utf8') -> FeatureCollecti
             for kml_f in kml_files:
                 parsed = _parse_content(z.read(kml_f))
                 for shape in parsed:
-                    shape.set_property('filepath', fpath)
+                    # Store as str so the property remains JSON-serializable
+                    shape.set_property('filepath', str(fpath))
                     shape.set_property('filename', kml_f)
 
                 shapes.extend(parsed)
@@ -210,7 +212,7 @@ def read_kml(fpath: Union[str, Path], encoding: str = 'utf8') -> FeatureCollecti
         with open(fpath, 'rb') as f:
             parsed = _parse_content(f.read())
             for shape in parsed:
-                shape.set_property('filepath', fpath)
+                shape.set_property('filepath', str(fpath))
 
             shapes.extend(parsed)
 
