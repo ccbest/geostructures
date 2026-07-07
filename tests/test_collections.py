@@ -149,11 +149,18 @@ def test_collection_filter_by_dt():
         ),
     ])
 
+    # A bare datetime behaves like a zero-length interval: it matches both
+    # the exact instant and any interval containing it
     assert col.filter_by_dt(datetime(2020, 1, 1)) == FeatureCollection([
         GeoCircle(
             Coordinate(0.0, 1.0),
             500,
             dt=datetime(2020, 1, 1)
+        ),
+        GeoCircle(
+            Coordinate(0.0, 1.0),
+            500,
+            dt=TimeInterval(datetime(2019, 12, 1), datetime(2020, 1, 2))
         ),
     ])
 
@@ -1126,3 +1133,84 @@ def test_track_intersection():
 
     gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=datetime(2020, 1, 1, 3))
     assert len(track1.filter_by_intersection(gbox)) == 1
+
+
+def test_collection_intersects_untimed_shapes():
+    # A collection member without time information intersects a timed query
+    # shape spatially, matching single-shape semantics
+    col = FeatureCollection([GeoPoint(Coordinate(0., 0.))])
+    timed_circle = GeoCircle(Coordinate(0., 0.), 500, dt=datetime(2020, 1, 1))
+    assert col.intersects(timed_circle)
+
+    # Timed members are still excluded when time doesn't match
+    col = FeatureCollection([GeoPoint(Coordinate(0., 0.), dt=datetime(2019, 1, 1))])
+    assert not col.intersects(timed_circle)
+
+
+def test_collection_to_geojson_id_kwarg():
+    col = FeatureCollection([GeoPoint(Coordinate(0., 0.))])
+    assert col.to_geojson()['features'][0]['id'] == 0
+    assert col.to_geojson(id='custom')['features'][0]['id'] == 'custom'
+
+
+def test_track_from_shapely_returns_track():
+    import shapely
+
+    # Track.from_shapely used to silently return a FeatureCollection; shapely
+    # geometries carry no time information, so it must now raise
+    geom = shapely.GeometryCollection([shapely.Point(0., 0.)])
+    assert isinstance(FeatureCollection.from_shapely(geom), FeatureCollection)
+    with pytest.raises(ValueError):
+        Track.from_shapely(geom)
+
+
+def test_track_getitem():
+    point1 = GeoPoint(Coordinate(0., 0.), dt=datetime(2020, 1, 1))
+    point2 = GeoPoint(
+        Coordinate(1., 1.),
+        dt=TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 3))
+    )
+    track = Track([point1, point2])
+
+    # Integer indexing returns the underlying shape
+    assert track[0] == point1
+
+    # Integer slicing returns a Track
+    assert track[0:1] == Track([point1])
+
+    # Datetime indexing returns shapes whose bounds contain the instant
+    assert track[datetime(2020, 1, 2, 12)] == Track([point2])
+
+    # Datetime slicing, including on an empty track
+    assert track[datetime(2020, 1, 1):datetime(2020, 1, 2)] == Track([point1])
+    assert Track([])[datetime(2020, 1, 1):datetime(2020, 1, 2)] == Track([])
+
+    with pytest.raises(TypeError):
+        _ = track['not an index']
+
+
+def test_track_filter_impossible_journeys_empty():
+    assert Track([]).filter_impossible_journeys(10) == Track([])
+
+
+def test_track_distances_respect_geodesic_algorithm():
+    from geostructures.geodesic import set_geodesic_algorithm
+
+    def make_track():
+        return Track([
+            GeoPoint(Coordinate(0., 0.), dt=datetime(2020, 1, 1)),
+            GeoPoint(Coordinate(1., 1.), dt=datetime(2020, 1, 2)),
+        ])
+
+    try:
+        set_geodesic_algorithm('haversine')
+        haversine_dist = make_track().centroid_distances[0]
+
+        set_geodesic_algorithm('vincenty')
+        vincenty_dist = make_track().centroid_distances[0]
+    finally:
+        set_geodesic_algorithm('haversine')
+
+    # The two earth models agree to within ~0.5% but are not identical
+    assert haversine_dist != vincenty_dist
+    assert abs(haversine_dist - vincenty_dist) / haversine_dist < 0.01

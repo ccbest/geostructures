@@ -298,3 +298,23 @@ def test_h3_to_geopolygon():
     actual = h3_to_geopolygon('87195da49ffffff', dt=datetime(2020, 1, 1), properties={'test': 'prop'})
     assert_shape_equivalence(actual, expected, precision=5)
     assert actual.properties == expected.properties
+
+
+def test_h3_hash_shape_multishape_resolution():
+    import h3
+
+    multi = MultiGeoPoint([
+        GeoPoint(Coordinate(0., 0.)),
+        GeoPoint(Coordinate(0.01, 0.01)),
+    ])
+
+    # The caller's resolution must reach the recursion into sub-shapes, even
+    # when the hasher was constructed without a default
+    hasher = H3Hasher()
+    hashes = hasher.hash_shape(multi, resolution=9)
+    assert hashes
+    assert all(h3.get_resolution(h) == 9 for h in hashes)
+
+    # An explicit resolution overrides the hasher default
+    hasher = H3Hasher(resolution=7)
+    assert hasher.hash_shape(multi, resolution=9) == hashes

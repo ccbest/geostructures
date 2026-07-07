@@ -524,7 +524,7 @@ class H3Hasher(HasherBase):
         """
         if isinstance(shape, MultiShape):
             return set().union(
-                *(self.hash_shape(x, resolution=self.resolution) for x in shape.geoshapes)
+                *(self.hash_shape(x, **kwargs) for x in shape.geoshapes)
             )
 
         resolution = kwargs.get('resolution', self.resolution)

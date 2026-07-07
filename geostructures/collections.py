@@ -5,7 +5,7 @@ Module for sequences of GeoShapes
 __all__ = ['FeatureCollection', 'CollectionBase', 'Track']
 
 from collections import defaultdict, Counter
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 from functools import cached_property
 from pathlib import Path
 import tempfile
@@ -18,7 +18,7 @@ from pydantic import validate_call
 from geostructures import Coordinate, LOGGER
 from geostructures._base import PolygonLikeMixin, PointLikeMixin, LineLikeMixin, MultiShapeBase, BaseShape
 from geostructures._geometry import convex_hull
-from geostructures.calc import haversine_distance_meters
+from geostructures.geodesic import distance_meters
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
@@ -103,10 +103,10 @@ class CollectionBase:
         """
         # Has to be checked before date - datetimes are dates, but dates are not datetimes
         if isinstance(dt, datetime):
+            # Treat a bare datetime as a zero-length interval, consistent
+            # with how shapes are time-bounded
             dt = default_to_zulu(dt)
-            return type(self)(
-                [x for x in self.geoshapes if x.dt is not None and x.dt == TimeInterval(dt, dt)]
-            )
+            dt = TimeInterval(dt, dt)
 
         if isinstance(dt, TimeInterval):
             return type(self)(
@@ -185,7 +185,7 @@ class CollectionBase:
         """
         from geostructures.parsers import parse_fastkml
 
-        return FeatureCollection(parse_fastkml(folder))
+        return cls(parse_fastkml(folder))
 
     @classmethod
     def from_geojson(
@@ -417,7 +417,7 @@ class CollectionBase:
                 conv_map[geom_type].from_shapely(shape)
             )
 
-        return FeatureCollection(shapes)
+        return cls(shapes)
 
     @cached_property
     def geospan(self) -> float:
@@ -443,7 +443,12 @@ class CollectionBase:
         """
         shapes = self.geoshapes
         if shape.dt:
-            shapes = self.filter_by_dt(shape.dt).geoshapes
+            # Time only constrains shapes that carry time information; un-timed
+            # shapes are tested spatially, matching single-shape semantics
+            shapes = [
+                x for x in self.geoshapes
+                if x.dt is None or shape.dt.intersects(x.dt)
+            ]
 
         for col_shape in shapes:
             if col_shape.intersects(shape):
@@ -466,8 +471,8 @@ class CollectionBase:
             'features': [
                 x.to_geojson(
                     properties=properties,
-                    id=idx,  # default to idx, but overridden by kwargs if specified
-                    **kwargs
+                    # Default the id to idx unless specified in kwargs
+                    **{'id': idx, **kwargs}
                 ) for idx, x in enumerate(self.geoshapes)
             ]
         }
@@ -726,33 +731,55 @@ class Track(CollectionBase):
 
         return True
 
-    def __getitem__(self, val: slice):
+    def __getitem__(self, val: Union[int, datetime, slice]):
         """
-        Permits track slicing by datetime.
+        Permits track indexing by position, and slicing by datetime.
 
         Args:
             val:
-                A slice of datetimes or a datetime
+                An integer index, a slice of datetimes (or integers), or
+                a datetime
 
         Examples:
             ```python
             # Returns all points from 1 JAN 2020 00:00 (inclusive) through
             # 2 JAN 2020 00:00 (not inclusive)
-            track[datetime(2020, 1, 1):datetime(2020, 1, 2)
+            track[datetime(2020, 1, 1):datetime(2020, 1, 2)]
+
+            # Returns all points whose time bounds contain the instant
+            track[datetime(2020, 1, 1, 12)]
+
+            # Returns the first ping
+            track[0]
             ```
 
         Returns:
-            Track
+            Track, or a single geoshape when indexed by integer
         """
-        _start = default_to_zulu(
-            val.start or self.geoshapes[0].start
-        )
-        _stop = default_to_zulu(
-            val.stop or self.geoshapes[-1].end + timedelta(seconds=1)
-        )
-        return Track(
-            [x for x in self.geoshapes if _start <= x.start and x.end < _stop]
-        )
+        if isinstance(val, int):
+            return self.geoshapes[val]
+
+        if isinstance(val, datetime):
+            instant = TimeInterval(default_to_zulu(val), default_to_zulu(val))
+            return Track(
+                [x for x in self.geoshapes if x.dt is not None and instant.intersects(x.dt)]
+            )
+
+        if isinstance(val, slice):
+            if isinstance(val.start, int) or isinstance(val.stop, int):
+                return Track(self.geoshapes[val])
+
+            if not self.geoshapes:
+                return Track([])
+
+            _start = default_to_zulu(val.start) if val.start else self.geoshapes[0].start
+            _stop = default_to_zulu(val.stop) if val.stop else None
+            return Track([
+                x for x in self.geoshapes
+                if _start <= x.start and (_stop is None or x.end < _stop)
+            ])
+
+        raise TypeError(f'Tracks cannot be indexed by {type(val)}')
 
     def __repr__(self):
         """REPL representation"""
@@ -771,7 +798,7 @@ class Track(CollectionBase):
             raise ValueError('Cannot compute distances between fewer than two pings.')
 
         return np.array([
-            haversine_distance_meters(x.centroid, y.centroid)
+            distance_meters(x.centroid, y.centroid)
             for x, y in zip(self.geoshapes, self.geoshapes[1:])
         ])
 
@@ -895,6 +922,9 @@ class Track(CollectionBase):
         Returns:
             Track: A new Track instance with only valid geoshapes, removing impossible journeys.
         """
+        if not self.geoshapes:
+            return Track([])
+
         # Track shapes are guaranteed to have .start
         times = [shape.start for shape in self.geoshapes]
         coords = [pt.centroid for pt in self.geoshapes]
@@ -902,8 +932,7 @@ class Track(CollectionBase):
         valid_geoshapes = [self.geoshapes[i]]  # Keep the first point as valid
 
         for j in range(1, len(self.geoshapes)):
-            # Use pre-baked Haversine calculation
-            dx = haversine_distance_meters(coords[i], coords[j])
+            dx = distance_meters(coords[i], coords[j])
             dt = (times[j] - times[i]).total_seconds()  # Time difference in seconds
             if dt == 0:
                 warn_once(

@@ -85,3 +85,20 @@ def test_is_sub_list():
         ['a', 'b'],
         [1, 2, 3]
     )
+
+
+def test_get_dt_from_geojson_props_z_suffix():
+    # GeoJSON timestamps commonly carry a Z suffix, which
+    # datetime.fromisoformat cannot parse until python 3.11
+    from datetime import datetime, timezone
+    from geostructures.time import TimeInterval
+    from geostructures.utils.functions import get_dt_from_geojson_props
+
+    rec = {
+        'datetime_start': '2020-01-01T00:00:00Z',
+        'datetime_end': '2020-01-02T00:00:00Z',
+    }
+    assert get_dt_from_geojson_props(rec) == TimeInterval(
+        datetime(2020, 1, 1, tzinfo=timezone.utc),
+        datetime(2020, 1, 2, tzinfo=timezone.utc),
+    )

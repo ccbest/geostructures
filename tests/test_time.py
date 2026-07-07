@@ -192,3 +192,41 @@ def test_timeinterval_aware_naive_mix():
             datetime(2020, 1, 2, tzinfo=timezone.utc),
             datetime(2020, 1, 1)
         )
+
+
+def test_timeinterval_boundary_semantics():
+    # Right-open: adjacent intervals are disjoint and their intersection is None
+    a = TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))
+    b = TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 3))
+    assert a.isdisjoint(b)
+    assert a.intersection(b) is None
+    assert not a.intersects(b)
+
+    # An instant on the exclusive end bound is disjoint; on the inclusive
+    # start bound it intersects
+    instant = TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 2))
+    assert a.isdisjoint(instant)
+    assert not a.intersects(instant)
+    assert b.intersects(instant)
+
+    # Instants intersect only when equal
+    assert instant.intersects(TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 2)))
+    assert instant.isdisjoint(TimeInterval(datetime(2020, 1, 2, 1), datetime(2020, 1, 2, 1)))
+
+
+def test_timeinterval_from_str_plain_iso():
+    expected = TimeInterval(datetime(2020, 1, 1, 12), datetime(2020, 1, 1, 12))
+    assert TimeInterval.from_str('2020-01-01T12:00:00') == expected
+    assert TimeInterval.from_str('2020-01-01 12:00:00') == expected
+
+
+def test_parse_timestamp_does_not_mutate_formats():
+    from geostructures.time import _DEFAULT_DATE_FORMATS
+
+    before = list(_DEFAULT_DATE_FORMATS)
+    TimeInterval._parse_timestamp('2020-01-01')
+    assert _DEFAULT_DATE_FORMATS == before
+
+    custom = ['%Y-%m-%dT%H:%M:%S', '%Y']
+    TimeInterval._parse_timestamp('2020', custom)
+    assert custom == ['%Y-%m-%dT%H:%M:%S', '%Y']

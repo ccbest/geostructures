@@ -38,6 +38,10 @@ def get_dt_from_geojson_props(
         if _format:
             return datetime.strptime(dt, _format)
 
+        if dt.endswith('Z'):
+            # datetime.fromisoformat can't parse the Z suffix until py3.11
+            dt = dt[:-1] + '+00:00'
+
         return datetime.fromisoformat(dt)
 
     # Pop the field so it doesn't remain in properties

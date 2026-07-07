@@ -14,7 +14,7 @@ from geostructures._const import EARTH_RADIUS_METERS
 from geostructures._geometry import ensure_edge_bounds
 from geostructures.coordinates import Coordinate
 from geostructures.utils.functions import round_half_up
-from geostructures.utils.logging import LOGGER
+from geostructures.utils.logging import warn_once
 
 
 def bearing_degrees(coord1: Coordinate, coord2: Coordinate, **kwargs) -> float:
@@ -35,7 +35,7 @@ def bearing_degrees(coord1: Coordinate, coord2: Coordinate, **kwargs) -> float:
     Returns:
         (float) the bearing in degrees
     """
-    LOGGER.warning(
+    warn_once(
         'geostructures.calc.bearing_degrees is deprecated. Please update your import to use '
         'geostructures.geodesic.bearing_degrees'
     )
@@ -68,7 +68,7 @@ def haversine_distance_meters(coord1: Coordinate, coord2: Coordinate) -> float:
     Returns:
         (float) the bearing in degrees
     """
-    LOGGER.warning(
+    warn_once(
         'geostructures.calc.haversine_distance_meters is deprecated. Please update your import to '
         'use geostructures.geodesic.distance_meters'
     )
@@ -106,7 +106,7 @@ def inverse_haversine_degrees(
     Returns:
         (Coordinate)
     """
-    LOGGER.warning(
+    warn_once(
         'geostructures.calc.inverse_haversine_degrees is deprecated. Please update your import to '
         'use geostructures.geodesic.destination_point'
     )
@@ -137,7 +137,7 @@ def inverse_haversine_radians(
     Returns:
         (Coordinate)
     """
-    LOGGER.warning(
+    warn_once(
         'geostructures.calc.inverse_haversine_radians is deprecated. Please update your import to '
         'use geostructures.geodesic.destination_point'
     )

@@ -152,16 +152,17 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
             MultiGeoLineString
         """
         linestrings = []
-        z = shape.z if hasattr(shape, 'z') else None
-        m = shape.m if hasattr(shape, 'm') else None
+        # Iterate rather than pop so the caller's pyshp shape is not mutated
+        z = iter(shape.z) if hasattr(shape, 'z') else None
+        m = iter(shape.m) if hasattr(shape, 'm') else None
         for linestring in shape.__geo_interface__.get('coordinates', []):
             linestrings.append(
                 GeoLineString(
                     [
                         Coordinate(
                             *cast(Tuple[float, float], coord),
-                            z=z.pop(0) if z else None,
-                            m=m.pop(0) if m else None,
+                            z=next(z, None) if z else None,
+                            m=next(m, None) if m else None,
                         ) for coord in linestring
                     ]
                 )
@@ -348,15 +349,16 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
             MultiGeoPoint
         """
         points = []
-        z = shape.z if hasattr(shape, 'z') else None
-        m = shape.m if hasattr(shape, 'm') else None
+        # Iterate rather than pop so the caller's pyshp shape is not mutated
+        z = iter(shape.z) if hasattr(shape, 'z') else None
+        m = iter(shape.m) if hasattr(shape, 'm') else None
         for point in shape.__geo_interface__.get('coordinates', []):
             points.append(
                 GeoPoint(
                     Coordinate(
                         *cast(Tuple[float, float], point),
-                        z=z.pop(0) if z else None,
-                        m=m.pop(0) if m else None,
+                        z=next(z, None) if z else None,
+                        m=next(m, None) if m else None,
                     )
                 )
             )
@@ -593,15 +595,16 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
             MultiGeoShape
         """
         shapes = []
-        z = shape.z if hasattr(shape, 'z') else None
-        m = shape.m if hasattr(shape, 'm') else None
+        # Iterate rather than pop so the caller's pyshp shape is not mutated
+        z = iter(shape.z) if hasattr(shape, 'z') else None
+        m = iter(shape.m) if hasattr(shape, 'm') else None
         for polygon in shape.__geo_interface__.get('coordinates', []):
             linear_rings = [
                 [
                     Coordinate(
                         *cast(Tuple[float, float], coord),
-                        z=z.pop(0) if z else None,
-                        m=m.pop(0) if m else None,
+                        z=next(z, None) if z else None,
+                        m=next(m, None) if m else None,
                     ) for coord in linear_ring
                 ] for linear_ring in polygon
             ]

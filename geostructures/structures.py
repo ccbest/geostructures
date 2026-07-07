@@ -603,16 +603,17 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
         Returns:
             GeoPolygon
         """
-        z = shape.z if hasattr(shape, 'z') else None
-        m = shape.m if hasattr(shape, 'm') else None
+        # Iterate rather than pop so the caller's pyshp shape is not mutated
+        z = iter(shape.z) if hasattr(shape, 'z') else None
+        m = iter(shape.m) if hasattr(shape, 'm') else None
         linear_rings = []
         for linear_ring in shape.__geo_interface__.get('coordinates', []):
             linear_rings.append(
                 [
                     Coordinate(
                         *cast(Tuple[float, float], x),
-                        z=z.pop(0) if z else None,
-                        m=m.pop(0) if m else None,
+                        z=next(z, None) if z else None,
+                        m=next(m, None) if m else None,
                     ) for x in linear_ring
                 ]
             )
@@ -1571,14 +1572,15 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
         Returns:
             GeoLineString
         """
-        z = shape.z if hasattr(shape, 'z') else None
-        m = shape.m if hasattr(shape, 'm') else None
+        # Iterate rather than pop so the caller's pyshp shape is not mutated
+        z = iter(shape.z) if hasattr(shape, 'z') else None
+        m = iter(shape.m) if hasattr(shape, 'm') else None
         return GeoLineString(
             [
                 Coordinate(
                     *cast(Tuple[float, float], x),
-                    z=z.pop(0) if z else None,
-                    m=m.pop(0) if m else None,
+                    z=next(z, None) if z else None,
+                    m=next(m, None) if m else None,
                 ) for x in shape.__geo_interface__.get('coordinates', [])
             ],
             dt=dt,

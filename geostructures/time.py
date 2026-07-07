@@ -15,9 +15,11 @@ _DEFAULT_DATE_FORMATS = [
     '%Y-%m-%dT%H:%M:%S.%f%z',
     '%Y-%m-%dT%H:%M:%S.%f',
     '%Y-%m-%dT%H:%M:%S%z',
+    '%Y-%m-%dT%H:%M:%S',
     '%Y-%m-%d %H:%M:%S.%f%z',
     '%Y-%m-%d %H:%M:%S.%f',
     '%Y-%m-%d %H:%M:%S%z',
+    '%Y-%m-%d %H:%M:%S',
     '%Y-%m-%d',
 ]
 
@@ -47,10 +49,6 @@ class TimeInterval:
     def _default_to_zulu(self, dt: datetime) -> datetime:
         """Add Zulu/UTC as timezone, if timezone not present"""
         if not dt.tzinfo:
-            # self.warn_once(
-            #     'Datetime does not contain timezone information; Zulu/UTC time assumed. '
-            #     '(this warning will not repeat)'
-            # )
             return dt.replace(tzinfo=timezone.utc)
 
         return dt
@@ -110,12 +108,9 @@ class TimeInterval:
         formats: Optional[List[str]] = None
     ) -> datetime:
         formats = formats or _DEFAULT_DATE_FORMATS
-        for idx, fmt in enumerate(formats):
+        for fmt in formats:
             try:
-                parsed = datetime.strptime(time_str, fmt)
-                # If the format worked, move to the front so future iterations will find it first
-                formats.insert(0, formats.pop(idx))
-                return parsed
+                return datetime.strptime(time_str, fmt)
             except ValueError:
                 continue
         raise ValueError(f'Date format was not recognized; {time_str}')
@@ -180,15 +175,24 @@ class TimeInterval:
 
     def intersection(self, other: TimeInterval) -> Optional[TimeInterval]:
         """Returns a TimeInterval common to both time intervals. Will return None if impossible"""
-        try:
-            return TimeInterval(max(self.start, other.start), min(self.end, other.end))
-        except ValueError:
+        if self.isdisjoint(other):
             return None
+        return TimeInterval(max(self.start, other.start), min(self.end, other.end))
 
     def isdisjoint(self, other: TimeInterval) -> bool:
-        """Returns True if time intervals do not overlap."""
-        if self.is_instant or other.is_instant:
-            return self.end < other.start or self.start > other.end
+        """
+        Returns True if time intervals do not overlap.
+
+        Intervals are right-open, so an instant sitting exactly on another
+        interval's (exclusive) end bound is disjoint from it. Two instants
+        are disjoint unless they are equal.
+        """
+        if self.is_instant and other.is_instant:
+            return self.start != other.start
+        if self.is_instant:
+            return self.start not in other
+        if other.is_instant:
+            return other.start not in self
         return self.end <= other.start or self.start >= other.end
 
     def issubset(self, other: TimeInterval) -> bool:
