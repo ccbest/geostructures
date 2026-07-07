@@ -6,7 +6,8 @@ import shapely
 from geostructures import MultiGeoPoint, GeoPoint, Coordinate, GeoCircle, GeoPolygon, FeatureCollection
 from geostructures.time import TimeInterval
 
-from tests.functions import pyshp_round_trip
+from tests.functions import geojson_round_trip, shapely_round_trip, wkt_round_trip
+
 
 
 def test_multigeopoint_hash():
@@ -128,13 +129,14 @@ def test_multigeopoint_from_geojson():
         MultiGeoPoint.from_geojson(gjson)
 
 
-def test_multigeopoint_from_shapely():
-    shapely_mp = shapely.MultiPoint([(0., 1.), (1., 1.)])
-    mp = MultiGeoPoint.from_shapely(shapely_mp)
-    assert mp.geoshapes == [
-        GeoPoint(Coordinate(0., 1.)),
-        GeoPoint(Coordinate(1., 1.))
-    ]
+def test_multigeopoint_serialization_round_trips():
+    mp = MultiGeoPoint(
+        [GeoPoint(Coordinate(0., 1.)), GeoPoint(Coordinate(1., 1.))],
+        dt=datetime(2020, 1, 1),
+    )
+    wkt_round_trip(mp)
+    geojson_round_trip(mp)
+    shapely_round_trip(mp)
 
 
 def test_multigeopoint_from_wkt():

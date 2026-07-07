@@ -97,3 +97,14 @@ def test_coordinate_unbounded_preserves_180():
     assert Coordinate(180., 10., _bounded=False).longitude == 180.
     assert Coordinate(185., 10., _bounded=False).longitude == 185.
 
+
+
+def test_coordinate_to_qdms_reverse():
+    lat_str, lon_str = Coordinate(-0.118092, 51.509865).to_qdms(reverse=True)
+    assert (lon_str, lat_str) == ('W000070513', 'N51303551')
+
+
+def test_coordinate_to_str_with_z_m():
+    assert Coordinate(0.5, 1.5, z=2.).to_str() == ('0.5', '1.5', '2')
+    assert Coordinate(0.5, 1.5, z=2., m=3.).to_str() == ('0.5', '1.5', '2', '3')
+    assert Coordinate(0.5, 1.5).to_str(reverse=True) == ('1.5', '0.5')

@@ -316,8 +316,9 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
 
     @cached_property
     def centroid(self):
-        # Decompose polygon into triangles using vertex pairs around the origin
-        poly1 = np.array([x.to_float() for x in self.bounding_coords()])
+        # Decompose polygon into triangles using vertex pairs around the origin.
+        # Slice to lon/lat; to_float() may also carry Z/M values
+        poly1 = np.array([x.to_float()[:2] for x in self.bounding_coords()])
         poly2 = np.roll(poly1, -1, axis=0)
 
         # Compute signed area manually since np.cross is deprecated for 2D inputs
@@ -1021,7 +1022,7 @@ class GeoEllipse(PolygonBase):
         coords = []
         rotation = math.radians(self.rotation)
 
-        for i in range(k, -1, -1):
+        for i in range(k, 0, -1):
             angle = (math.pi * 2 / k) * i
             radius = self._radius_at_angle(angle)
             coord = destination_point(
@@ -1029,7 +1030,9 @@ class GeoEllipse(PolygonBase):
             )
             coords.append(coord)
 
-        return coords
+        # Close the ring with the exact first coordinate; recomputing it at
+        # angle zero produces float noise and a not-quite-closed ring
+        return [*coords, coords[0]]
 
     def circumscribing_circle(self) -> GeoCircle:
         return GeoCircle(self.center, self.semi_major, dt=self.dt)

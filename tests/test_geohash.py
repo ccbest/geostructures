@@ -10,7 +10,7 @@ from geostructures.geohash import (
 from geostructures.time import TimeInterval
 from geostructures.utils.agg_functions import *
 
-from tests import assert_shape_equivalence
+from tests.functions import assert_shape_equivalence
 
 
 def test_coord_to_niemeyer():
@@ -318,3 +318,8 @@ def test_h3_hash_shape_multishape_resolution():
     # An explicit resolution overrides the hasher default
     hasher = H3Hasher(resolution=7)
     assert hasher.hash_shape(multi, resolution=9) == hashes
+
+
+def test_h3_hasher_requires_resolution():
+    with pytest.raises(ValueError):
+        H3Hasher().hash_coordinates([Coordinate(0., 0.)])

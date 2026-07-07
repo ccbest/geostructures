@@ -184,3 +184,14 @@ def test_dist_xyz_meters_identical_coordinates():
             # acos of a near-1.0 dot product magnifies float error, so allow
             # sub-meter noise; the important part is that it never raises
             assert dist_xyz_meters(coord1, coord2) < 1.
+
+
+def test_circumscribing_circle_for_triangle_obtuse():
+    # For an obtuse triangle, the circumscribing circle is centered at the
+    # midpoint of the longest side
+    center, radius = circumscribing_circle_for_triangle([
+        Coordinate(0., 0.), Coordinate(1., 0.), Coordinate(0.9, 0.01)
+    ])
+    assert abs(center.longitude - 0.5) < 0.01
+    assert abs(center.latitude - 0.005) < 0.01
+    assert radius > 0

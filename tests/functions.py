@@ -1,11 +1,31 @@
+"""
+Shared test helpers.
 
-from zipfile import ZipFile
-import pytest
+Two comparison styles exist here, for different purposes:
+
+* ``assert_*_equal`` helpers compare coordinates with an absolute tolerance
+  (default 1e-7, ~1.1cm at the equator) and do NOT compare time bounds.
+  Use these for serialization round-trips, where float formatting may
+  introduce tiny drift.
+
+* ``assert_shape_equivalence`` compares coordinates rounded to a decimal
+  precision and DOES compare time bounds. Use this when the expected shape
+  is written out longhand at limited precision (e.g. geohash decodings).
+"""
+
+from datetime import datetime, timezone
+
 from pytest import approx
 
-from geostructures import Coordinate, GeoLineString, GeoPoint, GeoPolygon, FeatureCollection, \
-    MultiGeoPolygon, MultiGeoLineString, MultiGeoPoint
-from geostructures.typing import MultiShape
+from geostructures import (
+    Coordinate, GeoLineString, GeoPoint, GeoPolygon,
+    MultiGeoPolygon, MultiGeoLineString, MultiGeoPoint,
+)
+from geostructures.typing import GeoShape, LineLike, MultiShape, PointLike, PolygonLike
+from geostructures.utils.functions import round_half_up
+
+
+default_test_datetime = datetime(1970, 1, 1, 0, 0, tzinfo=timezone.utc)
 
 
 def assert_coordinates_equal(c1: Coordinate, c2: Coordinate, abs_tol=1e-7):
@@ -32,14 +52,20 @@ def assert_coordinates_equal(c1: Coordinate, c2: Coordinate, abs_tol=1e-7):
         print(c2.longitude, c2.latitude)
         raise e
 
+
 def assert_multishapes_equal(m1: MultiShape, m2: MultiShape):
-    fn = None
+    assert type(m1) == type(m2), f'{type(m1)} != {type(m2)}'
+    assert len(m1.geoshapes) == len(m2.geoshapes), \
+        f'{len(m1.geoshapes)} shapes != {len(m2.geoshapes)} shapes'
+
     if isinstance(m1, MultiGeoPolygon):
         fn = assert_geopolygons_equal
     elif isinstance(m1, MultiGeoLineString):
         fn = assert_geolinestrings_equal
     elif isinstance(m1, MultiGeoPoint):
         fn = assert_geopoints_equal
+    else:
+        raise TypeError(f'Unrecognized multishape type: {type(m1)}')
 
     for s1, s2 in zip(m1.geoshapes, m2.geoshapes):
         fn(s1, s2)
@@ -72,22 +98,135 @@ def assert_geolinestrings_equal(p1: GeoLineString, p2: GeoLineString):
 
 def assert_geopoints_equal(p1: GeoPoint, p2: GeoPoint):
     """
-    Helper to compare two GeoLinestring using approximate equality for coordinates.
+    Helper to compare two GeoPoints using approximate equality for coordinates.
     """
     assert_coordinates_equal(p1.centroid, p2.centroid)
 
 
-@pytest.fixture
-def pyshp_round_trip(tmp_path):
-    """
-    Write a FeatureCollection to a temporary zip, then read it back
-    and return the new collection.  Usage:
+def _assert_shapelike_equivalence(shape1: PolygonLike, shape2: PolygonLike, precision: int = 7):
+    shape1_coords = [
+        Coordinate(round_half_up(x.longitude, precision), round_half_up(x.latitude, precision))
+        for x in shape1.bounding_coords()
+    ]
+    shape2_coords = [
+        Coordinate(round_half_up(x.longitude, precision), round_half_up(x.latitude, precision))
+        for x in shape2.bounding_coords()
+    ]
+    return shape1_coords == shape2_coords and shape1.dt == shape2.dt
 
-        new_fc = round_trip(original_fc)
+
+def _assert_linelike_equivalence(shape1: LineLike, shape2: LineLike, precision: int = 7):
+    shape1_coords = [
+        Coordinate(round_half_up(x.longitude, precision), round_half_up(x.latitude, precision))
+        for x in shape1.vertices
+    ]
+    shape2_coords = [
+        Coordinate(round_half_up(x.longitude, precision), round_half_up(x.latitude, precision))
+        for x in shape2.vertices
+    ]
+    return shape1_coords == shape2_coords and shape1.dt == shape2.dt
+
+
+def _assert_pointlike_equivalence(shape1: PointLike, shape2: PointLike, precision: int = 7):
+    shape1_coord = Coordinate(
+        round_half_up(shape1.centroid.longitude, precision),
+        round_half_up(shape1.centroid.latitude, precision)
+    )
+    shape2_coord = Coordinate(
+        round_half_up(shape2.centroid.longitude, precision),
+        round_half_up(shape2.centroid.latitude, precision)
+    )
+    return shape1_coord == shape2_coord and shape1.dt == shape2.dt
+
+
+def assert_shape_equivalence(shape1: GeoShape, shape2: GeoShape, precision: int = 7):
+    """Asserts that two shapes are equivalent to the given precision."""
+    assert type(shape1) == type(shape2), f'{type(shape1)} != {type(shape2)}'
+
+    if isinstance(shape1, MultiShape):
+        assert len(shape1.geoshapes) == len(shape2.geoshapes), \
+            f'{len(shape1.geoshapes)} shapes != {len(shape2.geoshapes)} shapes'
+        for x, y in zip(shape1.geoshapes, shape2.geoshapes):
+            assert_shape_equivalence(x, y, precision)
+        return
+
+    if isinstance(shape1, PolygonLike):
+        assert _assert_shapelike_equivalence(shape1, shape2, precision), \
+            f'{shape1} not equivalent to {shape2}'
+    elif isinstance(shape1, LineLike):
+        assert _assert_linelike_equivalence(shape1, shape2, precision), \
+            f'{shape1} not equivalent to {shape2}'
+    elif isinstance(shape1, PointLike):
+        assert _assert_pointlike_equivalence(shape1, shape2, precision), \
+            f'{shape1} not equivalent to {shape2}'
+    else:
+        raise TypeError(f'Unrecognized shape type {type(shape1)}')
+
+
+def _assert_parsed_equivalent(original: GeoShape, parsed: GeoShape):
     """
-    def _rt(fc, **kwargs):
-        zip_path = tmp_path / "test.zip"
-        with ZipFile(zip_path, "w") as zf:
-            fc.to_shapefile(zf, **kwargs)
-        return FeatureCollection.from_shapefile(zip_path)
-    return _rt
+    Asserts that a shape parsed back from a serialized format is geometrically
+    equivalent to the original. Shapes without a dedicated parser (e.g.
+    GeoCircle, which serializes as a polygon) are compared via their
+    polygon form.
+    """
+    if isinstance(parsed, MultiShape):
+        assert_multishapes_equal(original, parsed)
+    elif isinstance(parsed, GeoPolygon):
+        original = original if isinstance(original, GeoPolygon) else original.to_polygon()
+        assert_geopolygons_equal(original, parsed)
+    elif isinstance(parsed, GeoLineString):
+        assert_geolinestrings_equal(original, parsed)
+    elif isinstance(parsed, GeoPoint):
+        assert_geopoints_equal(original, parsed)
+    else:
+        raise TypeError(f'Unrecognized parsed shape type: {type(parsed)}')
+
+
+def wkt_round_trip(shape: GeoShape):
+    """
+    Serializes a shape to WKT, parses it back, and asserts geometric
+    equivalence. Returns the parsed shape for further assertions.
+
+    WKT carries no time bounds or properties, so those are not compared.
+    """
+    from geostructures.parsers import parse_wkt
+
+    parsed = parse_wkt(shape.to_wkt())
+    _assert_parsed_equivalent(shape, parsed)
+    return parsed
+
+
+def geojson_round_trip(shape: GeoShape):
+    """
+    Serializes a shape to GeoJSON, parses it back, and asserts geometric
+    equivalence plus preservation of time bounds. Returns the parsed shape.
+    """
+    from geostructures.parsers import parse_geojson
+
+    parsed = parse_geojson(shape.to_geojson())
+    _assert_parsed_equivalent(shape, parsed)
+    assert parsed.dt == shape.dt
+    return parsed
+
+
+def shapely_round_trip(shape: GeoShape):
+    """
+    Converts a shape to its shapely equivalent and back, asserting geometric
+    equivalence. Returns the parsed shape.
+
+    Shapely geometries carry no time bounds or properties, so those are
+    not compared.
+    """
+    geom = shape.to_shapely()
+    conv_map = {
+        'Point': GeoPoint,
+        'LineString': GeoLineString,
+        'Polygon': GeoPolygon,
+        'MultiPoint': MultiGeoPoint,
+        'MultiLineString': MultiGeoLineString,
+        'MultiPolygon': MultiGeoPolygon,
+    }
+    parsed = conv_map[geom.geom_type].from_shapely(geom)
+    _assert_parsed_equivalent(shape, parsed)
+    return parsed

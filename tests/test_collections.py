@@ -14,7 +14,7 @@ from geostructures import GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
 from geostructures.collections import Track, FeatureCollection
 
-from tests.functions import pyshp_round_trip, assert_geopolygons_equal
+from tests.functions import assert_geopolygons_equal
 
 
 def test_collection_bool():
@@ -1214,3 +1214,31 @@ def test_track_distances_respect_geodesic_algorithm():
     # The two earth models agree to within ~0.5% but are not identical
     assert haversine_dist != vincenty_dist
     assert abs(haversine_dist - vincenty_dist) / haversine_dist < 0.01
+
+
+def test_collection_filter_by_dt_invalid_type():
+    col = FeatureCollection([GeoPoint(Coordinate(0., 0.), dt=datetime(2020, 1, 1))])
+    with pytest.raises(ValueError):
+        col.filter_by_dt('not a datetime')
+
+
+def test_collection_to_fastkml_folder():
+    col = FeatureCollection([GeoPoint(Coordinate(0., 0.))])
+    folder = col.to_fastkml_folder('my folder')
+    assert folder.name == 'my folder'
+    assert len(folder.features) == 1
+
+
+def test_collection_to_shapefile_m_values(pyshp_round_trip):
+    # Shapes carrying only M values are written as the pyshp *M variants
+    col = FeatureCollection([
+        GeoPoint(Coordinate(0., 0., m=5.)),
+        GeoLineString([Coordinate(0., 0., m=1.), Coordinate(1., 1., m=2.)]),
+        GeoPolygon([
+            Coordinate(0., 0., m=1.), Coordinate(1., 0., m=1.),
+            Coordinate(1., 1., m=1.), Coordinate(0., 0., m=1.)
+        ]),
+    ])
+    result = pyshp_round_trip(col)
+    assert len(result) == 3
+    assert all(shape.has_m for shape in result.geoshapes)

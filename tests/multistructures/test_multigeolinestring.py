@@ -6,7 +6,8 @@ import shapely
 from geostructures import FeatureCollection, MultiGeoLineString, GeoLineString, Coordinate, GeoCircle, GeoPolygon
 from geostructures.time import TimeInterval
 
-from tests.functions import pyshp_round_trip
+from tests.functions import geojson_round_trip, shapely_round_trip, wkt_round_trip
+
 
 
 def test_multigeolinestring_geo_interface():
@@ -174,14 +175,17 @@ def test_multigeolinestring_from_pyshp():
     assert actual.properties == expected.properties
 
 
-def test_multigeolinestring_from_shapely():
-    smls = shapely.MultiLineString([[[0, 0], [1, 2]], [[4, 4], [5, 6]]])
-    mls = MultiGeoLineString.from_shapely(smls)
-    expected = [
-        GeoLineString([Coordinate(0.0, 0.0), Coordinate(1., 2.)]),
-        GeoLineString([Coordinate(4.0, 4.0), Coordinate(5., 6.)])
-    ]
-    assert all([a == b for a, b in zip(mls.geoshapes, expected)])
+def test_multigeolinestring_serialization_round_trips():
+    mls = MultiGeoLineString(
+        [
+            GeoLineString([Coordinate(0.0, 0.0), Coordinate(1., 2.)]),
+            GeoLineString([Coordinate(4.0, 4.0), Coordinate(5., 6.)]),
+        ],
+        dt=datetime(2020, 1, 1),
+    )
+    wkt_round_trip(mls)
+    geojson_round_trip(mls)
+    shapely_round_trip(mls)
 
 
 def test_multigeolinestring_from_wkt():
@@ -279,3 +283,12 @@ def test_multigeolinestring_to_wkt():
         GeoLineString([Coordinate(1.0, 1.0), Coordinate(0.5, 0.5), Coordinate(0.0, 0.0)])
     ])
     assert mls.to_wkt() == "MULTILINESTRING((0 1,0.5 0.5,1 0), (1 1,0.5 0.5,0 0))"
+
+
+def test_multigeolinestring_circumscribing_rectangle():
+    from geostructures import GeoBox
+
+    mls = MultiGeoLineString([
+        GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.)]),
+    ])
+    assert mls.circumscribing_rectangle() == GeoBox(Coordinate(0., 1.), Coordinate(1., 0.))

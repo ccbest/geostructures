@@ -6,7 +6,8 @@ import shapely
 from geostructures import MultiGeoPolygon, GeoBox, Coordinate, GeoCircle, GeoPolygon, FeatureCollection
 from geostructures.time import TimeInterval
 
-from tests.functions import pyshp_round_trip
+from tests.functions import geojson_round_trip, shapely_round_trip, wkt_round_trip
+
 
 
 def test_multigeopolygon_repr():
@@ -423,3 +424,28 @@ def test_multigeopolygon_from_wkt_distinct_hole():
 
     assert poly.contains_coordinate(Coordinate(5., 5.))
     assert not poly.contains_coordinate(Coordinate(2.5, 2.5))
+
+
+def test_multigeopolygon_serialization_round_trips():
+    mp = MultiGeoPolygon(
+        [
+            GeoPolygon(
+                [
+                    Coordinate(0., 0.), Coordinate(10., 0.), Coordinate(10., 10.),
+                    Coordinate(0., 10.), Coordinate(0., 0.)
+                ],
+                holes=[GeoPolygon([
+                    Coordinate(2., 2.), Coordinate(2., 3.), Coordinate(3., 3.),
+                    Coordinate(3., 2.), Coordinate(2., 2.)
+                ])],
+            ),
+            GeoPolygon([
+                Coordinate(20., 20.), Coordinate(21., 20.), Coordinate(21., 21.),
+                Coordinate(20., 20.)
+            ]),
+        ],
+        dt=datetime(2020, 1, 1),
+    )
+    wkt_round_trip(mp)
+    geojson_round_trip(mp)
+    shapely_round_trip(mp)
