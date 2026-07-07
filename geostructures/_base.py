@@ -17,6 +17,7 @@ from typing_extensions import Self
 from geostructures.coordinates import Coordinate
 from geostructures.time import TimeInterval, GEOTIME_TYPE
 from geostructures.utils.functions import default_to_zulu, sanitize_json
+from geostructures.utils.conditional_imports import import_optional
 
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -453,6 +454,7 @@ class BaseShape(ABC):
         Returns:
             fastkml.Placemark
         """
+        import_optional('fastkml')
         from fastkml import Placemark
         from fastkml.data import ExtendedData, Data
 

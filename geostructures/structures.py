@@ -36,6 +36,7 @@ from geostructures._geometry import (
 )
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
+from geostructures.utils.conditional_imports import import_optional
 
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -67,6 +68,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
 
     @cached_property
     def area(self):
+        import_optional('pyproj')
         from pyproj import Geod
 
         geod = Geod(ellps="WGS84")
@@ -200,6 +202,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
         """
         Converts the geoshape into a Shapely shape.
         """
+        import_optional('shapely')
         import shapely
         rings = self.linear_rings()
         holes = []
@@ -1720,6 +1723,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
         return writer.line(formatted)
 
     def _to_shapely(self):
+        import_optional('shapely')
         import shapely
         return shapely.LineString([x.to_float() for x in self.vertices])
 
@@ -1930,6 +1934,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
         return writer.point(*self.centroid.to_float())
 
     def _to_shapely(self):
+        import_optional('shapely')
         import shapely
         return shapely.Point(self.centroid.longitude, self.centroid.latitude)
 

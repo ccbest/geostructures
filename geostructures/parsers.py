@@ -13,6 +13,7 @@ from geostructures.collections import FeatureCollection
 from geostructures.structures import GeoPolygon, GeoPoint, GeoLineString
 from geostructures.multistructures import MultiGeoPoint, MultiGeoPolygon, MultiGeoLineString
 from geostructures.typing import GeoShape, SimpleShape
+from geostructures.utils.conditional_imports import import_optional
 
 
 _PARSER_MAP: Dict[str, SimpleShape] = {
@@ -56,6 +57,7 @@ def parse_fastkml(
     Returns:
         List[GeoShape]
     """
+    import_optional('fastkml')
     from fastkml import KML, Document, Folder, Placemark
 
     _shapes = _shapes if _shapes is not None else []
@@ -182,6 +184,7 @@ def read_kml(fpath: Union[str, Path], encoding: str = 'utf8') -> FeatureCollecti
         FeatureCollection
     """
     from zipfile import ZipFile
+    import_optional('fastkml')
     from fastkml import KML
 
     fpath = Path(fpath)

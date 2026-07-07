@@ -24,6 +24,7 @@ from geostructures.geodesic import distance_meters
 from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, PolygonBase
 from geostructures.utils.functions import get_dt_from_geojson_props
+from geostructures.utils.conditional_imports import import_optional
 
 if TYPE_CHECKING:  # pragma: no cover
     import shapefile
@@ -211,6 +212,7 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
         """
         Converts the geoshape into a Shapely shape.
         """
+        import_optional('shapely')
         import shapely
 
         lines = [
@@ -402,6 +404,7 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
         """
         Converts the geoshape into a Shapely shape.
         """
+        import_optional('shapely')
         import shapely
 
         points = [x.centroid.to_float() for x in self.geoshapes]
@@ -694,6 +697,7 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
         """
         Converts the geoshape into a Shapely shape.
         """
+        import_optional('shapely')
         import shapely
 
         converted = []

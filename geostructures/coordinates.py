@@ -11,6 +11,7 @@ from typing import List, Optional, Tuple, Union
 from pydantic import validate_call
 
 from geostructures.utils.functions import round_half_up
+from geostructures.utils.conditional_imports import import_optional
 from geostructures.utils.logging import warn_once
 
 
@@ -103,6 +104,7 @@ class Coordinate:
     @classmethod
     def from_mgrs(cls, mgrs_str: str):
         """Create a Coordinate object from a MGRS string"""
+        import_optional('mgrs')
         import mgrs
         _MGRS = mgrs.MGRS()
 
@@ -125,6 +127,7 @@ class Coordinate:
                 A string representing the target EPSG code. e.g EPSG:3857
 
         """
+        import_optional('pyproj')
         from pyproj import Transformer
         lon, lat = Transformer.from_crs(crs, "EPSG:4326", always_xy=True).transform(lon, lat)
         return Coordinate(round_half_up(lon, 6), round_half_up(lat, 6))
@@ -228,6 +231,7 @@ class Coordinate:
 
     def to_mgrs(self) -> str:
         """Convert this coordinate to a MGRS string"""
+        import_optional('mgrs')
         import mgrs
         _MGRS = mgrs.MGRS()
 
@@ -244,6 +248,7 @@ class Coordinate:
         Return:
             A coordinate in the target projection system.
         """
+        import_optional('pyproj')
         from pyproj import Transformer
         lon, lat = Transformer.from_crs("EPSG:4326", crs, always_xy=True).transform(
             self.longitude, self.latitude

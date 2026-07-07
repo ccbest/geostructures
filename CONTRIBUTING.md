@@ -42,7 +42,10 @@ interfere with core functionality.
 
 Whenever an optional dependency is utilized it must be imported only within the scope of its usage so that code
 which does not rely on the dependency may still be compiled (the `import-outside-toplevel` pylint check is
-disabled project-wide to permit this pattern).
+disabled project-wide to permit this pattern). Precede the import with a call to
+`geostructures.utils.conditional_imports.import_optional('<package>')`, which raises a helpful ImportError
+naming the extra that provides the package if it is not installed. New optional dependencies must be added to
+the `_PACKAGE_EXTRAS` mapping in that module and to the extras in `pyproject.toml`.
 
 ### Definition Order
 Unless otherwise required, definitions in modules should follow the below order

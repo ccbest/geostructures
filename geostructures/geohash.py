@@ -20,6 +20,7 @@ from geostructures.collections import CollectionBase
 from geostructures.multistructures import MultiGeoPoint
 from geostructures.time import TimeInterval
 from geostructures.typing import GeoShape, LineLike, MultiShape, PointLike, PolygonLike, SinglePolygon
+from geostructures.utils.conditional_imports import import_optional
 
 
 _NIEMEYER_CONFIG_TYPE = TypedDict(
@@ -225,6 +226,7 @@ def h3_to_geopolygon(
     Returns:
         GeoPolygon
     """
+    import_optional('h3')
     from h3 import cell_to_boundary
     boundary = [Coordinate(*x[::-1]) for x in cell_to_boundary(h3_geohash)]
     return GeoPolygon(
@@ -339,7 +341,7 @@ class H3Hasher(HasherBase):
     ):
         # Deliberate fail-fast so users without the extra fail at
         # construction rather than mid-pipeline
-        import h3  # noqa: F401  # pylint: disable=unused-import
+        import_optional('h3')
 
         self.resolution = resolution
 
@@ -358,6 +360,7 @@ class H3Hasher(HasherBase):
         Returns:
             A set of H3 geohashes
         """
+        import_optional('h3')
         import h3
         poly = h3.LatLngPoly(
             *[[x.to_float(reverse=True) for x in ring] for ring in polygon.linear_rings()]
@@ -386,6 +389,7 @@ class H3Hasher(HasherBase):
         Returns:
             A set of H3 geohashes
         """
+        import_optional('h3')
         import h3
 
         _hexes = set()
@@ -426,6 +430,7 @@ class H3Hasher(HasherBase):
         Returns:
             A set of H3 geohashes
         """
+        import_optional('h3')
         import h3
 
         return {

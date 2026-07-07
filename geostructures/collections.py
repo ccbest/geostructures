@@ -24,6 +24,7 @@ from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
 from geostructures.utils.functions import default_to_zulu
 from geostructures.utils.logging import warn_once
+from geostructures.utils.conditional_imports import import_optional
 
 
 _COL_TYPE = TypeVar('_COL_TYPE', bound='CollectionBase')
@@ -256,7 +257,9 @@ class CollectionBase:
         Returns:
             An object of this class's type
         """
+        import_optional('geopandas')
         import geopandas as gpd
+        import_optional('pandas')
         import pandas as pd
 
         conv_map = {
@@ -314,6 +317,7 @@ class CollectionBase:
         time_end_field: str = 'datetime_e',
         read_layers: Optional[List[str]] = None
     ):
+        import_optional('shapefile')
         import shapefile
 
         def _get_dt(rec):
@@ -448,6 +452,7 @@ class CollectionBase:
         return False
 
     def to_fastkml_folder(self, folder_name: str):
+        import_optional('fastkml')
         from fastkml import Folder
 
         return Folder(
@@ -480,7 +485,9 @@ class CollectionBase:
         Returns:
             geopandas.GeoDataFrame
         """
+        import_optional('pandas')
         import pandas as pd
+        import_optional('geopandas')
         import geopandas as gpd
 
         keys = include_properties or set(
@@ -511,6 +518,7 @@ class CollectionBase:
         split** by its dimensionality (XY / XYM / XYZ) so that every writer
         receives only *one* shape type – required by pyshp.
         """
+        import_optional('shapefile')
         import shapefile
 
         # 1. Split the collection into geometry families

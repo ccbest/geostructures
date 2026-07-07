@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Union
 
 from pydantic import validate_call
+from geostructures.utils.conditional_imports import import_optional
 
 
 _DEFAULT_DATE_FORMATS = [
@@ -93,6 +94,7 @@ class TimeInterval:
     @staticmethod
     def _from_fastkml(fastkml_time):
         """Create a TimeInterval from the FastKML equivalent."""
+        import_optional('fastkml')
         from fastkml.times import TimeSpan, TimeStamp
 
         if isinstance(fastkml_time, TimeStamp):
@@ -120,6 +122,7 @@ class TimeInterval:
 
     def _to_fastkml(self):
         """Convert to a FastKML equivalent object."""
+        import_optional('fastkml')
         from fastkml.times import TimeSpan, TimeStamp, KmlDateTime
 
         if self.start == self.end:

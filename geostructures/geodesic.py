@@ -17,6 +17,7 @@ from typing import Literal
 
 from geostructures._const import WGS84_A, WGS84_B, WGS84_F, EARTH_RADIUS_METERS
 from geostructures.coordinates import Coordinate
+from geostructures.utils.conditional_imports import import_optional
 
 
 # -------------------------------------------------------------------------
@@ -293,6 +294,7 @@ def karney_distance(coord1: Coordinate, coord2: Coordinate) -> float:
     Calculate distance using Karney's algorithm (via geographiclib).
     Robust against antipodal points and convergence failures.
     """
+    import_optional('geographiclib')
     from geographiclib.geodesic import Geodesic
 
     # Inverse returns a dict with 's12' (distance in meters), 'azi1', etc.
@@ -307,6 +309,7 @@ def karney_destination(start: Coordinate, bearing_degrees: float, distance: floa
     """
     Calculate destination using Karney's algorithm (via geographiclib).
     """
+    import_optional('geographiclib')
     from geographiclib.geodesic import Geodesic
 
     # Direct takes (lat1, lon1, azi1, s12)
@@ -322,6 +325,7 @@ def karney_bearing(start: Coordinate, end: Coordinate) -> float:
     """
     Calculate initial bearing using Karney's algorithm (via geographiclib).
     """
+    import_optional('geographiclib')
     from geographiclib.geodesic import Geodesic
 
     res = Geodesic.WGS84.Inverse(
