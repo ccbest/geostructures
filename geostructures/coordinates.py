@@ -36,9 +36,9 @@ class Coordinate:
                 # Crosses the antimeridian
                 longitude = longitude - 360 if longitude > 180 else longitude + 360
 
-        # Longitudes are bounded to [-180, 180)
-        if longitude == 180:
-            longitude = -180
+            # Longitudes are bounded to [-180, 180)
+            if longitude == 180:
+                longitude = -180
 
         self.longitude = longitude
         self.latitude = latitude

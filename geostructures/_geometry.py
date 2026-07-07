@@ -198,7 +198,10 @@ def dist_xyz_meters(coord1: Coordinate, coord2: Coordinate) -> float:
     Returns:
         (float) the distance in meters
     """
-    return math.acos(sum([an*bn for an, bn in zip(coord1.xyz, coord2.xyz)])) * EARTH_RADIUS_METERS
+    # Clamp the dot product to [-1, 1]; floating point error can push it
+    # out of acos's domain for identical/antipodal coordinates
+    dot = sum(an * bn for an, bn in zip(coord1.xyz, coord2.xyz))
+    return math.acos(max(-1.0, min(1.0, dot))) * EARTH_RADIUS_METERS
 
 
 def do_bounds_overlap(bounds1: Tuple[float, float], bounds2: Tuple[float, float]):

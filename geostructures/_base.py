@@ -848,7 +848,9 @@ class MultiShapeBase(SimpleShapeMixin, BaseShape, ABC):
         return set(self.geoshapes) == set(other.geoshapes) and self.dt == other.dt
 
     def __hash__(self) -> int:
-        return hash((tuple(hash(x) for x in self.geoshapes), self.dt))
+        # __eq__ compares geoshapes as sets, so the hash must likewise be
+        # insensitive to ordering and duplicates
+        return hash((frozenset(self.geoshapes), self.dt))
 
     def __iter__(self):
         return self.geoshapes.__iter__()

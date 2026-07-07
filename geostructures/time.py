@@ -32,12 +32,16 @@ class TimeInterval:
     ):
         """Check to make sure end is after start"""
         super().__init__()
-        end = end if isinstance(end, datetime) else start + end
+        # Normalize to timezone-aware before comparing; a naive/aware mix
+        # (e.g. an aware start with the naive datetime.max default) raises
+        # an unhelpful TypeError otherwise
+        start = self._default_to_zulu(start)
+        end = self._default_to_zulu(end if isinstance(end, datetime) else start + end)
 
         if end < start:
             raise ValueError(f'end date {end} must not be less than start date {start}')
 
-        self.start, self.end = self._default_to_zulu(start), self._default_to_zulu(end)
+        self.start, self.end = start, end
 
     def _default_to_zulu(self, dt: datetime) -> datetime:
         """Add Zulu/UTC as timezone, if timezone not present"""

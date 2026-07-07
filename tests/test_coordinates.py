@@ -87,3 +87,13 @@ def test_coordinate_to_qdms():
 def test_coordinate_from_qdms():
     assert Coordinate.from_qdms('W000070513', 'N51303551') == Coordinate(-0.118092, 51.509864)
 
+
+def test_coordinate_unbounded_preserves_180():
+    # Bounded coordinates normalize longitude 180 to -180
+    assert Coordinate(180., 10.).longitude == -180.
+
+    # Unbounded coordinates (used for antimeridian-crossing edge math)
+    # must not be normalized
+    assert Coordinate(180., 10., _bounded=False).longitude == 180.
+    assert Coordinate(185., 10., _bounded=False).longitude == 185.
+

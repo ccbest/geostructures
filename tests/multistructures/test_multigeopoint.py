@@ -225,3 +225,18 @@ def test_multigeopoint_to_wkt():
         GeoPoint(Coordinate(1., 1.))
     ])
     assert mp.to_wkt() == "MULTIPOINT((0 1), (1 1))"
+
+
+def test_multigeopoint_hash_matches_equality():
+    # __eq__ compares geoshapes as sets, so hashes must be insensitive to
+    # ordering and duplicates, and must account for dt
+    point1, point2 = GeoPoint(Coordinate(0., 0.)), GeoPoint(Coordinate(1., 1.))
+
+    mp1 = MultiGeoPoint([point1, point2])
+    mp2 = MultiGeoPoint([point2, point1])
+    assert mp1 == mp2
+    assert hash(mp1) == hash(mp2)
+    assert len({mp1, mp2}) == 1
+
+    timed = MultiGeoPoint([point1, point2], dt=datetime(2020, 1, 1))
+    assert hash(timed) != hash(mp1)

@@ -168,3 +168,27 @@ def test_timeinterval_from_str():
     with pytest.raises(ValueError):
         # Bad format passed
         TimeInterval.from_str(start, time_format='2020.01.01 00:00:00.000')
+
+
+def test_timeinterval_aware_naive_mix():
+    # Aware datetimes used to raise a TypeError when compared against the
+    # naive datetime.min/datetime.max defaults before normalization
+    interval = TimeInterval(datetime(2020, 1, 1, tzinfo=timezone.utc))
+    assert interval.start == datetime(2020, 1, 1, tzinfo=timezone.utc)
+    assert interval.end.tzinfo is not None
+
+    interval = TimeInterval(end=datetime(2020, 1, 1, tzinfo=timezone.utc))
+    assert interval.start.tzinfo is not None
+
+    # Mixed aware/naive arguments normalize to UTC before comparison
+    interval = TimeInterval(
+        datetime(2020, 1, 1, tzinfo=timezone.utc),
+        datetime(2020, 1, 2)
+    )
+    assert interval.end == datetime(2020, 1, 2, tzinfo=timezone.utc)
+
+    with pytest.raises(ValueError):
+        TimeInterval(
+            datetime(2020, 1, 2, tzinfo=timezone.utc),
+            datetime(2020, 1, 1)
+        )

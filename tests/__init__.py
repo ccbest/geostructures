@@ -41,22 +41,26 @@ def _assert_pointlike_equivalence(shape1: PointLike, shape2: PointLike, precisio
 
 
 def assert_shape_equivalence(shape1: GeoShape, shape2: GeoShape, precision: int = 7):
-    if not type(shape1) == type(shape2):
-        return False
+    """Asserts that two shapes are equivalent to the given precision."""
+    assert type(shape1) == type(shape2), f'{type(shape1)} != {type(shape2)}'
 
     if isinstance(shape1, MultiShape):
-        return all(
+        assert len(shape1.geoshapes) == len(shape2.geoshapes), \
+            f'{len(shape1.geoshapes)} shapes != {len(shape2.geoshapes)} shapes'
+        for x, y in zip(shape1.geoshapes, shape2.geoshapes):
             assert_shape_equivalence(x, y, precision)
-            for x, y in zip(shape1.geoshapes, shape2.geoshapes)
-        )
+        return
 
     if isinstance(shape1, PolygonLike):
-        return _assert_shapelike_equivalence(shape1, shape2, precision)
-
-    if isinstance(shape1, LineLike):
-        return _assert_linelike_equivalence(shape1, shape2, precision)
-
-    if isinstance(shape1, PointLike):
-        return _assert_pointlike_equivalence(shape1, shape2, precision)
+        assert _assert_shapelike_equivalence(shape1, shape2, precision), \
+            f'{shape1} not equivalent to {shape2}'
+    elif isinstance(shape1, LineLike):
+        assert _assert_linelike_equivalence(shape1, shape2, precision), \
+            f'{shape1} not equivalent to {shape2}'
+    elif isinstance(shape1, PointLike):
+        assert _assert_pointlike_equivalence(shape1, shape2, precision), \
+            f'{shape1} not equivalent to {shape2}'
+    else:
+        raise TypeError(f'Unrecognized shape type {type(shape1)}')
 
 

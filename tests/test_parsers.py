@@ -96,6 +96,31 @@ def test_parse_wkt():
         parse_wkt('worse')
 
 
+def test_parse_fastkml_folder_traceability():
+    import fastkml
+
+    # A document containing [Folder A [placemark], propertyless placemark]
+    document = fastkml.Document(name='doc')
+    folder_a = fastkml.Folder(name='folder A')
+    folder_a.append(
+        GeoPoint(Coordinate(1., 0.)).to_fastkml_placemark(name='inside A')
+    )
+    document.append(folder_a)
+    document.append(
+        GeoPoint(Coordinate(2., 0.)).to_fastkml_placemark(name='outside A')
+    )
+
+    parsed = parse_fastkml(document)
+    by_name = {shape.properties['name']: shape for shape in parsed}
+
+    # Folder names apply to shapes inside the folder, even when the
+    # placemark carries no properties of its own
+    assert by_name['inside A'].properties['sub_folder_1'] == 'folder A'
+
+    # ...and must not leak to siblings outside the folder
+    assert 'sub_folder_1' not in by_name['outside A'].properties
+
+
 def test_read_kml():
     mock_kml = read_kml('./tests/test_files/test_kml.kml')
     assert len(mock_kml) == 19
