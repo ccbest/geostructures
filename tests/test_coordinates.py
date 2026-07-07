@@ -1,4 +1,6 @@
 
+import pytest
+
 from geostructures import Coordinate
 
 
@@ -108,3 +110,41 @@ def test_coordinate_to_str_with_z_m():
     assert Coordinate(0.5, 1.5, z=2.).to_str() == ('0.5', '1.5', '2')
     assert Coordinate(0.5, 1.5, z=2., m=3.).to_str() == ('0.5', '1.5', '2', '3')
     assert Coordinate(0.5, 1.5).to_str(reverse=True) == ('1.5', '0.5')
+
+
+def test_coordinate_immutable():
+    import pickle
+
+    coord = Coordinate(0., 1., z=2.)
+    with pytest.raises(AttributeError):
+        coord.longitude = 5.
+    with pytest.raises(AttributeError):
+        del coord.latitude
+    with pytest.raises(AttributeError):
+        coord.new_attribute = 'nope'
+
+    # Hash remains stable and pickling works
+    assert hash(coord) == hash(Coordinate(0., 1., z=2.))
+    assert pickle.loads(pickle.dumps(coord)) == coord
+
+    # The xyz cache does not affect equality or mutability
+    _ = coord.xyz
+    assert coord.xyz == Coordinate(0., 1., z=2.).xyz
+
+
+def test_coordinate_type_coercion():
+    # Strings, ints, and numpy scalars all coerce to float
+    import numpy as np
+
+    coord = Coordinate('0.5', 1, z='2', m=np.float64(3.))
+    assert coord.longitude == 0.5
+    assert coord.latitude == 1.
+    assert coord.z == 2.
+    assert coord.m == 3.
+    assert all(isinstance(v, float) for v in (coord.longitude, coord.latitude, coord.z, coord.m))
+
+    with pytest.raises(ValueError):
+        Coordinate('not a number', 0.)
+
+    with pytest.raises(TypeError):
+        Coordinate(None, 0.)

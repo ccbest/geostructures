@@ -136,7 +136,7 @@ def circumscribing_circle_for_triangle(
         if rad >= dist_xyz_meters(midp_coord, p):
             return midp_coord, rad
 
-    [a, b, c] = [np.longdouble(p.xyz) for p in points]
+    [a, b, c] = [np.asarray(p.xyz, dtype=np.longdouble) for p in points]
     cc_num = np.cross(a, b) + np.cross(b, c) + np.cross(c, a)
     cc_norm = norm(cc_num)
     ctr = Coordinate._from_xyz([i/cc_norm for i in cc_num])

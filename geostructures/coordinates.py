@@ -4,29 +4,52 @@ Representation of a specific point on earth
 
 __all__ = ['Coordinate']
 
-from functools import cached_property
 import math
 from typing import List, Optional, Tuple, Union
-
-from pydantic import validate_call
 
 from geostructures.utils.functions import round_half_up
 from geostructures.utils.conditional_imports import import_optional
 from geostructures.utils.logging import warn_once
 
 
-class Coordinate:
-    """Representation of a coordinate on the globe (i.e., a lon/lat pair)"""
+# Bound once at module level; Coordinate.__init__ is the library's hottest
+# code path and the attribute-chain lookup is measurable there
+_set_slot = object.__setattr__
 
-    @validate_call
+
+class Coordinate:
+    """
+    Representation of a coordinate on the globe (i.e., a lon/lat pair).
+
+    Coordinates are immutable; to alter one, create a new Coordinate. This
+    keeps hashes stable, so coordinates (and the shapes containing them) are
+    always safe to place in sets and dictionaries.
+
+    Longitude and latitude (and Z/M values, if given) are coerced to floats,
+    so strings, integers, and numpy scalars are all accepted.
+    """
+
+    __slots__ = ('longitude', 'latitude', 'z', 'm', '_xyz')
+
+    longitude: float
+    latitude: float
+    z: Optional[float]
+    m: Optional[float]
+    _xyz: Optional[List[float]]
+
     def __init__(
         self,
-        longitude: float,
-        latitude: float,
-        z: Optional[float] = None,
-        m: Optional[float] = None,
+        longitude: Union[float, str],
+        latitude: Union[float, str],
+        z: Optional[Union[float, str]] = None,
+        m: Optional[Union[float, str]] = None,
         _bounded: bool = True,
     ):
+        # Manual coercion; this is the library's hottest constructor, so
+        # heavier validation machinery (e.g. pydantic) is avoided on purpose
+        longitude = float(longitude)
+        latitude = float(latitude)
+
         if _bounded:
             while not -90 <= latitude <= 90:
                 # Crosses one of the poles
@@ -41,10 +64,29 @@ class Coordinate:
             if longitude == 180:
                 longitude = -180
 
-        self.longitude = longitude
-        self.latitude = latitude
-        self.z = z
-        self.m = m
+        _set_slot(self, 'longitude', longitude)
+        _set_slot(self, 'latitude', latitude)
+        _set_slot(self, 'z', float(z) if z is not None else None)
+        _set_slot(self, 'm', float(m) if m is not None else None)
+        _set_slot(self, '_xyz', None)
+
+    def __setattr__(self, name, value):
+        raise AttributeError(
+            'Coordinates are immutable; create a new Coordinate instead'
+        )
+
+    def __delattr__(self, name):
+        raise AttributeError(
+            'Coordinates are immutable; create a new Coordinate instead'
+        )
+
+    def __getstate__(self):
+        return self.longitude, self.latitude, self.z, self.m
+
+    def __setstate__(self, state):
+        for slot, value in zip(('longitude', 'latitude', 'z', 'm'), state):
+            _set_slot(self, slot, value)
+        _set_slot(self, '_xyz', None)
 
     def __eq__(self, other):
         if not isinstance(other, Coordinate):
@@ -59,16 +101,20 @@ class Coordinate:
         parts = filter(lambda x: x is not None, (self.longitude, self.latitude, self.z, self.m))
         return f'<Coordinate({", ".join(map(str, parts))})>'
 
-    @cached_property
-    def xyz(self):
+    @property
+    def xyz(self) -> List[float]:
         """Converts lat/lon to unit coordinates [x,y,z]"""
-        r_lat = math.radians(self.latitude)
-        r_lon = math.radians(self.longitude)
-        return [
-            math.cos(r_lat) * math.cos(r_lon),
-            math.cos(r_lat) * math.sin(r_lon),
-            math.sin(r_lat)
-        ]
+        xyz = self._xyz
+        if xyz is None:
+            r_lat = math.radians(self.latitude)
+            r_lon = math.radians(self.longitude)
+            xyz = [
+                math.cos(r_lat) * math.cos(r_lon),
+                math.cos(r_lat) * math.sin(r_lon),
+                math.sin(r_lat)
+            ]
+            _set_slot(self, '_xyz', xyz)
+        return xyz
 
     @classmethod
     def _from_xyz(cls, xyz: List[float]):
