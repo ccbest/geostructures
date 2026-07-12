@@ -209,3 +209,33 @@ def test_parse_kml_kmz_bytes():
     assert 'filepath' not in result[0].properties
     assert result[0].properties['filename'].lower().endswith('.kml')
 
+
+def test_parse_shapefile_delegates_to_from_shapefile(tmp_path):
+    from zipfile import ZipFile
+
+    fc = FeatureCollection([
+        GeoPoint(Coordinate(1., 2.), properties={'a': 'b'}),
+        GeoPoint(Coordinate(3., 4.), properties={'a': 'c'}),
+    ])
+    zip_path = tmp_path / 'points.zip'
+    with ZipFile(zip_path, 'w') as zfile:
+        fc.to_shapefile(zfile)
+
+    parsed = parse_shapefile(zip_path)
+    assert isinstance(parsed, FeatureCollection)
+    # parse_shapefile is a thin delegate, so it must match from_shapefile exactly
+    assert parsed == FeatureCollection.from_shapefile(zip_path)
+    assert len(parsed) == 2
+
+
+def test_parse_shapefile_forwards_read_layers(tmp_path):
+    from zipfile import ZipFile
+
+    fc = FeatureCollection([GeoPoint(Coordinate(1., 2.))])
+    zip_path = tmp_path / 'points.zip'
+    with ZipFile(zip_path, 'w') as zfile:
+        fc.to_shapefile(zfile)
+
+    # A non-existent layer filter yields an empty collection (args are forwarded)
+    assert len(parse_shapefile(zip_path, read_layers=['does_not_exist'])) == 0
+

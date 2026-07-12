@@ -1,7 +1,7 @@
 """Module for parsing external structures into geostructures"""
 
 __all__ = [
-    'parse_geojson', 'parse_kml', 'parse_wkt'
+    'parse_geojson', 'parse_kml', 'parse_shapefile', 'parse_wkt'
 ]
 
 import json
@@ -183,6 +183,40 @@ def parse_wkt(wkt: str, /, **kwargs):
         raise ValueError(f'Unsupported WKT geometry {geom_type}.') from exc
 
     return parser.from_wkt(wkt, **kwargs)                 # type: ignore[arg-type]
+
+
+def parse_shapefile(
+    zip_fpath: Union[str, Path],
+    time_start_field: str = 'datetime_s',
+    time_end_field: str = 'datetime_e',
+    read_layers: Optional[List[str]] = None,
+) -> FeatureCollection:
+    """
+    Parse a zip-archived ESRI shapefile set into a FeatureCollection - the
+    inverse of ``serialize_shapefile``.
+
+    Args:
+        zip_fpath:
+            Path to the zip archive containing the shapefile component files.
+
+        time_start_field:
+            The record field holding each shape's start time, if present.
+
+        time_end_field:
+            The record field holding each shape's end time, if present.
+
+        read_layers: (Optional)
+            Restrict reading to these layer (component) names. Defaults to all.
+
+    Returns:
+        FeatureCollection
+    """
+    return FeatureCollection.from_shapefile(
+        zip_fpath,
+        time_start_field=time_start_field,
+        time_end_field=time_end_field,
+        read_layers=read_layers,
+    )
 
 
 def parse_kml(

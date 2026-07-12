@@ -345,8 +345,25 @@ serialize_kml(polygon, '/path/to/file.kml')   # plain KML
 serialize_kml(polygon, '/path/to/file.kmz')   # zipped KMZ
 serialize_kml(polygon)                         # returns bytes (no file written)
 
-# Collections (and Tracks) of shapes have additional supported formats
+# The parsers/serializers modules mirror each other across {geojson, wkt, kml, shapefile}.
+# Each serialize_* returns the serialized form when no file is given, or writes to a
+# path / file-like when one is. (Text formats return str; kml/shapefile return bytes.)
+from geostructures.parsers import parse_geojson, parse_wkt, parse_shapefile
+from geostructures.serializers import serialize_geojson, serialize_wkt, serialize_shapefile
+
 collection = FeatureCollection([polygon])
+
+serialize_geojson(collection)                       # -> JSON string (indent=... to pretty-print)
+serialize_geojson(collection, '/path/to/file.geojson')
+parse_geojson(serialize_geojson(collection))
+
+serialize_wkt(polygon)                              # -> 'POLYGON ((...))'  (single shape only)
+parse_wkt(serialize_wkt(polygon))
+
+serialize_shapefile(collection, '/path/to/file.zip')  # zip-archived shapefile set
+parse_shapefile('/path/to/file.zip')
+
+# Collections (and Tracks) of shapes have additional supported formats
 
 # Creates a geopandas DataFrame
 collection.to_geopandas()
