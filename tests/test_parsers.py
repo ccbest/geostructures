@@ -1,5 +1,5 @@
 
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 
@@ -7,6 +7,7 @@ import pytest
 
 from geostructures import *
 from geostructures.parsers import *
+from geostructures.time import TimeInterval
 from tests.functions import assert_geopolygons_equal, assert_geolinestrings_equal, \
     assert_geopoints_equal, assert_multishapes_equal
 
@@ -73,10 +74,11 @@ def test_parse_kml_input_forms():
         kml_str = f.read()
 
     # Raw KML string, raw KML bytes, and a pre-parsed fastkml object should all
-    # agree, and each should return a FeatureCollection
+    # agree, and each should return a FeatureCollection. fastkml.KML.from_string
+    # is handed bytes because lxml rejects str carrying an encoding declaration
     from_str = parse_kml(kml_str)
     from_bytes = parse_kml(kml_str.encode('utf8'))
-    from_obj = parse_kml(fastkml.KML.from_string(kml_str))
+    from_obj = parse_kml(fastkml.KML.from_string(kml_str.encode('utf8')))
 
     for result in (from_str, from_bytes, from_obj):
         assert isinstance(result, FeatureCollection)
@@ -84,6 +86,45 @@ def test_parse_kml_input_forms():
 
     with pytest.raises(TypeError):
         parse_kml(1234)
+
+
+def test_parse_kml_encoding_declaration_and_bom():
+    # Regression: with lxml installed (fastkml's preferred XML backend), str
+    # input containing an XML encoding declaration raised ValueError. A UTF-8
+    # byte order mark also misrouted str input to the filepath branch.
+    with open('./tests/test_files/test_kml.kml', 'r', encoding='utf8') as f:
+        kml_str = f.read()
+    assert kml_str.startswith('<?xml')
+
+    assert len(parse_kml('\ufeff' + kml_str)) == 19
+    assert len(parse_kml(b'\xef\xbb\xbf' + kml_str.encode('utf8'))) == 19
+
+
+def test_parse_kml_open_ended_timespan():
+    # Regression: KML allows TimeSpans with only a <begin> or only an <end>;
+    # these previously raised AttributeError and aborted the whole parse.
+    # They become zero-length intervals at the known endpoint.
+    template = '''
+        <kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark>
+        <TimeSpan>{}</TimeSpan>
+        <Point><coordinates>1.0,2.0</coordinates></Point>
+        </Placemark></Document></kml>
+    '''
+
+    begin_only = parse_kml(template.format('<begin>2020-01-01T00:00:00Z</begin>'))
+    assert begin_only[0].dt == TimeInterval(
+        datetime(2020, 1, 1, tzinfo=timezone.utc),
+        datetime(2020, 1, 1, tzinfo=timezone.utc),
+    )
+
+    end_only = parse_kml(template.format('<end>2021-06-15T12:00:00Z</end>'))
+    assert end_only[0].dt == TimeInterval(
+        datetime(2021, 6, 15, 12, tzinfo=timezone.utc),
+        datetime(2021, 6, 15, 12, tzinfo=timezone.utc),
+    )
+
+    empty = parse_kml(template.format(''))
+    assert empty[0].dt is None
 
 
 def test_parse_geojson():

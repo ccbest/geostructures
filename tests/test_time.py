@@ -136,6 +136,22 @@ def test_timeinterval_from_fastkml():
     with pytest.raises(ValueError):
         TimeInterval._from_fastkml('something else')
 
+
+def test_timeinterval_from_fastkml_open_ended():
+    # KML allows open-ended TimeSpans; the known endpoint becomes an instant
+    begin_only = TimeSpan(begin=KmlDateTime(datetime(2020, 1, 1, tzinfo=timezone.utc)))
+    expected = TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
+    assert TimeInterval._from_fastkml(begin_only) == expected
+
+    end_only = TimeSpan(end=KmlDateTime(datetime(2020, 1, 2, tzinfo=timezone.utc)))
+    expected = TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 2))
+    assert TimeInterval._from_fastkml(end_only) == expected
+
+    # Time objects carrying no time information at all produce no interval
+    assert TimeInterval._from_fastkml(TimeSpan()) is None
+    assert TimeInterval._from_fastkml(TimeStamp()) is None
+
+
 def test_timeinterval_from_str():
     start = '2020-01-01T00:00:00.000'
     assert TimeInterval.from_str(start) == TimeInterval(

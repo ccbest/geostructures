@@ -33,6 +33,8 @@ _TYPE_RE = re.compile(r'\s*([A-Za-z]+)')
 # ZIP archives - and therefore KMZ files - always begin with this magic number
 _KMZ_MAGIC = b'PK\x03\x04'
 
+_XML_DECLARATION = re.compile(r'^\s*<\?xml[^>]*\?>')
+
 
 def _parse_fastkml(
     kml,
@@ -258,8 +260,9 @@ def parse_kml(
             return FeatureCollection(_parse_kmz(BytesIO(data), encoding))
         return FeatureCollection(_parse_kml_bytes(data, encoding))
 
-    # 3. A raw KML document passed as text (as opposed to a file path)
-    if isinstance(data, str) and data.lstrip().startswith('<'):
+    # 3. A raw KML document passed as text (as opposed to a file path).
+    # lstrip a byte order mark too - not whitespace, so lstrip() leaves it
+    if isinstance(data, str) and data.lstrip('\ufeff \t\r\n').startswith('<'):
         return FeatureCollection(_parse_kml_bytes(data.encode(encoding), encoding))
 
     # 4. A filesystem path to a .kml or .kmz file
@@ -275,7 +278,11 @@ def _parse_kml_bytes(content: bytes, encoding: str) -> List[GeoShape]:
     from fastkml import KML
 
     # fastkml's from_string expects text; decode with the caller-provided encoding.
-    kml = KML.from_string(content.decode(encoding))
+    # The XML declaration no longer applies to decoded text, and lxml (fastkml's
+    # preferred backend when installed) rejects str input that carries an
+    # encoding declaration - strip it, along with any byte order mark.
+    text = content.decode(encoding).lstrip('\ufeff')
+    kml = KML.from_string(_XML_DECLARATION.sub('', text, count=1))
     return _parse_fastkml(kml)
 
 

@@ -91,14 +91,32 @@ class TimeInterval:
 
     @staticmethod
     def _from_fastkml(fastkml_time):
-        """Create a TimeInterval from the FastKML equivalent."""
+        """
+        Create a TimeInterval from the FastKML equivalent, or None if the
+        FastKML object carries no time information.
+
+        KML allows open-ended TimeSpans (only a <begin> or only an <end>);
+        TimeIntervals are always bounded, so these become zero-length
+        intervals at the known endpoint.
+        """
         import_optional('fastkml')
         from fastkml.times import TimeSpan, TimeStamp
 
         if isinstance(fastkml_time, TimeStamp):
+            if fastkml_time.timestamp is None:
+                return None
             return TimeInterval(fastkml_time.timestamp.dt, fastkml_time.timestamp.dt)
+
         if isinstance(fastkml_time, TimeSpan):
-            return TimeInterval(fastkml_time.begin.dt, fastkml_time.end.dt)
+            begin = fastkml_time.begin.dt if fastkml_time.begin is not None else None
+            end = fastkml_time.end.dt if fastkml_time.end is not None else None
+            if begin is None and end is None:
+                return None
+            if begin is None:
+                begin = end
+            if end is None:
+                end = begin
+            return TimeInterval(begin, end)
 
         raise ValueError('Unrecognized FastKML time object.')
 

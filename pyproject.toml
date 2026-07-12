@@ -44,6 +44,9 @@ dev = [
 
     # Development requirements
     "coverage>=5.5",
+    # fastkml prefers lxml over stdlib ElementTree when installed; test against
+    # the same XML backend most real-world environments use
+    "lxml>=5,<7",
     "mypy",
     "pylint>=3,<4",
     "pytest",
