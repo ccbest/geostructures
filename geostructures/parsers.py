@@ -311,8 +311,15 @@ def _parse_kmz(source, encoding: str, filepath: Optional[str] = None) -> List[Ge
     """
     shapes: List[GeoShape] = []
     with ZipFile(source, 'r') as z:
-        # Filter for .kml files inside the zip
-        kml_files = [x for x in z.namelist() if x.lower().endswith('.kml')]
+        # Filter for .kml files inside the zip. macOS zip tooling adds binary
+        # AppleDouble entries (__MACOSX/._doc.kml) that match by extension but
+        # are not KML documents
+        kml_files = [
+            x for x in z.namelist()
+            if x.lower().endswith('.kml')
+            and not x.startswith('__MACOSX/')
+            and not x.rsplit('/', 1)[-1].startswith('._')
+        ]
         for kml_f in kml_files:
             parsed = _parse_kml_bytes(z.read(kml_f), encoding)
             for shape in parsed:

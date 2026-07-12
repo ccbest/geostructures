@@ -266,6 +266,28 @@ def test_parse_kml_kmz_bytes():
     assert result[0].properties['filename'].lower().endswith('.kml')
 
 
+def test_parse_kmz_skips_macos_resource_forks():
+    # Regression: macOS zip tooling adds binary AppleDouble entries
+    # (__MACOSX/._doc.kml) which match the .kml extension filter and
+    # previously crashed the whole archive parse
+    from io import BytesIO
+    from zipfile import ZipFile
+
+    kml_doc = '''<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark>
+        <Point><coordinates>1.0,2.0</coordinates></Point>
+        </Placemark></Document></kml>'''
+
+    buffer = BytesIO()
+    with ZipFile(buffer, 'w') as z:
+        z.writestr('doc.kml', kml_doc)
+        z.writestr('__MACOSX/._doc.kml', b'\x00\x05\x16\x07binary-applesauce')
+        z.writestr('._sidecar.kml', b'\x00\x05\x16\x07binary-applesauce')
+
+    parsed = parse_kml(buffer.getvalue())
+    assert len(parsed) == 1
+    assert parsed[0] == GeoPoint(Coordinate(1., 2.))
+
+
 def test_parse_shapefile_delegates_to_from_shapefile(tmp_path):
     from zipfile import ZipFile
 
