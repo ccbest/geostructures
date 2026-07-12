@@ -1,6 +1,7 @@
 
 from datetime import datetime
 import json
+from pathlib import Path
 
 import pytest
 
@@ -10,7 +11,7 @@ from tests.functions import assert_geopolygons_equal, assert_geolinestrings_equa
     assert_geopoints_equal, assert_multishapes_equal
 
 
-def test_parse_fastkml():
+def test_parse_kml_fastkml_object():
     import fastkml
 
     folder = fastkml.Folder(name='test folder')
@@ -24,8 +25,9 @@ def test_parse_fastkml():
             name='test name'
         )
     )
-    parsed = parse_fastkml(folder)
-    assert parsed == [
+    parsed = parse_kml(folder)
+    assert isinstance(parsed, FeatureCollection)
+    assert list(parsed) == [
         GeoPoint(
             Coordinate(1., 0.),
             dt=datetime(2020, 1, 1),
@@ -38,12 +40,50 @@ def test_parse_fastkml():
         'description': 'test description'
     }
 
-    # Assert SchemaData fields get parsed correctly
+    # A bare Placemark is also accepted
+    placemark = GeoPoint(Coordinate(1., 0.)).to_fastkml_placemark(name='solo')
+    solo = parse_kml(placemark)
+    assert isinstance(solo, FeatureCollection)
+    assert solo[0].properties['name'] == 'solo'
+
+
+def test_parse_kml_schemadata():
+    # Assert SchemaData fields get parsed correctly, from a raw KML string
     with open('./tests/test_files/test_schemadata.kml', 'r') as f:
         kml_str = f.read()
 
-    result = parse_fastkml(fastkml.KML.from_string(kml_str))
+    result = parse_kml(kml_str)
+    assert isinstance(result, FeatureCollection)
     assert result[0].properties['TrailHeadName'] == 'Pi in the sky'
+
+
+def test_parse_kml_mixed_extended_data():
+    # Regression: a placemark whose ExtendedData mixes a SchemaData element and
+    # a plain Data element must retain properties from both.
+    result = parse_kml('./tests/test_files/test_mixed_extendeddata.kml')
+    props = result[0].properties
+    assert props['TrailHeadName'] == 'Pi in the sky'  # from SchemaData
+    assert props['holler'] == 'world'                 # from Data
+
+
+def test_parse_kml_input_forms():
+    import fastkml
+
+    with open('./tests/test_files/test_kml.kml', 'r', encoding='utf8') as f:
+        kml_str = f.read()
+
+    # Raw KML string, raw KML bytes, and a pre-parsed fastkml object should all
+    # agree, and each should return a FeatureCollection
+    from_str = parse_kml(kml_str)
+    from_bytes = parse_kml(kml_str.encode('utf8'))
+    from_obj = parse_kml(fastkml.KML.from_string(kml_str))
+
+    for result in (from_str, from_bytes, from_obj):
+        assert isinstance(result, FeatureCollection)
+        assert len(result) == 19
+
+    with pytest.raises(TypeError):
+        parse_kml(1234)
 
 
 def test_parse_geojson():
@@ -96,7 +136,7 @@ def test_parse_wkt():
         parse_wkt('worse')
 
 
-def test_parse_fastkml_folder_traceability():
+def test_parse_kml_folder_traceability():
     import fastkml
 
     # A document containing [Folder A [placemark], propertyless placemark]
@@ -110,7 +150,7 @@ def test_parse_fastkml_folder_traceability():
         GeoPoint(Coordinate(2., 0.)).to_fastkml_placemark(name='outside A')
     )
 
-    parsed = parse_fastkml(document)
+    parsed = parse_kml(document)
     by_name = {shape.properties['name']: shape for shape in parsed}
 
     # Folder names apply to shapes inside the folder, even when the
@@ -121,13 +161,51 @@ def test_parse_fastkml_folder_traceability():
     assert 'sub_folder_1' not in by_name['outside A'].properties
 
 
-def test_read_kml():
-    mock_kml = read_kml('./tests/test_files/test_kml.kml')
+def test_parse_kml_files():
+    mock_kml = parse_kml('./tests/test_files/test_kml.kml')
+    assert isinstance(mock_kml, FeatureCollection)
     assert len(mock_kml) == 19
+    # Plain KML shapes are tagged with both filepath and filename
+    assert mock_kml[0].properties['filepath'] == 'tests/test_files/test_kml.kml'
+    assert mock_kml[0].properties['filename'] == 'test_kml.kml'
 
-    mock_kmz = read_kml('./tests/test_files/test_kmz.kmz')
+    # A pathlib.Path is accepted as well as a str
+    mock_kmz = parse_kml(Path('./tests/test_files/test_kmz.kmz'))
     assert len(mock_kmz) == 83
+    assert mock_kmz[0].properties['filepath'] == str(Path('./tests/test_files/test_kmz.kmz'))
+    assert mock_kmz[0].properties['filename'].lower().endswith('.kml')
 
     with pytest.raises(FileNotFoundError):
-        read_kml('./bad_path.kml')
+        parse_kml('./bad_path.kml')
+
+
+def test_parse_kml_skips_unsupported_geometry():
+    import fastkml
+    import pygeoif
+
+    # A heterogeneous MultiGeometry surfaces as a GeometryCollection, which has
+    # no single geostructures equivalent - it should be skipped, not raise.
+    collection = pygeoif.geometry.GeometryCollection([
+        pygeoif.geometry.Point(0, 0),
+        pygeoif.geometry.LineString([(0, 0), (1, 1)]),
+    ])
+    document = fastkml.Document(name='doc')
+    document.append(fastkml.Placemark(geometry=collection))
+    document.append(GeoPoint(Coordinate(1., 0.)).to_fastkml_placemark(name='ok'))
+
+    parsed = parse_kml(document)
+    # The unsupported placemark is dropped; the valid one survives
+    assert len(parsed) == 1
+    assert parsed[0].properties['name'] == 'ok'
+
+
+def test_parse_kml_kmz_bytes():
+    # Raw KMZ archive bytes are detected via the zip magic number
+    kmz_bytes = Path('./tests/test_files/test_kmz.kmz').read_bytes()
+    result = parse_kml(kmz_bytes)
+    assert isinstance(result, FeatureCollection)
+    assert len(result) == 83
+    # No filepath for raw bytes (there is no path), but members are named
+    assert 'filepath' not in result[0].properties
+    assert result[0].properties['filename'].lower().endswith('.kml')
 

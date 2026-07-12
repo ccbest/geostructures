@@ -1,0 +1,24 @@
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>Mixed ExtendedData</name>
+  <Schema name="TrailHeadType" id="TrailHeadTypeId">
+    <SimpleField type="string" name="TrailHeadName">
+      <displayName><![CDATA[<b>Trail Head Name</b>]]></displayName>
+    </SimpleField>
+  </Schema>
+  <Placemark>
+    <name>Mixed trail</name>
+    <ExtendedData>
+      <SchemaData schemaUrl="#TrailHeadTypeId">
+        <SimpleData name="TrailHeadName">Pi in the sky</SimpleData>
+      </SchemaData>
+      <Data name="holler">
+        <value>world</value>
+      </Data>
+    </ExtendedData>
+    <Point>
+      <coordinates>-122.000,37.002</coordinates>
+    </Point>
+  </Placemark>
+</Document>
+</kml>

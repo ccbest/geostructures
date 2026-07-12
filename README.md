@@ -330,6 +330,21 @@ k = KML()  # also works with fastkml.Folder
 k.append(polygon.to_fastkml_placemark())
 polygon.from_fastkml_placemark(k.features[0])
 
+# Read any KML/KMZ source into a FeatureCollection. parse_kml auto-detects the
+# input: a .kml/.kmz file path, a raw KML string or bytes, raw KMZ bytes, or an
+# in-memory fastkml object.
+from geostructures.parsers import parse_kml
+parse_kml('/path/to/file.kml')      # or a .kmz
+parse_kml('<kml>...</kml>')         # raw KML document
+parse_kml(k)                        # an in-memory fastkml object
+
+# serialize_kml is the inverse: write a collection (or a single shape) back out.
+# KML vs KMZ is inferred from the file extension; pass kmz=True/False to override.
+from geostructures.serializers import serialize_kml
+serialize_kml(polygon, '/path/to/file.kml')   # plain KML
+serialize_kml(polygon, '/path/to/file.kmz')   # zipped KMZ
+serialize_kml(polygon)                         # returns bytes (no file written)
+
 # Collections (and Tracks) of shapes have additional supported formats
 collection = FeatureCollection([polygon])
 

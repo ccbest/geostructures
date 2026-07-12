@@ -21,3 +21,22 @@ def pyshp_round_trip(tmp_path):
             fc.to_shapefile(zf, **kwargs)
         return FeatureCollection.from_shapefile(zip_path)
     return _rt
+
+
+@pytest.fixture
+def kml_round_trip(tmp_path):
+    """
+    Serialize a collection to a temporary .kml/.kmz file, read it back with
+    ``parse_kml``, and return the new collection.  Usage:
+
+        new_fc = kml_round_trip(original_fc)            # KML
+        new_fc = kml_round_trip(original_fc, '.kmz')    # KMZ
+    """
+    from geostructures.parsers import parse_kml
+    from geostructures.serializers import serialize_kml
+
+    def _rt(fc, suffix=".kml", **kwargs):
+        path = tmp_path / f"test{suffix}"
+        serialize_kml(fc, path, **kwargs)
+        return parse_kml(path)
+    return _rt

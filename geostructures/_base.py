@@ -589,6 +589,7 @@ class SimpleShapeMixin(BaseShape, ABC):
         Create a geostructure from the corresponding type of FastKML
         Placemark.
         """
+        import_optional('fastkml')
         import fastkml
 
         if placemark.geometry is None:  # pragma: no cover
@@ -598,20 +599,20 @@ class SimpleShapeMixin(BaseShape, ABC):
         if placemark.times is not None:
             dt = TimeInterval._from_fastkml(placemark.times)
 
-        props = {}
+        props: Dict[str, Any] = {}
         if placemark.extended_data is not None:
             for elem in placemark.extended_data.elements:
                 if isinstance(elem, fastkml.SchemaData):
-                    props.update({x.name: x.value for x in elem.data})
-                else:
-                    props = {
-                        x.name: x.value
-                        for x in cast(List[fastkml.data.Data], placemark.extended_data.elements)
-                    }
+                    props.update({
+                        x.name: x.value for x in elem.data if x.name is not None
+                    })
+                elif elem.name is not None:  # fastkml.data.Data
+                    props[elem.name] = elem.value
 
         shape = cls.from_geojson(dict(placemark.geometry.__geo_interface__))
         shape.set_dt(dt, inplace=True)
-        shape._properties = props
+        for key, value in props.items():
+            shape.set_property(key, value, inplace=True)
         return shape
 
     @classmethod

@@ -183,9 +183,9 @@ class CollectionBase:
         Construct a FeatureCollection from a FastKML Folder. Placemarks in
         the folder will be parsed into their corresponding geostructures.
         """
-        from geostructures.parsers import parse_fastkml
+        from geostructures.parsers import _parse_fastkml
 
-        return cls(parse_fastkml(folder))
+        return cls(_parse_fastkml(folder))
 
     @classmethod
     def from_geojson(
@@ -542,6 +542,7 @@ class CollectionBase:
             elif isinstance(geom, MultiGeoLineString):
                 for line in geom.geoshapes:
                     yield from line.vertices
+
 
             elif isinstance(geom, PolygonLikeMixin):
                 for ring in geom.linear_rings():
