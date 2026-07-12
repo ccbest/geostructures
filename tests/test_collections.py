@@ -67,6 +67,14 @@ def test_collection_centroid():
     ])
     assert track1.centroid == Coordinate(2.0, 1.5)
 
+    # Regression: Z/M-carrying members previously polluted or crashed centroid
+    col = FeatureCollection([
+        GeoPoint(Coordinate(1.0, 1.0, z=10., m=5.)),
+        GeoPoint(Coordinate(3.0, 2.0, z=20., m=7.)),
+    ])
+    assert col.centroid == Coordinate(2.0, 1.5)
+    assert col.centroid.z is None
+
 
 def test_collection_len():
     track1 = Track([
@@ -1012,6 +1020,17 @@ def test_track_convolve_duplicate_timestamps():
         ]
     )
     assert track.convolve_duplicate_timestamps() == expected
+
+    # Regression: Z/M-carrying pings previously crashed the lon/lat averaging
+    track = Track(
+        [
+            GeoPoint(Coordinate(0., 1., z=5., m=1.), datetime(2020, 1, 1)),
+            GeoPoint(Coordinate(1., 0., z=6., m=2.), datetime(2020, 1, 1)),
+        ]
+    )
+    assert track.convolve_duplicate_timestamps() == Track(
+        [GeoPoint(Coordinate(0.5, 0.5), datetime(2020, 1, 1))]
+    )
 
     track = Track(
         [

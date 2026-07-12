@@ -46,6 +46,13 @@ def test_multigeoshape_centroid():
     mp = MultiGeoPolygon([box1, box2])
     assert mp.centroid == Coordinate(1., 1.)
 
+    # Regression: Z values were previously area-weighted into the centroid
+    poly = GeoPolygon([
+        Coordinate(0., 0., z=1.), Coordinate(1., 0., z=1.),
+        Coordinate(1., 1., z=1.), Coordinate(0., 0., z=1.),
+    ])
+    assert MultiGeoPolygon([poly]).centroid.z is None
+
 
 def test_multigeoshape_bounding_coords():
     box1 = GeoBox(Coordinate(0., 1.), Coordinate(1., 0.))

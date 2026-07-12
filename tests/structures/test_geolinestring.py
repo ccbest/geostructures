@@ -63,6 +63,13 @@ def test_geolinestring_bounds():
         0., 0., 1., 1.
     )
 
+    # Regression: Z/M-carrying vertices previously crashed bounds
+    ls = GeoLineString([
+        Coordinate(0.0, 0.0, z=1., m=2.), Coordinate(1.0, 0.0, z=1.), Coordinate(1.0, 1.0, z=1.),
+    ])
+    assert ls.bounds == (0., 0., 1., 1.)
+    assert ls.circumscribing_rectangle() == GeoBox(Coordinate(0., 1.), Coordinate(1., 0.))
+
 
 def test_geolinestring_length():
     c1, c2, c3 = Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)
@@ -73,6 +80,12 @@ def test_geolinestring_length():
 
 def test_geolinestring_centroid():
     ls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)])
+    assert ls.centroid == Coordinate(0.6666667, 0.3333333)
+
+    # Regression: Z/M-carrying vertices previously crashed centroid
+    ls = GeoLineString([
+        Coordinate(0.0, 0.0, z=1., m=2.), Coordinate(1.0, 0.0, z=1.), Coordinate(1.0, 1.0, z=1.),
+    ])
     assert ls.centroid == Coordinate(0.6666667, 0.3333333)
 
 

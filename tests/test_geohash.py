@@ -79,6 +79,14 @@ def test_h3hasher_hash_shape():
         '88754e6499fffff', '88754e64d3fffff'
     }
 
+    # Regression: Z/M-carrying polygon coordinates previously crashed h3
+    # (h3.LatLngPoly only accepts 2D points)
+    zm_shape = GeoPolygon([
+        Coordinate(0., 0., z=1., m=2.), Coordinate(0.01, 0., z=1.),
+        Coordinate(0.01, 0.01, z=1.), Coordinate(0., 0., z=1., m=2.),
+    ])
+    assert hasher_8.hash_shape(zm_shape)
+
     shape = GeoLineString(
         [Coordinate(0.0, 0.0), Coordinate(0.01, 0.01), Coordinate(0.02, 0.0)]
     )

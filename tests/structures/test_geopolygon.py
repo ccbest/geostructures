@@ -181,6 +181,16 @@ def test_geopolygon_bounds():
     )
     assert poly.bounds == (0., 0., 1., 1.)
 
+    # Regression: Z/M-carrying coordinates previously crashed bounds
+    poly = GeoPolygon(
+        [
+            Coordinate(0.0, 0.0, z=1., m=2.), Coordinate(0.0, 1.0, z=1.),
+            Coordinate(1.0, 1.0, z=1.), Coordinate(1.0, 0.0, z=1.),
+            Coordinate(0.0, 0.0, z=1., m=2.)
+        ],
+    )
+    assert poly.bounds == (0., 0., 1., 1.)
+
 
 def test_geopolygon_bounding_coords():
     poly = GeoPolygon([

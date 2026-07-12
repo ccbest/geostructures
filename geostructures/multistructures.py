@@ -48,7 +48,7 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
             'type': 'MultiLineString',
             'coordinates': [
                 [
-                    list(vertex.to_float()) for vertex in shape.vertices
+                    vertex.to_position() for vertex in shape.vertices
                 ]
                 for shape in self.geoshapes
             ]
@@ -61,8 +61,12 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
     @cached_property
     def centroid(self):
         # TODO: weighted by line length
+        # Slice to lon/lat; to_float() may also carry Z/M values
         lon, lat = np.mean(
-            np.array([coord.to_float() for shape in self.geoshapes for coord in shape.vertices]),
+            np.array([
+                coord.to_float()[:2]
+                for shape in self.geoshapes for coord in shape.vertices
+            ]),
             axis=0
         )
         return Coordinate(lon, lat)
@@ -217,7 +221,7 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
         import shapely
 
         lines = [
-            [x.to_float() for x in shape.vertices]
+            [x.to_position() for x in shape.vertices]
             for shape in self.geoshapes
         ]
 
@@ -234,8 +238,11 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
         Returns:
             str
         """
+        zm = self._wkt_zm_designator(
+            vertex for shape in self.geoshapes for vertex in shape.vertices
+        )
         lines = [self._linear_ring_to_wkt(shape.vertices) for shape in self.geoshapes]
-        return f'MULTILINESTRING({", ".join(lines)})'
+        return f'MULTILINESTRING{zm}({", ".join(lines)})'
 
 
 class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
@@ -255,7 +262,7 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
         return {
             'type': 'MultiPoint',
             'coordinates': [
-                list(point.centroid.to_float())
+                point.centroid.to_position()
                 for point in self.geoshapes
             ]
         }
@@ -266,8 +273,9 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
 
     @cached_property
     def centroid(self):
+        # Slice to lon/lat; to_float() may also carry Z/M values
         return Coordinate(*np.average(
-            np.array([point.centroid.to_float() for point in self.geoshapes]),
+            np.array([point.centroid.to_float()[:2] for point in self.geoshapes]),
             axis=0
         ))
 
@@ -409,7 +417,7 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
         import_optional('shapely')
         import shapely
 
-        points = [x.centroid.to_float() for x in self.geoshapes]
+        points = [x.centroid.to_position() for x in self.geoshapes]
 
         return shapely.geometry.MultiPoint(points)
 
@@ -424,8 +432,9 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
         Returns:
             str
         """
+        zm = self._wkt_zm_designator(x.centroid for x in self.geoshapes)
         points = ['(' + ' '.join(x.centroid.to_str()) + ')' for x in self.geoshapes]
-        return f'MULTIPOINT({", ".join(points)})'
+        return f'MULTIPOINT{zm}({", ".join(points)})'
 
 
 class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
@@ -447,7 +456,7 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
             'coordinates': [
                 [
                     [
-                        list(coord.to_float()) for coord in ring
+                        coord.to_position() for coord in ring
                     ] for ring in shape
                 ]
                 for shape in self.linear_rings()
@@ -464,8 +473,11 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
 
     @cached_property
     def centroid(self):
-        # Decompose polygon into triangles using vertex pairs around the origin
-        poly1 = np.array([x.to_float() for poly in self.geoshapes for x in poly.bounding_coords()])
+        # Decompose polygon into triangles using vertex pairs around the origin.
+        # Slice to lon/lat; to_float() may also carry Z/M values
+        poly1 = np.array([
+            x.to_float()[:2] for poly in self.geoshapes for x in poly.bounding_coords()
+        ])
         poly2 = np.roll(poly1, -1, axis=0)
 
         # Compute signed area manually since np.cross is deprecated for 2D inputs
@@ -675,7 +687,7 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
             'coordinates': [
                 [
                     [
-                        list(coord.to_float()) for coord in ring
+                        coord.to_position() for coord in ring
                     ] for ring in shape
                 ]
                 for shape in self.linear_rings(k=kwargs.pop('k', None))
@@ -711,9 +723,9 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
 
             converted.append(
                 (
-                    tuple(coord.to_float() for coord in shell),
+                    tuple(tuple(coord.to_position()) for coord in shell),
                     [
-                        tuple(coord.to_float() for coord in ring)
+                        tuple(tuple(coord.to_position()) for coord in ring)
                         for ring in holes
                     ]
                 )
@@ -732,10 +744,14 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
         Returns:
             str
         """
+        shapes = self.linear_rings(**kwargs)
+        zm = self._wkt_zm_designator(
+            coord for shape in shapes for ring in shape for coord in ring
+        )
         bbox_strs = []
-        for shape in self.linear_rings(**kwargs):
+        for shape in shapes:
             bbox_strs.append('(' + ', '.join(
                 [self._linear_ring_to_wkt(ring) for ring in shape]
             ) + ')')
 
-        return f'MULTIPOLYGON({", ".join(bbox_strs)})'
+        return f'MULTIPOLYGON{zm}({", ".join(bbox_strs)})'

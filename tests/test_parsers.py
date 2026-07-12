@@ -100,6 +100,21 @@ def test_parse_kml_encoding_declaration_and_bom():
     assert len(parse_kml(b'\xef\xbb\xbf' + kml_str.encode('utf8'))) == 19
 
 
+def test_parse_kml_linearring():
+    # Regression: KML allows a LinearRing as a direct placemark geometry;
+    # it was previously dropped silently. It parses as the enclosed polygon.
+    kml_str = '''
+        <kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark>
+        <LinearRing><coordinates>0,0 1,0 1,1 0,0</coordinates></LinearRing>
+        </Placemark></Document></kml>
+    '''
+    parsed = parse_kml(kml_str)
+    assert len(parsed) == 1
+    assert parsed[0] == GeoPolygon([
+        Coordinate(0., 0.), Coordinate(1., 0.), Coordinate(1., 1.), Coordinate(0., 0.),
+    ])
+
+
 def test_parse_kml_open_ended_timespan():
     # Regression: KML allows TimeSpans with only a <begin> or only an <end>;
     # these previously raised AttributeError and aborted the whole parse.

@@ -61,7 +61,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
         return {
             'type': 'Polygon',
             'coordinates': [
-                [list(coord.to_float()) for coord in ring]
+                [coord.to_position() for coord in ring]
                 for ring in self.linear_rings()
             ]
         }
@@ -180,7 +180,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
         return {
             'type': 'Polygon',
             'coordinates': [
-                [list(coord.to_float()) for coord in ring]
+                [coord.to_position() for coord in ring]
                 for ring in self.linear_rings(k=kwargs.get('k'))
             ],
             **({'bbox': self.bounds} if kwargs.get('include_bbox') else {})
@@ -210,8 +210,8 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
             holes = rings[1:]
 
         return shapely.geometry.Polygon(
-            [x.to_float() for x in rings[0]],
-            holes=[[x.to_float() for x in ring] for ring in holes]
+            [x.to_position() for x in rings[0]],
+            holes=[[x.to_position() for x in ring] for ring in holes]
         )
 
     def to_wkt(self, **kwargs) -> str:
@@ -225,10 +225,12 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
         Returns:
             str
         """
+        rings = self.linear_rings(**kwargs)
+        zm = self._wkt_zm_designator(coord for ring in rings for coord in ring)
         bbox_str = ', '.join(
-            [self._linear_ring_to_wkt(ring) for ring in self.linear_rings(**kwargs)]
+            [self._linear_ring_to_wkt(ring) for ring in rings]
         )
-        return f'POLYGON({bbox_str})'
+        return f'POLYGON{zm}({bbox_str})'
 
 
 class GeoPolygon(PolygonBase, SimpleShapeMixin):
@@ -308,9 +310,10 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
 
     @cached_property
     def bounds(self) -> Tuple[float, float, float, float]:
+        # Slice to lon/lat; to_float() may also carry Z/M values
         lons, lats = cast(
             Tuple[List[float], List[float]],
-            zip(*[y.to_float() for y in self.outline])
+            zip(*[y.to_float()[:2] for y in self.outline])
         )
         return min(lons), min(lats), max(lons), max(lats)
 
@@ -1382,7 +1385,8 @@ class GeoRing(PolygonBase):
             inner_bbox_str = ",".join(
                 " ".join(x.to_str()) for x in inner_circle
             )
-            return f'POLYGON(({outer_bbox_str}), ({inner_bbox_str}))'
+            zm = self._wkt_zm_designator([*outer_circle, *inner_circle])
+            return f'POLYGON{zm}(({outer_bbox_str}), ({inner_bbox_str}))'
 
         return super().to_wkt(**kwargs)
 
@@ -1413,7 +1417,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
     def __geo_interface__(self):
         return {
             'type': 'LineString',
-            'coordinates': [list(x.to_float()) for x in self.vertices],
+            'coordinates': [x.to_position() for x in self.vertices],
         }
 
     def __hash__(self) -> int:
@@ -1424,17 +1428,19 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
 
     @cached_property
     def bounds(self) -> Tuple[float, float, float, float]:
+        # Slice to lon/lat; to_float() may also carry Z/M values
         lons, lats = cast(
             Tuple[List[float], List[float]],
-            zip(*[y.to_float() for y in self.vertices])
+            zip(*[y.to_float()[:2] for y in self.vertices])
         )
         return min(lons), min(lats), max(lons), max(lats)
 
     @cached_property
     def centroid(self) -> Coordinate:
+        # Slice to lon/lat; to_float() may also carry Z/M values
         lon, lat = [
             round_half_up(statistics.mean(x), 7)
-            for x in zip(*[y.to_float() for y in self.vertices])
+            for x in zip(*[y.to_float()[:2] for y in self.vertices])
         ]
         return Coordinate(lon, lat)
 
@@ -1466,7 +1472,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
         return GeoCircle(centroid, max_dist, dt=self.dt)
 
     def circumscribing_rectangle(self) -> GeoBox:
-        lons, lats = zip(*[y.to_float() for y in self.vertices])
+        lons, lats = zip(*[y.to_float()[:2] for y in self.vertices])
         return GeoBox(
             Coordinate(min(lons), max(lats)),
             Coordinate(max(lons), min(lats)),
@@ -1730,11 +1736,11 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
     def _to_shapely(self):
         import_optional('shapely')
         import shapely
-        return shapely.LineString([x.to_float() for x in self.vertices])
+        return shapely.LineString([x.to_position() for x in self.vertices])
 
     def to_wkt(self, **kwargs) -> str:
         bbox_str = self._linear_ring_to_wkt(self.vertices)
-        return f'LINESTRING{bbox_str}'
+        return f'LINESTRING{self._wkt_zm_designator(self.vertices)}{bbox_str}'
 
 
 class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
@@ -1768,7 +1774,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
     def __geo_interface__(self):
         return {
             'type': 'Point',
-            'coordinates': list(self.coordinate.to_float()),
+            'coordinates': self.coordinate.to_position(),
         }
 
     def __hash__(self) -> int:
@@ -1941,7 +1947,8 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
     def _to_shapely(self):
         import_optional('shapely')
         import shapely
-        return shapely.Point(self.centroid.longitude, self.centroid.latitude)
+        return shapely.Point(*self.coordinate.to_position())
 
     def to_wkt(self, **_) -> str:
-        return f'POINT({" ".join(self.coordinate.to_str())})'
+        zm = self._wkt_zm_designator([self.coordinate])
+        return f'POINT{zm}({" ".join(self.coordinate.to_str())})'

@@ -275,6 +275,22 @@ class Coordinate:
             out.append(self.m)
         return tuple(out)
 
+    def to_position(self) -> List[float]:
+        """
+        Converts the coordinate to a GeoJSON-style position: longitude,
+        latitude, and altitude (Z) when present.
+
+        Unlike to_float(), M values are never included - position-based
+        formats (GeoJSON, KML, shapely geometries) define the third element
+        as altitude and have no representation for M.
+
+        Returns:
+            List of floats, length 2 or 3
+        """
+        if self.z is not None:
+            return [self.longitude, self.latitude, self.z]
+        return [self.longitude, self.latitude]
+
     def to_mgrs(self) -> str:
         """Convert this coordinate to a MGRS string"""
         import_optional('mgrs')

@@ -50,6 +50,15 @@ def test_multigeolinestring_centroid():
     )
     assert mls.centroid == Coordinate(0.5, 0.5)
 
+    # Regression: Z/M-carrying vertices previously crashed centroid
+    mls = MultiGeoLineString(
+        [
+            GeoLineString([Coordinate(0., 1., z=5., m=1.), Coordinate(1., 0., z=5.)]),
+            GeoLineString([Coordinate(1., 1., z=5.), Coordinate(0., 0., z=5.)]),
+        ],
+    )
+    assert mls.centroid == Coordinate(0.5, 0.5)
+
 
 def test_multigeolinestring_segments():
     mls = MultiGeoLineString(

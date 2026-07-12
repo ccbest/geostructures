@@ -104,6 +104,12 @@ def test_geopoint_to_wkt():
     point = GeoPoint(Coordinate(0.0, 0.0))
     assert point.to_wkt() == 'POINT(0 0)'
 
+    # Z/M values emit the corresponding WKT dimensionality designator -
+    # without one, M-only coordinates are indistinguishable from Z
+    assert GeoPoint(Coordinate(0.0, 0.0, z=1.)).to_wkt() == 'POINT Z(0 0 1)'
+    assert GeoPoint(Coordinate(0.0, 0.0, m=2.)).to_wkt() == 'POINT M(0 0 2)'
+    assert GeoPoint(Coordinate(0.0, 0.0, z=1., m=2.)).to_wkt() == 'POINT ZM(0 0 1 2)'
+
 
 def test_geopoint_from_wkt():
     wkt_str = 'POINT (1.0 1.0)'

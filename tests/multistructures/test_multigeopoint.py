@@ -54,6 +54,14 @@ def test_multigeopoint_centroid():
     ])
     assert mp.centroid == Coordinate(0.5, 0.5)
 
+    # Regression: M values were previously averaged into the centroid's Z slot
+    mp = MultiGeoPoint([
+        GeoPoint(Coordinate(0., 0., m=100.)),
+        GeoPoint(Coordinate(1., 1., m=200.))
+    ])
+    assert mp.centroid == Coordinate(0.5, 0.5)
+    assert mp.centroid.z is None
+
 
 def test_multigeopoint_circumscribing_circle():
     mp = MultiGeoPoint([

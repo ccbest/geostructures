@@ -68,6 +68,11 @@ def serialize_kml(
     how ``parse_kml`` dispatches on a file's suffix. Pass ``kmz`` explicitly to
     override the inference, e.g. when writing to a stream or returning bytes.
 
+    Format limitations: KML ExtendedData is untyped, so non-string property
+    values (ints, bools, ...) round-trip as strings; None-valued properties are
+    omitted. M values have no KML representation and are dropped (Z round-trips
+    as altitude) - use ``serialize_shapefile`` if M fidelity matters.
+
     Args:
         data:
             A collection (FeatureCollection or Track) or a single GeoShape to

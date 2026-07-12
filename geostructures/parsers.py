@@ -94,6 +94,10 @@ def _parse_fastkml(
 
         geom_type = kml.geometry.__geo_interface__['type'].upper()
         parser = _PARSER_MAP.get(geom_type)
+        if geom_type == 'LINEARRING':
+            # KML allows a LinearRing as a direct placemark geometry; it has no
+            # geostructures equivalent so treat it as the polygon it encloses
+            parser = GeoPolygon
         if parser is None:
             # e.g. a heterogeneous MultiGeometry surfaces as a GeometryCollection,
             # which has no single geostructures equivalent. Skip it rather than

@@ -51,6 +51,91 @@ def _assert_round_trips(original, parsed):
             assert back._properties[key] == value
 
 
+def _zm_collection():
+    """Shapes carrying Z-only, M-only, and Z+M coordinates."""
+    return FeatureCollection([
+        GeoPoint(Coordinate(1., 2., z=3.)),
+        GeoPoint(Coordinate(1., 2., m=4.)),
+        GeoPoint(Coordinate(1., 2., z=3., m=4.)),
+        GeoLineString([Coordinate(0., 0., z=1., m=9.), Coordinate(1., 1., z=2., m=8.)]),
+        GeoPolygon([
+            Coordinate(0., 0., m=1.), Coordinate(1., 0., m=2.),
+            Coordinate(1., 1., m=3.), Coordinate(0., 0., m=1.),
+        ]),
+        MultiGeoPoint([GeoPoint(Coordinate(5., 5., m=6.)), GeoPoint(Coordinate(6., 6., m=7.))]),
+    ])
+
+
+def test_serialize_wkt_zm_round_trip():
+    # Regression: M values previously serialized positionally with no Z/M
+    # designator, making them indistinguishable from (or corrupted into) Z
+    for shape in _zm_collection().geoshapes:
+        parsed = parse_wkt(serialize_wkt(shape))
+        assert_shape_equivalence(shape, parsed)
+        orig_coords = _flatten_coords(shape)
+        parsed_coords = _flatten_coords(parsed)
+        assert [(c.z, c.m) for c in orig_coords] == [(c.z, c.m) for c in parsed_coords]
+
+
+def test_serialize_wkt_zm_shapely_compatible():
+    # Our WKT must remain valid for external consumers
+    shapely = pytest.importorskip('shapely')
+    for shape in _zm_collection().geoshapes:
+        shapely.from_wkt(serialize_wkt(shape))
+
+
+def test_serialize_geojson_positions_never_carry_m():
+    # RFC 7946: a position is (lon, lat[, altitude]) - M has no slot. Z survives
+    # the round trip; M is dropped rather than corrupted into the Z slot
+    original = _zm_collection()
+    parsed = parse_geojson(serialize_geojson(original))
+    for orig, back in zip(original.geoshapes, parsed.geoshapes):
+        assert_shape_equivalence(orig, back)
+        for orig_coord, back_coord in zip(_flatten_coords(orig), _flatten_coords(back)):
+            assert back_coord.z == orig_coord.z
+            assert back_coord.m is None
+
+
+def test_serialize_kml_zm(kml_round_trip):
+    # Z round-trips as KML altitude; M is not representable and is dropped.
+    # Z+M coordinates previously crashed serialization outright
+    original = _zm_collection()
+    parsed = kml_round_trip(original)
+    for orig, back in zip(original.geoshapes, parsed.geoshapes):
+        assert_shape_equivalence(orig, back)
+        for orig_coord, back_coord in zip(_flatten_coords(orig), _flatten_coords(back)):
+            assert back_coord.z == orig_coord.z
+            assert back_coord.m is None
+
+
+def _flatten_coords(shape):
+    """All coordinates of a shape, in a stable order."""
+    if hasattr(shape, 'geoshapes'):
+        return [c for sub in shape.geoshapes for c in _flatten_coords(sub)]
+    if hasattr(shape, 'outline'):
+        return list(shape.outline)
+    if hasattr(shape, 'vertices'):
+        return list(shape.vertices)
+    return [shape.coordinate]
+
+
+def test_serialize_kml_property_values(kml_round_trip):
+    # Regression: None previously round-tripped as the string 'None'. KML
+    # ExtendedData is untyped, so other values come back as strings
+    original = FeatureCollection([
+        GeoPoint(
+            Coordinate(1., 2.),
+            properties={'count': 42, 'flag': True, 'nothing': None, 'name2': 'ok'},
+        ),
+    ])
+    parsed = kml_round_trip(original)
+    props = parsed[0].properties
+    assert 'nothing' not in props
+    assert props['count'] == '42'
+    assert props['flag'] == 'True'
+    assert props['name2'] == 'ok'
+
+
 def test_serialize_kml_disk_round_trip(kml_round_trip):
     original = _sample_collection()
     _assert_round_trips(original, kml_round_trip(original))

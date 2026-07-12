@@ -363,7 +363,9 @@ class H3Hasher(HasherBase):
         import_optional('h3')
         import h3
         poly = h3.LatLngPoly(
-            *[[x.to_float(reverse=True) for x in ring] for ring in polygon.linear_rings()]
+            # Slice to lat/lng; to_float() may also carry Z/M values, which
+            # h3.LatLngPoly rejects
+            *[[x.to_float(reverse=True)[:2] for x in ring] for ring in polygon.linear_rings()]
         )
         return set(h3.polygon_to_cells(
             poly,

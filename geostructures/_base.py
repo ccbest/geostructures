@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from functools import lru_cache, cached_property
 import re
 from typing import (
-    Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING,
+    Any, Callable, Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING,
     TypeVar, Union,  cast
 )
 from typing_extensions import Self
@@ -60,7 +60,7 @@ _RE_LINESTRING_WKT = re.compile(
 )
 
 _RE_MULTIPOINT_WKT = re.compile(
-    r'^MULTIPOINT\s?\(\s?'  # header
+    r'^MULTIPOINT' + _RE_ZM_STR + r'\(\s?'  # header
     r'(?:\(?\s?' + _RE_COORD_STR + r'\)?,?\s?)+' +
     r'\s?\)$',
     flags=re.IGNORECASE
@@ -165,6 +165,22 @@ class BaseShape(ABC):
     @abstractmethod
     def has_m(self) -> bool:
         """Determines whether any coordinates in the shape have associated M values"""
+
+    @staticmethod
+    def _wkt_zm_designator(coords: Iterable[Coordinate]) -> str:
+        """
+        The WKT dimensionality designator (' Z', ' M', or ' ZM') matching the
+        coordinates actually being emitted, or an empty string for 2D. Computed
+        from the emitted coordinates rather than shape-level has_z/has_m because
+        curve-derived coordinates (e.g. a GeoCircle outline) may not carry the
+        center's Z value.
+        """
+        has_z = has_m = False
+        for coord in coords:
+            has_z = has_z or coord.z is not None
+            has_m = has_m or coord.m is not None
+        zm = ('Z' if has_z else '') + ('M' if has_m else '')
+        return f' {zm}' if zm else ''
 
     @property
     def properties(self):
@@ -463,7 +479,13 @@ class BaseShape(ABC):
         return Placemark(
             geometry=self,  # Relies on geo interface
             extended_data=ExtendedData(
-                elements=[Data(name=k, value=str(v)) for k, v in self._properties.items()]
+                elements=[
+                    # KML ExtendedData is untyped; values are stored as strings.
+                    # None must not be stringified - an empty Data element
+                    # round-trips as an absent property rather than 'None'
+                    Data(name=k, value=None if v is None else str(v))
+                    for k, v in self._properties.items()
+                ]
             ),
             times=self.dt._to_fastkml() if self.dt is not None else None,
             **kwargs
@@ -609,7 +631,15 @@ class SimpleShapeMixin(BaseShape, ABC):
                 elif elem.name is not None:  # fastkml.data.Data
                     props[elem.name] = elem.value
 
-        shape = cls.from_geojson(dict(placemark.geometry.__geo_interface__))
+        geo_interface: Dict[str, Any] = dict(placemark.geometry.__geo_interface__)
+        if geo_interface['type'].upper() == 'LINEARRING':
+            # GeoJSON has no LinearRing type; treat it as the polygon it
+            # encloses (its coordinates are a single ring)
+            geo_interface = {
+                'type': 'Polygon',
+                'coordinates': [geo_interface['coordinates']],
+            }
+        shape = cls.from_geojson(geo_interface)
         shape.set_dt(dt, inplace=True)
         for key, value in props.items():
             shape.set_property(key, value, inplace=True)

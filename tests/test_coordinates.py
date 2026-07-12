@@ -54,6 +54,15 @@ def test_coordinate_to_float():
     assert Coordinate(0., 1.).to_float() == (0.0, 1.0)
 
 
+def test_coordinate_to_position():
+    # Positions carry Z (altitude) but never M - position-based formats
+    # (GeoJSON, KML, shapely) define no third slot for M
+    assert Coordinate(0., 1.).to_position() == [0.0, 1.0]
+    assert Coordinate(0., 1., z=5.).to_position() == [0.0, 1.0, 5.0]
+    assert Coordinate(0., 1., m=9.).to_position() == [0.0, 1.0]
+    assert Coordinate(0., 1., z=5., m=9.).to_position() == [0.0, 1.0, 5.0]
+
+
 def test_coordinate_to_str():
     assert Coordinate(0., 1.).to_str() == ('0', '1')
     assert Coordinate(0.1, 1.1).to_str() == ('0.1', '1.1')

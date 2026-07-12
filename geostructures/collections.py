@@ -63,10 +63,11 @@ class CollectionBase:
 
     @property
     def centroid(self):
-        lat, lon = tuple(
-            map(np.average, zip(*[shape.centroid.to_float() for shape in self.geoshapes]))
+        # Slice to lon/lat; to_float() may also carry Z/M values
+        lon, lat = tuple(
+            map(np.average, zip(*[shape.centroid.to_float()[:2] for shape in self.geoshapes]))
         )
-        return Coordinate(lat, lon)
+        return Coordinate(lon, lat)
 
     @cached_property
     def convex_hull(self):
@@ -888,7 +889,7 @@ class Track(CollectionBase):
                 new_pings.append(ping_group[0])
                 continue
 
-            _lons, _lats = list(zip(*[x.centroid.to_float() for x in ping_group]))
+            _lons, _lats = list(zip(*[x.centroid.to_float()[:2] for x in ping_group]))
             new_pings.append(
                 GeoPoint(
                     Coordinate(sum(_lons)/len(_lons), sum(_lats)/len(_lats)),
