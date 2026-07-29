@@ -33,6 +33,7 @@ from geostructures.geodesic import bearing_degrees, destination_point, distance_
 from geostructures._geometry import (
     convert_trig_angle, circumscribing_circle_for_polygon,
     do_edges_intersect, ensure_edge_bounds, is_counter_clockwise,
+    polygon_centroid,
 )
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
@@ -86,8 +87,11 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
         return self.centroid.z is not None
 
     def bounding_edges(self, **kwargs) -> List[Tuple[Coordinate, Coordinate]]:
+        # bounding_coords is self-closing, so zipping it against its own tail
+        # produces the whole ring - appending the first coordinate again would
+        # tack on a zero-length edge
         bounding_coords = self.bounding_coords(**kwargs)
-        return list(zip(bounding_coords, [*bounding_coords[1:], bounding_coords[0]]))
+        return list(zip(bounding_coords, bounding_coords[1:]))
 
     def contains_shape(self, shape: BaseShape, **kwargs) -> bool:
         from geostructures.typing import MultiShape, PointLike, PolygonLike, LineLike
@@ -319,23 +323,10 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
 
     @cached_property
     def centroid(self):
-        # Decompose polygon into triangles using vertex pairs around the origin.
-        # Slice to lon/lat; to_float() may also carry Z/M values
-        poly1 = np.array([x.to_float()[:2] for x in self.bounding_coords()])
-        poly2 = np.roll(poly1, -1, axis=0)
-
-        # Compute signed area manually since np.cross is deprecated for 2D inputs
-        signed_areas = 0.5 * (poly1[:, 0] * poly2[:, 1] - poly1[:, 1] * poly2[:, 0])
-
-        z = None
-        if self.has_z:
-            z = next(x.z for x in self.outline)
-
-        return Coordinate(
-            # Return average of triangle centroids, weighted by area
-            *np.average((poly1 + poly2) / 3, axis=0, weights=signed_areas),
-            z=z
-        )
+        # has_z is True when *any* coordinate carries a Z value, so take the first
+        # one present - the first coordinate's Z may be None
+        z = next((x.z for x in self.outline if x.z is not None), None)
+        return Coordinate(*polygon_centroid([self.bounding_coords()]), z=z)
 
     @property
     def has_m(self) -> bool:

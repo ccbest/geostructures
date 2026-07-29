@@ -3,6 +3,29 @@
 All notable changes to `geostructures` are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Zero-area polygons no longer crash `centroid`.** `GeoPolygon.centroid` and
+  `MultiGeoPolygon.centroid` raised `ZeroDivisionError` ("weights sum to zero")
+  for degenerate rings — collinear or duplicate coordinates — because there was
+  no area to weight the triangle decomposition by. Such rings now fall back to
+  the mean of their vertices.
+- **`GeoPolygon.centroid` now reports a Z value whenever the polygon has one.**
+  `has_z` is true if *any* coordinate carries a Z value, but the centroid took
+  the first coordinate's Z, yielding `centroid.z is None` on a `has_z` polygon
+  whose Z values started later in the outline. The first Z value present is now
+  used.
+
+### ⚠️ Behavior Changes
+
+- **`bounding_edges` no longer emits a zero-length closing edge.** Because
+  `bounding_coords` is self-closing, the boundary was closed a second time,
+  producing a final `(first_coord, first_coord)` edge. An *n*-coordinate ring
+  now yields *n - 1* edges rather than *n*. `edges()` was already correct and is
+  unchanged.
+
 ## [0.14.0] — 2026-07-12
 
 Headline features: **round-trippable KML/KMZ + shapefile I/O**, a new
@@ -28,7 +51,11 @@ time, and collection types.
 - **KML/KMZ reading (`parsers.parse_kml`).** Parse a `.kml`/`.kmz` file path,
   raw KML string/bytes, raw KMZ bytes, or an in-memory FastKML object into a
   `FeatureCollection`. KMZ archives are detected by zip magic number and all
-  member `.kml` files are combined. Requires the `kml` extra (FastKML).
+  member `.kml` files are combined. Byte order marks and XML encoding
+  declarations are handled regardless of fastkml's XML backend (lxml or
+  stdlib). Open-ended KML `TimeSpan`s (only a `<begin>` or only an `<end>`)
+  parse as zero-length intervals at the known endpoint. Requires the `kml`
+  extra (FastKML).
 - **`parsers.parse_shapefile`** — read a zip-archived shapefile set into a
   `FeatureCollection`. `parsers` and `serializers` now cover the same four
   formats: `{geojson, wkt, kml, shapefile}`.
@@ -44,9 +71,11 @@ time, and collection types.
 
 ### ⚠️ Breaking API Changes
 
-- **`parsers.parse_fastkml` was removed**, superseded by the more general
-  `parse_kml` (which also accepts in-memory FastKML objects). Migrate
-  `parse_fastkml(obj)` → `parse_kml(obj)`.
+- **`parsers.parse_fastkml` and `parsers.read_kml` were removed**, superseded
+  by the more general `parse_kml` (which accepts file paths, raw KML/KMZ
+  strings and bytes, and in-memory FastKML objects). Migrate
+  `parse_fastkml(obj)` → `parse_kml(obj)` and `read_kml(path)` →
+  `parse_kml(path)`.
 - **`Coordinate` is now immutable.** Coordinates use `__slots__` and reject
   attribute mutation (raises `AttributeError`). Invalid inputs now raise plain
   `ValueError`/`TypeError` instead of a pydantic `ValidationError` — update any
@@ -64,6 +93,22 @@ time, and collection types.
 - **`TimeInterval` is consistently half-open `[start, end)`.** `isdisjoint` /
   `intersection` follow right-open semantics; instants intersect only when
   contained or equal — this can change boundary-touching results.
+- **WKT output now carries `Z`/`M`/`ZM` dimensionality designators**
+  (e.g. `POINT ZM (1 2 3 4)`), and **M values no longer leak into the Z slot**
+  of position-based formats: GeoJSON positions and KML coordinates emit
+  `(lon, lat[, z])` per their specs, dropping M rather than corrupting it into
+  altitude. Shapefile output is unaffected (M round-trips there). If you relied
+  on the old undesignated/M-polluted output, update your consumers.
+- **KML property values:** `None`-valued properties are omitted from
+  ExtendedData instead of round-tripping as the string `'None'`; KML placemarks
+  containing a bare `LinearRing` geometry now parse as `GeoPolygon`s instead of
+  being skipped.
+- **Z/M-carrying shapes no longer crash or corrupt spatial math.** `bounds`,
+  `centroid`, and `circumscribing_rectangle` on (multi)linestrings and polygons,
+  collection centroids, `Track.convolve_duplicate_timestamps`, and H3 hashing
+  previously either raised (`ValueError`/H3 rejection) or leaked M/Z values into
+  results (e.g. a MultiGeoPoint centroid whose `z` was the average of the
+  members' M values). All such computations now operate on lon/lat only.
 - **`conversion` now raises on unknown units** rather than failing silently; the
   `mi` and `kn` factors were corrected.
 - **Antimeridian `GeoBox`es now raise** on invalid corner ordering.

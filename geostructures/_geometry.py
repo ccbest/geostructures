@@ -3,7 +3,7 @@ Internal module defining geometric functions used by geostructures
 """
 import math
 import random
-from typing import List, Tuple, Optional, cast, Set
+from typing import List, Sequence, Tuple, Optional, cast, Set
 
 import numpy as np
 from numpy.linalg import norm
@@ -462,6 +462,45 @@ def is_counter_clockwise(bounds: List[Coordinate]) -> bool:
         )
     )
     return ans <= 0
+
+
+def polygon_centroid(rings: Sequence[Sequence[Coordinate]]) -> Tuple[float, float]:
+    """
+    Computes the area-weighted centroid of one or more closed rings by decomposing
+    them into triangles using vertex pairs around the origin.
+
+    Rings are concatenated before decomposition. This is safe because the edges
+    joining one ring to the next are traversed in both directions, so their
+    contributions cancel out.
+
+    Args:
+        rings:
+            Lists of self-closing Coordinates, in order. Z and M values, if
+            present, are ignored.
+
+    Returns:
+        A 2-tuple of the centroid's longitude and latitude
+    """
+    # Slice to lon/lat; to_float() may also carry Z/M values
+    poly1 = np.array([coord.to_float()[:2] for ring in rings for coord in ring])
+    poly2 = np.roll(poly1, -1, axis=0)
+
+    # Compute signed area manually since np.cross is deprecated for 2D inputs
+    signed_areas = 0.5 * (poly1[:, 0] * poly2[:, 1] - poly1[:, 1] * poly2[:, 0])
+
+    if not signed_areas.sum():
+        # Degenerate (zero-area) rings, e.g. collinear or duplicate coordinates, have
+        # no area to weight by. Fall back to the mean of the vertices, dropping each
+        # ring's closing coordinate so the first vertex isn't counted twice.
+        lon, lat = np.mean(
+            np.array([coord.to_float()[:2] for ring in rings for coord in ring[:-1]]),
+            axis=0
+        )
+        return float(lon), float(lat)
+
+    # Return average of triangle centroids, weighted by area
+    lon, lat = np.average((poly1 + poly2) / 3, axis=0, weights=signed_areas)
+    return float(lon), float(lat)
 
 
 def convert_trig_angle(bearing: float) -> float:

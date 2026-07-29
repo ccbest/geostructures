@@ -8,7 +8,8 @@ from pygeoif import MultiPolygon
 import pytest
 
 from geostructures import (
-    Coordinate, GeoBox, GeoCircle, GeoPoint, GeoPolygon, MultiGeoPoint, MultiGeoPolygon,
+    Coordinate, GeoBox, GeoCircle, GeoEllipse, GeoPoint, GeoPolygon, GeoRing,
+    MultiGeoPoint, MultiGeoPolygon,
 )
 from geostructures.geodesic import destination_point
 from geostructures.time import TimeInterval
@@ -73,8 +74,19 @@ def test_polygonbase_bounding_edges():
         (Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)),
         (Coordinate(1.0, 1.0), Coordinate(0.0, 0.5)),
         (Coordinate(0.0, 0.5), Coordinate(1.0, 0.0)),
-        (Coordinate(1.0, 0.0), Coordinate(1.0, 0.0))
     ]
+
+    # The ring is self-closing; no zero-length edge should close it a second time
+    for shape in (
+        GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0)),
+        GeoCircle(Coordinate(0.0, 0.0), 500),
+        GeoEllipse(Coordinate(0.0, 0.0), 1000, 500, 90),
+        GeoRing(Coordinate(0.0, 0.0), 500, 1000),
+    ):
+        edges = shape.bounding_edges()
+        assert len(edges) == len(shape.bounding_coords()) - 1
+        assert not any(start == end for start, end in edges)
+        assert edges[-1][1] == edges[0][0]
 
 
 def test_polygonbase_contains_coordinate():

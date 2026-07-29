@@ -19,7 +19,7 @@ from geostructures._base import (
     PointLikeMixin, LineLikeMixin, SimpleShapeMixin
 )
 from geostructures.time import GEOTIME_TYPE
-from geostructures._geometry import convex_hull
+from geostructures._geometry import convex_hull, polygon_centroid
 from geostructures.geodesic import distance_meters
 from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, PolygonBase
@@ -473,18 +473,7 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
 
     @cached_property
     def centroid(self):
-        # Decompose polygon into triangles using vertex pairs around the origin.
-        # Slice to lon/lat; to_float() may also carry Z/M values
-        poly1 = np.array([
-            x.to_float()[:2] for poly in self.geoshapes for x in poly.bounding_coords()
-        ])
-        poly2 = np.roll(poly1, -1, axis=0)
-
-        # Compute signed area manually since np.cross is deprecated for 2D inputs
-        signed_areas = 0.5 * (poly1[:, 0] * poly2[:, 1] - poly1[:, 1] * poly2[:, 0])
-
-        # Return average of triangle centroids, weighted by area
-        return Coordinate(*np.average((poly1 + poly2) / 3, axis=0, weights=signed_areas))
+        return Coordinate(*polygon_centroid([x.bounding_coords() for x in self.geoshapes]))
 
     def bounding_coords(self, **kwargs) -> List[List[Coordinate]]:
         return [x.bounding_coords(**kwargs) for x in self.geoshapes]

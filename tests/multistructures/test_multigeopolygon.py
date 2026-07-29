@@ -53,6 +53,15 @@ def test_multigeoshape_centroid():
     ])
     assert MultiGeoPolygon([poly]).centroid.z is None
 
+    # Regression: zero-area members previously raised a ZeroDivisionError
+    collinear = GeoPolygon([
+        Coordinate(0., 0.), Coordinate(1., 1.), Coordinate(2., 2.), Coordinate(0., 0.)
+    ])
+    assert MultiGeoPolygon([collinear]).centroid == Coordinate(1., 1.)
+
+    # A zero-area member alongside a real one still weights by area
+    assert MultiGeoPolygon([box1, collinear]).centroid == box1.centroid
+
 
 def test_multigeoshape_bounding_coords():
     box1 = GeoBox(Coordinate(0., 1.), Coordinate(1., 0.))

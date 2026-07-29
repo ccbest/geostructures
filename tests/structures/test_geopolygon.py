@@ -521,6 +521,33 @@ def test_geopolygon_centroid_with_z():
     ])
     assert poly.centroid.z == 5.
 
+    # Z is present, but not on the first coordinate
+    poly = GeoPolygon([
+        Coordinate(0., 0.), Coordinate(1., 0., z=5.),
+        Coordinate(1., 1.), Coordinate(0., 0.)
+    ])
+    assert poly.has_z
+    assert poly.centroid.z == 5.
+
+
+def test_geopolygon_centroid_zero_area():
+    # Zero-area shapes have no area to weight the centroid by; the mean of the
+    # vertices is used instead
+    collinear = GeoPolygon([
+        Coordinate(0., 0.), Coordinate(1., 1.), Coordinate(2., 2.), Coordinate(0., 0.)
+    ])
+    assert collinear.centroid == Coordinate(1., 1.)
+
+    duplicates = GeoPolygon([Coordinate(3., 4.)] * 4)
+    assert duplicates.centroid == Coordinate(3., 4.)
+
+    # A zero-area ring away from the prime meridian - the fallback must not
+    # collapse toward the origin
+    offset = GeoPolygon([
+        Coordinate(10., 20.), Coordinate(10., 22.), Coordinate(10., 20.)
+    ])
+    assert offset.centroid == Coordinate(10., 21.)
+
 
 def test_geopolygon_point_on_horizontal_edge():
     square = GeoPolygon([
