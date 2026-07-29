@@ -18,6 +18,7 @@ from typing import Literal
 from geostructures._const import WGS84_A, WGS84_B, WGS84_F, EARTH_RADIUS_METERS
 from geostructures.coordinates import Coordinate
 from geostructures.utils.conditional_imports import import_optional
+from geostructures.utils.logging import warn_once
 
 
 # -------------------------------------------------------------------------
@@ -126,6 +127,11 @@ def vincenty_distance(coord1: Coordinate, coord2: Coordinate) -> float:
             break
     else:
         # Convergence failure (usually antipodal points); fall back to Haversine
+        warn_once(
+            'Vincenty distance failed to converge (usually near-antipodal coordinates); '
+            'falling back to the spherical Haversine distance, which is less accurate '
+            'than Vincenty. This warning will not repeat.'
+        )
         return haversine_distance(coord1, coord2)
 
     uSq = cosSqAlpha * (WGS84_A ** 2 - WGS84_B ** 2) / (WGS84_B ** 2)
@@ -270,6 +276,11 @@ def vincenty_bearing(start: Coordinate, end: Coordinate) -> float:
             break
     else:
         # Convergence failure (usually antipodal points); fall back to Haversine
+        warn_once(
+            'Vincenty bearing failed to converge (usually near-antipodal coordinates); '
+            'falling back to the spherical Haversine bearing, which is less accurate '
+            'than Vincenty. This warning will not repeat.'
+        )
         return haversine_bearing(start, end)
 
     # -------------------------------------------------------------------------

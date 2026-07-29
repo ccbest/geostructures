@@ -234,6 +234,15 @@ def test_parse_kml_files():
     with pytest.raises(FileNotFoundError):
         parse_kml('./bad_path.kml')
 
+    # A string too long to be a filename is still just a bad path, not an
+    # ENAMETOOLONG OSError leaking out of the existence check
+    with pytest.raises(FileNotFoundError):
+        parse_kml('x' * 5_000)
+
+    # Same for a string the filesystem cannot represent at all
+    with pytest.raises(FileNotFoundError):
+        parse_kml('bad\x00path.kml')
+
 
 def test_parse_kml_skips_unsupported_geometry():
     import fastkml

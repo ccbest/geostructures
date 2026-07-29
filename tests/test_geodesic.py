@@ -1,6 +1,7 @@
 
 from geostructures.geodesic import *
 from geostructures.coordinates import Coordinate
+from geostructures.utils.logging import _WARNINGS
 
 import pytest
 from pytest import approx
@@ -83,6 +84,29 @@ def test_vincenty_distance():
     expected = haversine_distance(c1, c2)
     actual = vincenty_distance(c1, c2)
     assert expected == actual
+
+
+def test_vincenty_convergence_failure_warns(caplog):
+    """The Haversine fallback is less accurate than what the caller asked for, so it
+    should not be silent."""
+    # warn_once dedupes for the life of the process, and earlier tests in this module
+    # already trip both fallbacks
+    _WARNINGS.clear()
+    c1, c2 = Coordinate(0., 0.), Coordinate(180, 0)
+
+    caplog.clear()
+    assert vincenty_distance(c1, c2) == haversine_distance(c1, c2)
+    assert 'Vincenty distance failed to converge' in caplog.text
+
+    caplog.clear()
+    assert vincenty_bearing(c1, c2) == haversine_bearing(c1, c2)
+    assert 'Vincenty bearing failed to converge' in caplog.text
+
+    # Does not repeat
+    caplog.clear()
+    vincenty_distance(c1, c2)
+    vincenty_bearing(c1, c2)
+    assert caplog.text == ''
 
 
 def test_vincenty_destination():

@@ -68,6 +68,24 @@ to [Semantic Versioning](https://semver.org/).
   `to_float()` tuples, which carry Z when set, so a Z-carrying endpoint could
   never register as a boundary intersection.
 
+- **Vincenty no longer falls back to Haversine silently.** When the iteration
+  fails to converge — usually near-antipodal coordinates — `vincenty_distance`
+  and `vincenty_bearing` return the spherical Haversine result instead. That is
+  the right answer to return, but a caller who selected Vincenty for its
+  accuracy was never told they had stopped receiving it. Both now warn once.
+- **`serialize_kml` emits an XML declaration for non-UTF-8 output.** An XML
+  document with no declaration is UTF-8 by definition, so a document encoded as
+  anything else was undecodable by any consumer that did not already know which
+  encoding had been chosen. UTF-8 output is unchanged.
+- **`serialize_kml` infers KMZ from a stream's name.** The `.kmz` extension was
+  only honored for a path, so passing an open file object for a `.kmz` path
+  silently wrote uncompressed KML into it.
+- **`parse_kml` reports an over-long string as a bad path.** A long garbage
+  string reached the filesystem existence check and escaped as
+  `OSError: [Errno 36] File name too long` rather than the `FileNotFoundError`
+  a short garbage string produces. Strings containing null bytes behaved the
+  same way.
+
 ### ⚠️ Behavior Changes
 
 - **`circumscribing_circle()` returns the smallest enclosing circle for every
@@ -116,6 +134,16 @@ to [Semantic Versioning](https://semver.org/).
   6-decimal grid, and it silently failed for any input finer than that. Use the
   new `Coordinate.is_close` instead, or call `round_half_up(value, 6)` yourself
   to opt back into the old precision.
+
+- **The `serialize_*` functions raise `TypeError` on inputs that are not shapes
+  or collections.** They previously reached straight for a `to_wkt`/`to_geojson`
+  method and surfaced an `AttributeError` naming a method the caller had never
+  heard of.
+- **`serialize_shapefile` raises `ValueError` on an empty collection.** A
+  shapefile's geometry type is fixed by its header and taken from the shapes
+  present, so an empty collection produced an archive containing no members at
+  all — 22 bytes of end-of-central-directory record, which reads as a corrupt
+  zip rather than as an empty result.
 
 ### Features
 

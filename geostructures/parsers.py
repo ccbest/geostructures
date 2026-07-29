@@ -335,7 +335,15 @@ def _read_kml_file(fpath: Path, encoding: str) -> FeatureCollection:
     Read a .kml or .kmz file from disk and parse it into a FeatureCollection.
     If a KMZ is provided, all KML files within it are parsed and combined.
     """
-    if not fpath.exists():
+    try:
+        exists = fpath.exists()
+    except OSError:
+        # A string that is not KML and not a usable path - too long for the
+        # filesystem, or carrying a null byte. Report it the same way an ordinary
+        # non-existent path is reported rather than leaking a raw errno.
+        exists = False
+
+    if not exists:
         raise FileNotFoundError(fpath)
 
     if fpath.suffix.lower() == '.kmz':

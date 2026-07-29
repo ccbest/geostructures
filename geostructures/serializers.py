@@ -12,10 +12,11 @@ __all__ = [
     'serialize_wkt',
 ]
 
+import codecs
 import json
 from io import BytesIO
 from pathlib import Path
-from typing import IO, BinaryIO, List, Optional, Union
+from typing import IO, Any, BinaryIO, List, Optional, Union
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from geostructures._base import BaseShape
@@ -24,6 +25,33 @@ from geostructures.utils.conditional_imports import import_optional
 
 # The conventional name for the primary KML document inside a KMZ archive
 _KMZ_MAIN_DOCUMENT = 'doc.kml'
+
+
+def _require_serializable(
+    data: Any,
+    function_name: str,
+    expected: str = 'a GeoShape or collection',
+) -> None:
+    """Reject inputs that are neither a shape nor a collection.
+
+    Without this the various ``to_*`` calls surface as an AttributeError naming a
+    method the caller never heard of, rather than saying what was expected.
+    """
+    if not isinstance(data, (BaseShape, CollectionBase)):
+        raise TypeError(
+            f'{function_name} expects {expected}; got {type(data).__name__!r}.'
+        )
+
+
+def _target_name(file: Optional[Union[str, Path, IO]]) -> Optional[Path]:
+    """The filesystem name a destination will end up at, if it has one.
+
+    Streams opened from a path carry it on ``.name``, so an open ``.kmz`` file
+    should dispatch the same way the path itself would. Streams without a usable
+    name (BytesIO, or a raw file descriptor, whose ``.name`` is an int) have none.
+    """
+    name = file if isinstance(file, (str, Path)) else getattr(file, 'name', None)
+    return Path(name) if isinstance(name, (str, Path)) else None
 
 
 def _emit_bytes(payload: bytes, file: Optional[Union[str, Path, BinaryIO]]) -> Optional[bytes]:
@@ -65,8 +93,12 @@ def serialize_kml(
 
     Whether a plain KML document or a zipped KMZ archive is produced is inferred
     from the ``file`` extension (``.kmz`` -> KMZ, anything else -> KML), matching
-    how ``parse_kml`` dispatches on a file's suffix. Pass ``kmz`` explicitly to
-    override the inference, e.g. when writing to a stream or returning bytes.
+    how ``parse_kml`` dispatches on a file's suffix. A stream opened from a path
+    is inferred from that path. Pass ``kmz`` explicitly to override the inference,
+    e.g. when writing to an unnamed stream or returning bytes.
+
+    An XML declaration is emitted only when ``encoding`` is not UTF-8, which XML
+    already assumes in the absence of one.
 
     Format limitations: KML ExtendedData is untyped, so non-string property
     values (ints, bools, ...) round-trip as strings; None-valued properties are
@@ -103,6 +135,8 @@ def serialize_kml(
     import_optional('fastkml')
     from fastkml import KML, Document
 
+    _require_serializable(data, 'serialize_kml')
+
     if isinstance(data, BaseShape):
         data = FeatureCollection([data])
 
@@ -110,10 +144,11 @@ def serialize_kml(
     # Folder of Placemarks (geometry + ExtendedData properties + times).
     folder = data.to_fastkml_folder(folder_name)
     document = Document(features=[folder])
-    kml_text = KML(features=[document]).to_string()
+    kml_text = _with_xml_declaration(KML(features=[document]).to_string(), encoding)
 
     if kmz is None:
-        kmz = isinstance(file, (str, Path)) and Path(file).suffix.lower() == '.kmz'
+        target = _target_name(file)
+        kmz = target is not None and target.suffix.lower() == '.kmz'
 
     if kmz:
         payload = _to_kmz_bytes(kml_text, encoding)
@@ -121,6 +156,20 @@ def serialize_kml(
         payload = kml_text.encode(encoding)
 
     return _emit_bytes(payload, file)
+
+
+def _with_xml_declaration(kml_text: str, encoding: str) -> str:
+    """Prepend an XML declaration when the encoding is not XML's default.
+
+    An XML document with no declaration is UTF-8 by definition, so only other
+    encodings need one - without it the bytes are undecodable by anything that
+    did not already know which encoding was chosen.
+    """
+    normalized = codecs.lookup(encoding).name
+    if normalized == 'utf-8':
+        return kml_text
+
+    return f'<?xml version="1.0" encoding="{normalized}"?>\n{kml_text}'
 
 
 def _to_kmz_bytes(kml_text: str, encoding: str) -> bytes:
@@ -166,6 +215,7 @@ def serialize_geojson(
     Returns:
         str if ``file`` is None, otherwise None.
     """
+    _require_serializable(data, 'serialize_geojson')
     text = json.dumps(data.to_geojson(**kwargs), indent=indent)
     return _emit_text(text, file, encoding)
 
@@ -205,6 +255,7 @@ def serialize_wkt(
             'serialize_wkt expects a single shape; WKT cannot represent a '
             'collection. Use serialize_geojson for collections.'
         )
+    _require_serializable(data, 'serialize_wkt', 'a GeoShape')
     return _emit_text(data.to_wkt(**kwargs), file, encoding)
 
 
@@ -236,11 +287,27 @@ def serialize_shapefile(
 
     Returns:
         bytes if ``file`` is None, otherwise None.
+
+    Raises:
+        ValueError: if the collection is empty - a shapefile's geometry type is
+            fixed by its header, so there is nothing to write.
     """
     import_optional('shapefile')
 
+    _require_serializable(data, 'serialize_shapefile')
+
     if isinstance(data, BaseShape):
         data = FeatureCollection([data])
+
+    if not data.geoshapes:
+        # A shapefile's geometry type is fixed by its header and taken from the
+        # shapes present, so there is nothing to write - the archive would come
+        # out holding no members at all, which reads as a corrupt zip rather than
+        # as an empty result.
+        raise ValueError(
+            'Cannot serialize an empty collection to a shapefile; the format has '
+            'no representation for a set of shapes with no geometry type.'
+        )
 
     # No destination: build the archive in memory and return its bytes.
     if file is None:

@@ -191,6 +191,44 @@ def test_serialize_kml_kmz_kwarg_overrides_extension(tmp_path):
     assert plain.read_bytes().lstrip().startswith(b'<')
 
 
+def test_serialize_kml_extension_inference_from_stream_name(tmp_path):
+    """A stream opened from a .kmz path should dispatch the same way the path would."""
+    original = _sample_collection()
+
+    kmz_path = tmp_path / 'from_stream.kmz'
+    with open(kmz_path, 'wb') as fh:
+        serialize_kml(original, fh)
+    assert kmz_path.read_bytes().startswith(b'PK\x03\x04')
+    _assert_round_trips(original, parse_kml(kmz_path))
+
+    kml_path = tmp_path / 'from_stream.kml'
+    with open(kml_path, 'wb') as fh:
+        serialize_kml(original, fh)
+    assert kml_path.read_bytes().lstrip().startswith(b'<')
+
+    # An unnamed stream has nothing to infer from, and stays plain KML
+    buffer = BytesIO()
+    serialize_kml(original, buffer)
+    assert buffer.getvalue().lstrip().startswith(b'<')
+
+
+def test_serialize_kml_xml_declaration():
+    """Only non-UTF-8 output needs a declaration; XML assumes UTF-8 without one."""
+    original = _sample_collection()
+
+    assert not serialize_kml(original).lstrip().startswith(b'<?xml')
+    assert not serialize_kml(original, encoding='utf-8').lstrip().startswith(b'<?xml')
+
+    latin = serialize_kml(original, encoding='latin-1')
+    assert latin.startswith(b'<?xml version="1.0" encoding="iso8859-1"?>')
+    _assert_round_trips(original, parse_kml(latin, encoding='latin-1'))
+
+    # The declaration also travels inside a KMZ archive
+    archive = serialize_kml(original, encoding='latin-1', kmz=True)
+    with ZipFile(BytesIO(archive)) as zf:
+        assert zf.read('doc.kml').startswith(b'<?xml')
+
+
 def test_serialize_kml_accepts_string_path(tmp_path):
     original = _sample_collection()
     path = tmp_path / 'as_str.kml'
@@ -333,6 +371,20 @@ def test_serialize_text_invalid_file_raises():
         serialize_wkt(shape, 123)
 
 
+@pytest.mark.parametrize(
+    'serializer',
+    [serialize_geojson, serialize_kml, serialize_shapefile, serialize_wkt],
+)
+def test_serializers_reject_non_shapes(serializer):
+    """Anything that is not a shape or collection should say so, rather than
+    surfacing an AttributeError about a to_* method the caller never called."""
+    with pytest.raises(TypeError, match='expects'):
+        serializer('POINT (1 2)')
+
+    with pytest.raises(TypeError, match='expects'):
+        serializer(None)
+
+
 # --------------------------------------------------------------------------- #
 # Shapefile
 # --------------------------------------------------------------------------- #
@@ -385,3 +437,13 @@ def test_serialize_shapefile_include_properties(tmp_path):
 def test_serialize_shapefile_invalid_file_raises():
     with pytest.raises(TypeError):
         serialize_shapefile(_sample_collection(), 123)
+
+
+def test_serialize_shapefile_empty_collection_raises(tmp_path):
+    """An empty collection produced a members-less archive, which reads as a
+    corrupt zip rather than as an empty result."""
+    with pytest.raises(ValueError, match='empty collection'):
+        serialize_shapefile(FeatureCollection([]))
+
+    with pytest.raises(ValueError, match='empty collection'):
+        serialize_shapefile(FeatureCollection([]), tmp_path / 'empty.zip')
