@@ -18,6 +18,22 @@ to [Semantic Versioning](https://semver.org/).
   whose Z values started later in the outline. The first Z value present is now
   used.
 
+- **`intersects_shape()` and `contains_shape()` no longer raise `KeyError` on
+  shapes that traverse a segment twice.** A `GeoLineString` that doubles back
+  along its own path, or a polygon with a spike that retraces an edge, produced
+  two sweep line segments that compared equal, so only one entered the active
+  set and the second attempt to retire it failed. Segments are now identified by
+  position rather than by coordinates.
+- **Shapes touching at exactly one boundary point now report an intersection
+  regardless of argument order.** Where one segment's highest point was another
+  segment's lowest, the sweep line could retire the first before ever testing it
+  against the second, so `a.intersects_shape(b)` and `b.intersects_shape(a)`
+  could disagree. Events at the same position are now ordered starts first.
+- **Horizontal edges no longer linger in the sweep line's active set.** They
+  generated two start events and no stop event, so once passed they were tested
+  against every remaining edge in the shape. Answers were unaffected; the cost
+  was wasted work.
+
 - **`circumscribing_circle()` no longer raises `RecursionError` on large
   polygons.** The minimum bounding circle used a recursive formulation of
   Welzl's algorithm that recursed once per coordinate, so any `GeoPolygon` with

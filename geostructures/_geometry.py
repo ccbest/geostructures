@@ -410,6 +410,12 @@ def do_edges_intersect(
         the same value so they can be added and removed from the set of active
         events.
 
+        Identity is the segment's position in its group rather than its coordinates:
+        a shape may legitimately contain the same segment twice (a linestring that
+        doubles back on itself, a degenerate polygon spike), and keying on the
+        coordinates would collapse both into one set member - leaving the second
+        stop event with nothing to remove.
+
         Additionally stores the group id of the segment, so that segments from the same
         group are not intersected.
         """
@@ -418,36 +424,48 @@ def do_edges_intersect(
                 x: float,
                 is_start: bool,
                 segment: Tuple[Coordinate, Coordinate],
-                group: str
+                group: str,
+                index: int
         ):
             self.x = x
             self.group = group
             self.is_start = is_start
             self.segment = segment
+            self.index = index
 
         def __lt__(self, other):
-            """Required for sorting events"""
-            return self.x < other.x
+            """
+            Required for sorting events.
+
+            Where two events share a sweep position, start events must precede stop
+            events. Otherwise a segment whose highest point is another segment's
+            lowest point is removed from the active set before the second segment is
+            ever tested against it, and the shared point is missed.
+            """
+            if self.x != other.x:
+                return self.x < other.x
+
+            return self.is_start and not other.is_start
 
         def __hash__(self):
             """Required for creating a set of events"""
-            return hash((self.segment, self.group))
+            return hash((self.group, self.index))
 
         def __eq__(self, other):
             """Required for creating a set of events"""
-            return self.segment == other.segment and self.group == other.group
+            return self.group == other.group and self.index == other.index
 
     def _create_events(edges, group):
         """Creates 2x events per edge from a list of edges. Ensures the lesser x
         value corresponds to the start event."""
         _events = []
-        for edge in edges:
+        for index, edge in enumerate(edges):
             if edge[0].latitude > edge[1].latitude:
                 edge = (edge[1], edge[0])
 
             _events += [
-                _Event(edge[0].latitude, edge[0].latitude <= edge[1].latitude, edge, group),
-                _Event(edge[1].latitude, edge[1].latitude <= edge[0].latitude, edge, group)
+                _Event(edge[0].latitude, True, edge, group, index),
+                _Event(edge[1].latitude, False, edge, group, index)
             ]
         return _events
 

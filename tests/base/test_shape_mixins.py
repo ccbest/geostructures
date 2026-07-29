@@ -8,8 +8,8 @@ from pygeoif import MultiPolygon
 import pytest
 
 from geostructures import (
-    Coordinate, GeoBox, GeoCircle, GeoEllipse, GeoPoint, GeoPolygon, GeoRing,
-    MultiGeoPoint, MultiGeoPolygon,
+    Coordinate, GeoBox, GeoCircle, GeoEllipse, GeoLineString, GeoPoint, GeoPolygon,
+    GeoRing, MultiGeoPoint, MultiGeoPolygon,
 )
 from geostructures.geodesic import destination_point
 from geostructures.time import TimeInterval
@@ -203,6 +203,37 @@ def test_polygonbase_intersects_shape():
             GeoPoint(Coordinate(1., 0.001))
         ])
     )
+
+
+def test_polygonbase_intersects_shape_retraced_edges():
+    """Shapes that traverse the same segment twice used to raise a KeyError out of
+    the sweep line's active event set."""
+    box = GeoBox(Coordinate(-10., 10.), Coordinate(10., -10.))
+
+    # Linestring that doubles back along itself
+    line = GeoLineString([Coordinate(20., 20.), Coordinate(30., 30.), Coordinate(20., 20.)])
+    assert not box.intersects_shape(line)
+    assert not box.contains_shape(line)
+
+    line = GeoLineString([Coordinate(0., 0.), Coordinate(30., 30.), Coordinate(0., 0.)])
+    assert box.intersects_shape(line)
+
+    # Polygon with a spike that retraces an edge
+    polygon = GeoPolygon([
+        Coordinate(20., 20.), Coordinate(30., 20.), Coordinate(30., 30.),
+        Coordinate(25., 35.), Coordinate(30., 30.),
+        Coordinate(20., 30.), Coordinate(20., 20.),
+    ])
+    assert not box.intersects_shape(polygon)
+
+
+def test_polygonbase_intersects_shape_touching_corners():
+    """Two shapes sharing exactly one boundary point intersect, in either order."""
+    box1 = GeoBox(Coordinate(-1., 1.), Coordinate(0., 0.))
+    box2 = GeoBox(Coordinate(0., 0.), Coordinate(1., -1.))
+
+    assert box1.intersects_shape(box2)
+    assert box2.intersects_shape(box1)
 
 
 def test_polygonbase_edges():

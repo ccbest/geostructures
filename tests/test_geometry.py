@@ -208,6 +208,47 @@ def test_do_edges_intersect():
     assert do_edges_intersect(edge_a, edge_b)
 
 
+def test_do_edges_intersect_shared_endpoint():
+    """
+    A segment whose highest point is another segment's lowest point touches it, and
+    both argument orders have to agree. Without start-before-stop tie ordering the
+    first segment is retired from the active set before the second is tested.
+    """
+    edge_a = [(Coordinate(0., 0.), Coordinate(0., 5.))]
+    edge_b = [(Coordinate(0., 5.), Coordinate(5., 10.))]
+
+    assert do_edges_intersect(edge_a, edge_b)
+    assert do_edges_intersect(edge_b, edge_a)
+
+
+def test_do_edges_intersect_duplicate_segments():
+    """
+    A group may contain the same segment twice - a linestring that doubles back, or a
+    polygon that retraces an edge. Both copies need their own start/stop pair.
+    """
+    # Both edges normalize to the same (lesser latitude first) tuple
+    edge_a = [
+        (Coordinate(20., 20.), Coordinate(30., 30.)),
+        (Coordinate(30., 30.), Coordinate(20., 20.)),
+    ]
+    edge_b = [(Coordinate(0., 0.), Coordinate(1., 1.))]
+    assert not do_edges_intersect(edge_a, edge_b)
+
+    edge_b = [(Coordinate(30., 20.), Coordinate(20., 30.))]
+    assert do_edges_intersect(edge_a, edge_b)
+
+
+def test_do_edges_intersect_horizontal_edge():
+    """A horizontal edge produces two events at the same sweep position, and must
+    still leave the active set once passed."""
+    edge_a = [(Coordinate(0., 0.), Coordinate(10., 0.))]
+    edge_b = [(Coordinate(5., 50.), Coordinate(5., 60.))]
+    assert not do_edges_intersect(edge_a, edge_b)
+
+    edge_b = [(Coordinate(5., -5.), Coordinate(5., 5.))]
+    assert do_edges_intersect(edge_a, edge_b)
+
+
 def test_ensure_edge_bounds():
     assert ensure_edge_bounds(Coordinate(179., 0.), Coordinate(179.5, 0.)) == (Coordinate(179., 0.), Coordinate(179.5, 0.))
     assert ensure_edge_bounds(Coordinate(179., 0.), Coordinate(-179, 0.)) == (Coordinate(179., 0.), Coordinate(181, 0., _bounded=False))
