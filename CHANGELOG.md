@@ -18,8 +18,38 @@ to [Semantic Versioning](https://semver.org/).
   whose Z values started later in the outline. The first Z value present is now
   used.
 
+- **`circumscribing_circle()` no longer raises `RecursionError` on large
+  polygons.** The minimum bounding circle used a recursive formulation of
+  Welzl's algorithm that recursed once per coordinate, so any `GeoPolygon` with
+  roughly 990 or more vertices — an ordinary imported coastline or admin
+  boundary — hit Python's recursion limit. It is now iterative and has been
+  exercised to 100,000 coordinates.
+- **`GeoBox.circumscribing_circle()` now contains the box.** It was centered on
+  the box's centroid and measured out to a single corner, which at higher
+  latitudes left the other corners outside the "circumscribing" circle — by 17%
+  of the radius for a box spanning 70–85° N.
+- **Bounding circles no longer disturb the caller's random state.** The
+  algorithm drew from the global `random` module, so calling
+  `circumscribing_circle()` shifted the sequence returned by the caller's own
+  `random` calls. It now uses a private generator, seeded per call, which also
+  makes results reproducible run to run.
+- **`dist_xyz_meters` is accurate at short range.** It took `acos` of a dot
+  product, which loses nearly all precision for close coordinates — it reported
+  about a tenth of a meter between a coordinate and itself. It now recovers the
+  angle with `atan2`, which is well-conditioned across the whole range.
+
 ### ⚠️ Behavior Changes
 
+- **`circumscribing_circle()` returns the smallest enclosing circle for every
+  shape that computes one numerically.** `GeoLineString`, `GeoRing` wedges,
+  `GeoBox`, `MultiGeoPoint`, `MultiGeoLineString`, and `MultiGeoPolygon`
+  previously centered the circle on the shape's centroid and measured out to the
+  farthest coordinate, giving a circle up to several times larger than
+  necessary. `GeoCircle`, `GeoEllipse`, and full `GeoRing`s are unchanged —
+  their circles are exact analytically, and computing one from discretized
+  boundary coordinates would be smaller than the shape itself. Coordinates
+  spanning more than a hemisphere cannot be covered by a spherical cap, and fall
+  back to an enclosing but non-minimal circle with a warning.
 - **`bounding_edges` no longer emits a zero-length closing edge.** Because
   `bounding_coords` is self-closing, the boundary was closed a second time,
   producing a final `(first_coord, first_coord)` edge. An *n*-coordinate ring

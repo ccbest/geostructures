@@ -8,8 +8,10 @@ from geostructures import GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.coordinates import Coordinate
 from geostructures.geodesic import destination_point, distance_meters
 
+from pytest import approx
+
 from tests.functions import (
-    assert_geolinestrings_equal, default_test_datetime,
+    assert_coordinates_equal, assert_geolinestrings_equal, default_test_datetime,
     geojson_round_trip, shapely_round_trip, wkt_round_trip,
 )
 
@@ -266,11 +268,14 @@ def test_geolinestring_circumscribing_circle():
         [Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)],
         dt=default_test_datetime
     )
-    assert ls.circumscribing_circle() == GeoCircle(
-        Coordinate(0.6666667, 0.3333333),
-        82879.43253850673,
-        dt=default_test_datetime
-    )
+    circle = ls.circumscribing_circle()
+    # Smallest enclosing circle, rather than the looser centroid-to-farthest-vertex
+    # circle (radius 82879.43) this used to return
+    assert circle.radius == approx(78624.69086396058)
+    assert_coordinates_equal(circle.centroid, Coordinate(0.5, 0.49998096))
+    assert circle.dt == ls.dt
+    for vertex in ls.vertices:
+        assert distance_meters(vertex, circle.centroid) <= circle.radius + 1e-6
 
 
 def test_geolinestring_circumscribing_rectangle():

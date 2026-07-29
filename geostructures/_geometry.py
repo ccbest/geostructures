@@ -11,6 +11,7 @@ from numpy.linalg import norm
 from geostructures._const import EARTH_RADIUS_METERS
 from geostructures.coordinates import Coordinate
 from geostructures.utils.functions import round_half_up
+from geostructures.utils.logging import warn_once
 
 
 def coordinate_vector_cross_product(o: Coordinate, a: Coordinate, b: Coordinate):
@@ -79,107 +80,269 @@ def convex_hull(coordinates: List[Coordinate]) -> List[Coordinate]:
     return lower[:-1] + upper
 
 
-def circumscribing_circle_for_triangle(
-    points: List[Coordinate]
-) -> Tuple[Optional[Coordinate], Optional[float]]:
+# Points are shuffled before the incremental construction in minimum_bounding_circle,
+# which is what gives Welzl's algorithm its expected-linear runtime. The generator is
+# module-private and re-seeded per call so that identical inputs always produce
+# identical circles, and so that the caller's own random stream is left alone.
+_MBC_SEED = 0
+
+# Circles are grown to fit points that fall outside them, so a point sitting exactly on
+# the boundary - every vertex of a regular polygon, for instance - must test as
+# contained despite float error.
+_MBC_ABS_TOLERANCE_METERS = 1e-6
+_MBC_REL_TOLERANCE = 1e-12
+
+# Tolerance for the final enclosure check only, which exists to catch coordinates too
+# spread out for a 90 degree cap. That failure misses by hundreds of kilometers, so the
+# check can afford to be loose - and needs to be, since it is the one comparison whose
+# two sides aren't both measured off the same circle.
+_MBC_ENCLOSURE_TOLERANCE_METERS = 1.0
+
+
+def _circle_contains(
+    center: Coordinate,
+    radius: float,
+    coord: Coordinate,
+    tolerance_meters: float = _MBC_ABS_TOLERANCE_METERS
+) -> bool:
+    """Tests whether a coordinate falls inside a circle, within tolerance."""
+    tolerance = max(radius * _MBC_REL_TOLERANCE, tolerance_meters)
+    return dist_xyz_meters(center, coord) <= radius + tolerance
+
+
+def _diameter_circle(coord1: Coordinate, coord2: Coordinate) -> Tuple[Coordinate, float]:
     """
-    Supporting function for circumscribing_circle_for_polygon().
+    Produces the circle having two coordinates at opposite ends of its diameter, i.e.
+    the midpoint of the two and half the distance between them.
 
-    Can be called with up to three points to return the center and radius of the
-    circumscribing circle.
+    Args:
+        coord1:
+            A coordinate
 
-    Zero points returns None center and radius (will fail check in calling function).
+        coord2:
+            A second coordinate
 
-    One point returns itself as center and zero radius (will also fail check).
+    Returns:
+        (Coordinate, float) tuple of (center, radius in meters)
+    """
+    midpoint = [(v1 + v2) / 2 for v1, v2 in zip(coord1.xyz, coord2.xyz)]
+    midpoint_norm = norm(midpoint)
+    if not midpoint_norm:  # pragma: no cover
+        # The two coordinates are antipodal, so every great circle through them is
+        # a diameter and the midpoint is undefined
+        raise ValueError(
+            f'Cannot produce a bounding circle for antipodal coordinates {coord1} '
+            f'and {coord2}.'
+        )
 
-    Two points returns the midpoint as center and half the distance as radius.
+    center = Coordinate._from_xyz([i / midpoint_norm for i in midpoint])
+    return center, dist_xyz_meters(center, coord1)
 
-    Three points checks every point pair as a possible diameter for the circle. If no
-    pair qualifies, uses the circumcenter formula from
-    https://brsr.github.io/2021/05/02/spherical-triangle-centers.html
+
+def _circumcircle(
+    coord1: Coordinate,
+    coord2: Coordinate,
+    coord3: Coordinate
+) -> Optional[Tuple[Coordinate, float]]:
+    """
+    Produces the circle passing through all three coordinates, using the circumcenter
+    formula from https://brsr.github.io/2021/05/02/spherical-triangle-centers.html
+
+    Note that this is the circle *through* the three coordinates, which for an obtuse
+    triangle is larger than the smallest circle enclosing them.
+
+    Args:
+        coord1:
+            A coordinate
+
+        coord2:
+            A second coordinate
+
+        coord3:
+            A third coordinate
+
+    Returns:
+        (Coordinate, float) tuple of (circumcenter, radius in meters), or None if the
+        coordinates are degenerate (a repeated coordinate, say) and define no circle.
+        Note that three coordinates sharing a great circle are not degenerate - that
+        great circle is their circumcircle, centered on its pole.
+    """
+    a, b, c = (np.asarray(coord.xyz, dtype=np.longdouble) for coord in (coord1, coord2, coord3))
+    cc_num = np.cross(a, b) + np.cross(b, c) + np.cross(c, a)
+    cc_norm = norm(cc_num)
+    if not cc_norm:
+        return None
+
+    if np.dot(a, np.cross(b, c)) < 0:
+        # The coordinates wind clockwise as seen from the circumcenter, so the formula
+        # produced its antipode. Negating is cheaper - and correct nearer the poles and
+        # antimeridian - than reordering the coordinates by a planar orientation test.
+        cc_num = -cc_num
+
+    center = Coordinate._from_xyz([i / cc_norm for i in cc_num])
+    # The radius has to be measured the same way _circle_contains measures distance,
+    # or the three coordinates defining this circle can test as falling outside it
+    return center, dist_xyz_meters(center, coord1)
+
+
+def _mbc_with_boundary_points(
+    points: List[Coordinate],
+    coord1: Coordinate,
+    coord2: Coordinate
+) -> Tuple[Coordinate, float]:
+    """
+    Supporting function for minimum_bounding_circle(). Produces the smallest circle
+    enclosing points that has both coord1 and coord2 on its boundary.
+
+    Candidate circumcircles are tracked separately per side of the great circle running
+    through coord1 and coord2, because the enclosing circle must reach the farthest
+    outlying point on each side.
 
     Args:
         points:
-            A list of Coordinates. Will error if more than three.
+            A list of coordinates to enclose
+
+        coord1:
+            A coordinate to hold on the boundary
+
+        coord2:
+            A second coordinate to hold on the boundary
 
     Returns:
-        (Coordinate, float) tuple of (Circumcenter, Radius in meters)
-
+        (Coordinate, float) tuple of (center, radius in meters)
     """
-    assert len(points) <= 3
-    if len(points) == 0:
-        return None, None
+    circle = _diameter_circle(coord1, coord2)
+    # Normal of the great circle through both boundary coordinates; the sign of a
+    # coordinate's dot product against it says which side that coordinate falls on
+    normal = np.cross(np.asarray(coord1.xyz), np.asarray(coord2.xyz))
+    # Each side tracks its best candidate alongside that candidate's own offset from
+    # the great circle, which is what ranks the candidates
+    left: Optional[Tuple[Coordinate, float]] = None
+    right: Optional[Tuple[Coordinate, float]] = None
+    left_offset = right_offset = 0.0
 
-    if len(points) == 1:
-        return points[0], 0.0
+    for point in points:
+        if _circle_contains(*circle, point):
+            continue
 
-    if len(points) == 2:
-        midp = [(v1+v2)/2 for v1, v2 in zip(points[0].xyz, points[1].xyz)]
-        midp_norm = norm(midp)
-        midp_coord = Coordinate._from_xyz([i/midp_norm for i in midp])
-        rad = dist_xyz_meters(midp_coord, points[0])
-        return midp_coord, rad
+        candidate = _circumcircle(coord1, coord2, point)
+        if candidate is None:  # pragma: no cover
+            # Only a point duplicating one of the two boundary coordinates degenerates
+            # here, and such a point is already inside the circle through both of them
+            continue
 
-    if not is_counter_clockwise(points):
-        points = list(reversed(points))
+        side = float(np.dot(normal, np.asarray(point.xyz)))
+        offset = float(np.dot(normal, np.asarray(candidate[0].xyz)))
+        if side > 0 and (left is None or offset > left_offset):
+            left, left_offset = candidate, offset
+        elif side < 0 and (right is None or offset < right_offset):
+            right, right_offset = candidate, offset
 
-    # Test for trivial circle
-    for i in range(3):
-        p = points[i]
-        other_p = points[:i] + points[i+1:]
-        midp = [(v1+v2)/2 for v1, v2 in zip(other_p[0].xyz, other_p[1].xyz)]
-        midp_norm = norm(midp)
-        midp_coord = Coordinate._from_xyz([i/midp_norm for i in midp])
-        rad = dist_xyz_meters(midp_coord, other_p[0])
-        # If this is true, the midpoint of one side is the center
-        # (i.e. any obtuse/right triangle) and we are done
-        if rad >= dist_xyz_meters(midp_coord, p):
-            return midp_coord, rad
-
-    [a, b, c] = [np.asarray(p.xyz, dtype=np.longdouble) for p in points]
-    cc_num = np.cross(a, b) + np.cross(b, c) + np.cross(c, a)
-    cc_norm = norm(cc_num)
-    ctr = Coordinate._from_xyz([i/cc_norm for i in cc_num])
-    rad = math.acos(np.dot(a, np.cross(b, c))/cc_norm) * EARTH_RADIUS_METERS
-    return ctr, rad
+    if left is None and right is None:
+        return circle
+    if left is None:
+        return cast(Tuple[Coordinate, float], right)
+    if right is None:
+        return left
+    return left if left[1] <= right[1] else right
 
 
-def circumscribing_circle_for_polygon(
-    all_points: List[Coordinate],
-    known_points: List[Coordinate]
-) -> Tuple[Optional[Coordinate], Optional[float]]:
+def _mbc_with_boundary_point(
+    points: List[Coordinate],
+    coord: Coordinate
+) -> Tuple[Coordinate, float]:
     """
-    Implements Welzl's algorithm to determine the circumscribing circle
-    for a set of points.
+    Supporting function for minimum_bounding_circle(). Produces the smallest circle
+    enclosing points that has coord on its boundary.
 
     Args:
-        all_points:
-            A list of Coordinates. Will error if more than three.
-        known_points:
-            A list of Coordinates. Must be initialized with empty list.
-            Used by recursive calls after initialization.
+        points:
+            A list of coordinates to enclose
+
+        coord:
+            A coordinate to hold on the boundary
 
     Returns:
-        (Coordinate, float) tuple of (Circumcenter, Radius in meters)
+        (Coordinate, float) tuple of (center, radius in meters)
     """
-    if len(known_points) == 3:
-        return circumscribing_circle_for_triangle(known_points)
-    if len(all_points) == 0:
-        return circumscribing_circle_for_triangle(known_points)
-    i = random.randrange(0, len(all_points))
-    p = all_points[i]
-    other_p = all_points[:i] + all_points[i+1:]
-    ctr, rad = circumscribing_circle_for_polygon(
-        other_p,
-        known_points.copy()
+    circle = (coord, 0.0)
+    for idx, point in enumerate(points):
+        if _circle_contains(*circle, point):
+            continue
+
+        if not circle[1]:
+            circle = _diameter_circle(coord, point)
+            continue
+
+        circle = _mbc_with_boundary_points(points[:idx + 1], coord, point)
+
+    return circle
+
+
+def _enclosing_circle_fallback(points: List[Coordinate]) -> Tuple[Coordinate, float]:
+    """
+    Supporting function for minimum_bounding_circle(). Produces a circle that is
+    guaranteed to enclose every coordinate, but is not necessarily the smallest one,
+    by measuring out from the mean of the coordinate vectors.
+
+    Args:
+        points:
+            A list of coordinates to enclose
+
+    Returns:
+        (Coordinate, float) tuple of (center, radius in meters)
+    """
+    mean = [sum(values) / len(points) for values in zip(*(point.xyz for point in points))]
+    mean_norm = norm(mean)
+    # A zero-length mean means the coordinates cancel out entirely (e.g. antipodal
+    # pairs), leaving no meaningful center to measure from
+    center = points[0] if not mean_norm else Coordinate._from_xyz([i / mean_norm for i in mean])
+    return center, max(dist_xyz_meters(center, point) for point in points)
+
+
+def minimum_bounding_circle(points: Sequence[Coordinate]) -> Tuple[Coordinate, float]:
+    """
+    Determines the smallest circle enclosing a set of coordinates, using the incremental
+    formulation of Welzl's algorithm. Runs in expected linear time.
+
+    The circle is a spherical cap. Coordinates spanning more than a hemisphere would
+    require a cap wider than 90 degrees, which this construction cannot produce; those
+    fall back to a circle that still encloses every coordinate but is not the smallest
+    one. The returned circle always encloses every coordinate.
+
+    Args:
+        points:
+            A list of coordinates to enclose. Must not be empty.
+
+    Returns:
+        (Coordinate, float) tuple of (center, radius in meters)
+    """
+    if not points:
+        raise ValueError('Cannot produce a bounding circle for zero coordinates.')
+
+    shuffled = list(points)
+    random.Random(_MBC_SEED).shuffle(shuffled)
+
+    circle = (shuffled[0], 0.0)
+    for idx, point in enumerate(shuffled):
+        if _circle_contains(*circle, point):
+            continue
+
+        # Any point outside the circle enclosing everything before it has to sit on the
+        # boundary of the circle enclosing everything up to and including it
+        circle = _mbc_with_boundary_point(shuffled[:idx + 1], point)
+
+    if all(
+        _circle_contains(*circle, point, _MBC_ENCLOSURE_TOLERANCE_METERS)
+        for point in shuffled
+    ):
+        return circle
+
+    warn_once(
+        'Bounding circle for coordinates spanning more than a hemisphere is not '
+        'minimal; this warning will not repeat.'
     )
-    if ctr is not None:
-        ctr = cast(Coordinate, ctr)
-        rad = cast(float, rad)
-        if rad >= dist_xyz_meters(p, ctr):
-            return ctr, rad
-    known_points.append(p)
-    return circumscribing_circle_for_polygon(other_p, known_points.copy())
+    return _enclosing_circle_fallback(shuffled)
 
 
 def dist_xyz_meters(coord1: Coordinate, coord2: Coordinate) -> float:
@@ -198,10 +361,14 @@ def dist_xyz_meters(coord1: Coordinate, coord2: Coordinate) -> float:
     Returns:
         (float) the distance in meters
     """
-    # Clamp the dot product to [-1, 1]; floating point error can push it
-    # out of acos's domain for identical/antipodal coordinates
-    dot = sum(an * bn for an, bn in zip(coord1.xyz, coord2.xyz))
-    return math.acos(max(-1.0, min(1.0, dot))) * EARTH_RADIUS_METERS
+    # For unit vectors, half the length of their difference is sin(theta/2) and half the
+    # length of their sum is cos(theta/2), so atan2 recovers the angle between them.
+    # Taking acos of their dot product is cheaper but loses nearly all precision for
+    # close coordinates - it reported a tenth of a meter between a coordinate and
+    # itself - and needs clamping to stay inside acos's domain.
+    half_chord = math.hypot(*(a - b for a, b in zip(coord1.xyz, coord2.xyz)))
+    half_sum = math.hypot(*(a + b for a, b in zip(coord1.xyz, coord2.xyz)))
+    return 2 * math.atan2(half_chord, half_sum) * EARTH_RADIUS_METERS
 
 
 def do_bounds_overlap(bounds1: Tuple[float, float], bounds2: Tuple[float, float]):

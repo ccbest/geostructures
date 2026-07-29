@@ -3,10 +3,15 @@ from datetime import datetime
 import pytest
 import shapely
 
+from pytest import approx
+
 from geostructures import MultiGeoPoint, GeoPoint, Coordinate, GeoCircle, GeoPolygon, FeatureCollection
+from geostructures.geodesic import distance_meters
 from geostructures.time import TimeInterval
 
-from tests.functions import geojson_round_trip, shapely_round_trip, wkt_round_trip
+from tests.functions import (
+    assert_coordinates_equal, geojson_round_trip, shapely_round_trip, wkt_round_trip,
+)
 
 
 
@@ -68,7 +73,13 @@ def test_multigeopoint_circumscribing_circle():
         GeoPoint(Coordinate(0., 0.)),
         GeoPoint(Coordinate(1., 1.))
     ])
-    assert mp.circumscribing_circle() == GeoCircle(Coordinate(0.5, 0.5), 78626.18767687456)
+    circle = mp.circumscribing_circle()
+    # Two points span a diameter, so the circle is centered between them; this used to
+    # measure out from the arithmetic centroid instead, giving radius 78626.18767687456
+    assert circle.radius == approx(78624.69063597199)
+    assert_coordinates_equal(circle.centroid, Coordinate(0.49996192, 0.50001904))
+    for point in mp.geoshapes:
+        assert distance_meters(point.centroid, circle.centroid) <= circle.radius + 1e-6
 
 
 def test_multigeopoint_convex_hull():

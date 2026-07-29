@@ -19,8 +19,7 @@ from geostructures._base import (
     PointLikeMixin, LineLikeMixin, SimpleShapeMixin
 )
 from geostructures.time import GEOTIME_TYPE
-from geostructures._geometry import convex_hull, polygon_centroid
-from geostructures.geodesic import distance_meters
+from geostructures._geometry import convex_hull, minimum_bounding_circle, polygon_centroid
 from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, PolygonBase
 from geostructures.utils.functions import get_dt_from_geojson_props
@@ -76,13 +75,12 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
         return [x.segments for x in self.geoshapes]
 
     def circumscribing_circle(self) -> 'GeoCircle':
-        centroid = self.centroid
-        max_dist = max(
-            distance_meters(coord, centroid)
-            for shape in self.geoshapes
-            for coord in shape.vertices
+        return GeoCircle(
+            *minimum_bounding_circle(
+                [coord for shape in self.geoshapes for coord in shape.vertices]
+            ),
+            dt=self.dt,
         )
-        return GeoCircle(centroid, max_dist, dt=self.dt)
 
     def convex_hull(self) -> GeoPolygon:
         return GeoPolygon(
@@ -280,12 +278,10 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
         ))
 
     def circumscribing_circle(self) -> 'GeoCircle':
-        centroid = self.centroid
-        max_dist = max(
-            distance_meters(point.centroid, centroid)
-            for point in self.geoshapes
+        return GeoCircle(
+            *minimum_bounding_circle([point.centroid for point in self.geoshapes]),
+            dt=self.dt,
         )
-        return GeoCircle(centroid, max_dist, dt=self.dt)
 
     def convex_hull(self, **_) -> GeoPolygon:
         return GeoPolygon(
@@ -482,13 +478,12 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
         return [x.bounding_edges(**kwargs) for x in self.geoshapes]
 
     def circumscribing_circle(self) -> 'GeoCircle':
-        centroid = self.centroid
-        max_dist = max(
-            distance_meters(x, centroid)
-            for poly in self.geoshapes
-            for x in poly.bounding_coords()
+        return GeoCircle(
+            *minimum_bounding_circle(
+                [coord for poly in self.geoshapes for coord in poly.bounding_coords()]
+            ),
+            dt=self.dt,
         )
-        return GeoCircle(centroid, max_dist, dt=self.dt)
 
     def convex_hull(self, **kwargs) -> GeoPolygon:
         return GeoPolygon(

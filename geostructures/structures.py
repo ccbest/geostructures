@@ -31,9 +31,8 @@ from geostructures.time import GEOTIME_TYPE
 from geostructures.coordinates import Coordinate
 from geostructures.geodesic import bearing_degrees, destination_point, distance_meters
 from geostructures._geometry import (
-    convert_trig_angle, circumscribing_circle_for_polygon,
-    do_edges_intersect, ensure_edge_bounds, is_counter_clockwise,
-    polygon_centroid,
+    convert_trig_angle, do_edges_intersect, ensure_edge_bounds,
+    is_counter_clockwise, minimum_bounding_circle, polygon_centroid,
 )
 from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
@@ -425,8 +424,7 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
         return self.outline
 
     def circumscribing_circle(self) -> 'GeoCircle':
-        ctr, rad = circumscribing_circle_for_polygon(self.outline[:-1], [])
-        return GeoCircle(cast(Coordinate, ctr), cast(float, rad), dt=self.dt)
+        return GeoCircle(*minimum_bounding_circle(self.outline[:-1]), dt=self.dt)
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         # First see if the point even falls inside the circumscribing rectangle
@@ -734,11 +732,7 @@ class GeoBox(PolygonBase):
         return self
 
     def circumscribing_circle(self) -> 'GeoCircle':
-        return GeoCircle(
-            self.centroid,
-            distance_meters(self.nw_bound, self.centroid),
-            dt=self.dt,
-        )
+        return GeoCircle(*minimum_bounding_circle(self.bounding_coords()[:-1]), dt=self.dt)
 
     def contains_coordinate(self, coord: Coordinate) -> bool:
         if not (
@@ -1289,17 +1283,7 @@ class GeoRing(PolygonBase):
 
     def circumscribing_circle(self) -> GeoCircle:
         if self.angle_max - self.angle_min < 360:
-            # declare as variable to avoid recomputing
-            _centroid = self.centroid
-
-            return GeoCircle(
-                _centroid,
-                max(
-                    distance_meters(x, _centroid)
-                    for x in self.bounding_coords()
-                ),
-                dt=self.dt,
-            )
+            return GeoCircle(*minimum_bounding_circle(self.bounding_coords()), dt=self.dt)
 
         return GeoCircle(self.centroid, self.outer_radius, dt=self.dt)
 
@@ -1458,9 +1442,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
         )
 
     def circumscribing_circle(self) -> GeoCircle:
-        centroid = self.centroid
-        max_dist = max(distance_meters(x, centroid) for x in self.vertices)
-        return GeoCircle(centroid, max_dist, dt=self.dt)
+        return GeoCircle(*minimum_bounding_circle(self.vertices), dt=self.dt)
 
     def circumscribing_rectangle(self) -> GeoBox:
         lons, lats = zip(*[y.to_float()[:2] for y in self.vertices])

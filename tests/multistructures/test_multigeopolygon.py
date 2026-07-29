@@ -3,10 +3,15 @@ from datetime import datetime
 import pytest
 import shapely
 
+from pytest import approx
+
 from geostructures import MultiGeoPolygon, GeoBox, Coordinate, GeoCircle, GeoPolygon, FeatureCollection
+from geostructures.geodesic import distance_meters
 from geostructures.time import TimeInterval
 
-from tests.functions import geojson_round_trip, shapely_round_trip, wkt_round_trip
+from tests.functions import (
+    assert_coordinates_equal, geojson_round_trip, shapely_round_trip, wkt_round_trip,
+)
 
 
 
@@ -87,7 +92,13 @@ def test_multigeoshape_circumscribing_circle():
     box1 = GeoBox(Coordinate(0., 1.), Coordinate(1., 0.))
     box2 = GeoBox(Coordinate(1., 2.), Coordinate(2., 1.))
     mp = MultiGeoPolygon([box1, box2])
-    assert mp.circumscribing_circle() == GeoCircle(Coordinate(1., 1.), 157249.38127194397)
+    circle = mp.circumscribing_circle()
+    # Previously measured from the centroid to the farthest coordinate (157249.38127194397)
+    assert circle.radius == approx(157237.40255043432)
+    assert_coordinates_equal(circle.centroid, Coordinate(0.99969529, 1.00015230))
+    for shape in mp.geoshapes:
+        for coord in shape.bounding_coords():
+            assert distance_meters(coord, circle.centroid) <= circle.radius + 1e-6
 
 
 def test_multigeoshape_copy():

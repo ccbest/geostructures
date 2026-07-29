@@ -5,7 +5,7 @@ from pytest import approx
 
 from geostructures import GeoBox, GeoCircle, GeoPolygon, GeoRing
 from geostructures.coordinates import Coordinate
-from geostructures.geodesic import destination_point
+from geostructures.geodesic import destination_point, distance_meters
 from geostructures.utils.functions import round_half_up
 
 from tests.functions import (
@@ -301,5 +301,9 @@ def test_georing_circumscribing_circle():
         round_half_up(circ.centroid.longitude, 8),
         round_half_up(circ.centroid.latitude, 8),
     )
-    assert_coordinates_equal(received_centroid, Coordinate(0.00444382, -0.00444382))
-    assert circ.radius == approx(707.1555054, abs=1e-6)
+    # Smallest circle enclosing the wedge's bounding coordinates; previously the
+    # centroid-to-farthest-coordinate circle, radius 707.1555054
+    assert_coordinates_equal(received_centroid, Coordinate(0.00449661, -0.00449661))
+    assert circ.radius == approx(707.1067797348085, abs=1e-6)
+    for coord in wedge.bounding_coords():
+        assert distance_meters(coord, circ.centroid) <= circ.radius + 1e-6

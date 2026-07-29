@@ -119,7 +119,9 @@ class Coordinate:
     @classmethod
     def _from_xyz(cls, xyz: List[float]):
         assert len(xyz) == 3
-        latitude = math.asin(xyz[2])
+        # Clamp to [-1, 1]; normalizing a vector can leave the z component a hair
+        # outside asin's domain
+        latitude = math.asin(max(-1.0, min(1.0, xyz[2])))
         longitude = math.atan2(xyz[1], xyz[0])
         return Coordinate(math.degrees(longitude), math.degrees(latitude))
 

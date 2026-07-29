@@ -3,12 +3,14 @@ from datetime import datetime
 
 import pytest
 import shapely
+from pytest import approx
 
 from geostructures import GeoBox, GeoCircle, GeoPolygon
+from geostructures._geometry import dist_xyz_meters
 from geostructures.coordinates import Coordinate
 
 from tests.functions import (
-    assert_shape_equivalence, default_test_datetime,
+    assert_coordinates_equal, assert_shape_equivalence, default_test_datetime,
     geojson_round_trip, shapely_round_trip, wkt_round_trip,
 )
 
@@ -177,6 +179,18 @@ def test_geobox_circumscribing_rectangle():
 
 def test_geobox_circumscribing_circle():
     box = GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0), dt=default_test_datetime)
-    assert box.circumscribing_circle() == GeoCircle(
-        Coordinate(0.5, 0.5), 78623.19385157603, dt=default_test_datetime
-    )
+    circle = box.circumscribing_circle()
+    assert circle.radius == approx(78624.69086394769)
+    assert_coordinates_equal(circle.centroid, Coordinate(0.5, 0.49998096))
+    assert circle.dt == box.dt
+
+    # Regression: the circle was previously centered on the box's centroid and measured
+    # out to a single corner, which at higher latitudes left the other corners outside
+    for corner_box in (
+        box,
+        GeoBox(Coordinate(0., 85.), Coordinate(60., 70.)),
+        GeoBox(Coordinate(-20., 80.), Coordinate(20., 20.)),
+    ):
+        circle = corner_box.circumscribing_circle()
+        for corner in corner_box.bounding_coords():
+            assert dist_xyz_meters(corner, circle.centroid) <= circle.radius + 1e-6
