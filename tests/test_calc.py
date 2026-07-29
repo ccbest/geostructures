@@ -1,12 +1,17 @@
 
 
+from pytest import approx
+
 from geostructures.calc import *
 from geostructures._geometry import *
 from geostructures.coordinates import Coordinate
+from geostructures.utils.functions import round_half_up
 
 
 def test_bearing_degrees():
-    assert bearing_degrees(Coordinate(0.0, 0.0), Coordinate(0.001, 0.001)) == 45.
+    # Unrounded by default, matching geodesic.bearing_degrees
+    assert bearing_degrees(Coordinate(0.0, 0.0), Coordinate(0.001, 0.001)) == 44.9999999956367
+    assert bearing_degrees(Coordinate(0.0, 0.0), Coordinate(0.001, 0.001), precision=5) == 45.
     assert bearing_degrees(Coordinate(0.0, 0.0), Coordinate(0.001, 0.001), precision=9) == 44.999999996
 
 
@@ -27,11 +32,17 @@ def test_haversine_distance_meters():
 
 
 def test_inverse_haversine_radians():
-    assert inverse_haversine_radians(Coordinate(0.0, 0.0), math.radians(45), 111_000) == Coordinate(0.7059029, 0.7058494)
+    # No longer quantized to seven decimal places on the way out
+    result = inverse_haversine_radians(Coordinate(0.0, 0.0), math.radians(45), 111_000)
+    assert result.longitude == approx(0.7059029, abs=1e-7)
+    assert result.latitude == approx(0.7058494, abs=1e-7)
+    assert result != Coordinate(0.7059029, 0.7058494)
 
 
 def test_inverse_haversine_degrees():
-    assert inverse_haversine_degrees(Coordinate(0.0, 0.0), 45., 111_000) == Coordinate(0.7059029, 0.7058494)
+    result = inverse_haversine_degrees(Coordinate(0.0, 0.0), 45., 111_000)
+    assert result.longitude == approx(0.7059029, abs=1e-7)
+    assert result.latitude == approx(0.7058494, abs=1e-7)
 
 
 def test_rotate_coordinates():

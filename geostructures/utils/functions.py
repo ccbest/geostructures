@@ -6,6 +6,7 @@ __all__ = [
 ]
 
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP, localcontext
 from typing import Dict, Any, Optional, Union, List
 
 from geostructures.utils.logging import warn_once
@@ -59,19 +60,34 @@ def get_dt_from_geojson_props(
 
 def round_half_up(value: float, precision) -> float:
     """
-    Rounds numbers to the nearest whole, where a value exactly between the two nearest
-    wholes is rounded to the higher whole.
+    Rounds a value to a given number of decimal places. A value exactly half way
+    between two candidates is rounded away from zero, so 0.5 rounds to 1.0 and -0.5
+    rounds to -1.0. This differs from the builtin round(), which rounds halves to the
+    nearest even candidate.
+
+    Rounding is applied to the decimal value the float displays as, not to its exact
+    binary expansion, so round_half_up(2.675, 2) is 2.68 rather than the 2.67 the
+    stored value 2.67499999999999982... would otherwise give.
 
     Args:
         value:
             The float value to be rounded
         precision:
-            The precision to round the float value to
+            The number of decimal places to round the float value to
 
+    Returns:
+        (float) the rounded value
     """
-    mod = value + 10 ** -(precision + 12)
-
-    return round(mod, precision)
+    with localcontext() as context:
+        # Wide enough that quantize never overflows the context for any value a float
+        # can hold, at any precision this library rounds to
+        context.prec = 60
+        return float(
+            Decimal(repr(value)).quantize(
+                Decimal(1).scaleb(-precision),
+                rounding=ROUND_HALF_UP,
+            )
+        )
 
 
 def sanitize_json(obj: Any):

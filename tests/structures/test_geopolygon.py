@@ -558,6 +558,28 @@ def test_geopolygon_point_on_horizontal_edge():
     assert not square.contains_coordinate(Coordinate(0.5, 0.))
 
 
+def test_geopolygon_edge_proximity_is_a_tolerance_not_a_grid():
+    square = GeoPolygon([
+        Coordinate(0., 0.), Coordinate(1., 0.), Coordinate(1., 1.),
+        Coordinate(0., 1.), Coordinate(0., 0.)
+    ])
+    ring = square.bounding_coords()
+
+    # Anything nearer the edge than the tolerance counts as on it, regardless of where
+    # the value falls relative to a rounding grid - the old snap-to-1e-10 approach gave
+    # different answers for equally-near points depending on their magnitude
+    for inset in (0., 1e-9, 1e-7, 5e-7):
+        probe = Coordinate(1. - inset, 0.5)
+        assert not GeoPolygon._point_in_polygon(probe, ring, False)
+        assert GeoPolygon._point_in_polygon(probe, ring, True)
+
+    # Further in than the tolerance is unambiguously contained
+    for inset in (1e-6, 1e-5, 1e-3):
+        probe = Coordinate(1. - inset, 0.5)
+        assert GeoPolygon._point_in_polygon(probe, ring, False)
+        assert GeoPolygon._point_in_polygon(probe, ring, True)
+
+
 def test_point_in_polygon_antimeridian_edges():
     # Call the ray-caster directly; contains_coordinate's bbox pre-filter
     # does not handle antimeridian-crossing polygons

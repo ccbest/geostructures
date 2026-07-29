@@ -2,6 +2,8 @@
 import pytest
 
 from geostructures import Coordinate
+from geostructures._const import COORDINATE_TOLERANCE
+from geostructures.utils.functions import round_half_up
 
 
 def test_coordinate_init():
@@ -76,10 +78,68 @@ def test_coordinate_from_mgrs():
     assert [round(x, 5) for x in Coordinate.from_mgrs('31NAA6602100000').to_float()] == [0., 0.]
 
 def test_coordinate_from_projection():
-    assert Coordinate.from_projection(2000,3000,'EPSG:3857') == Coordinate(0.017966, 0.026949)
+    # Reprojection is no longer quantized to six decimal places on the way out
+    assert Coordinate.from_projection(2000, 3000, 'EPSG:3857') == \
+        Coordinate(0.01796630568239043, 0.026949457529889528)
 
 def test_coordinate_to_projection():
-    assert Coordinate(0.017966, 0.026949).to_projection('EPSG:3857') == Coordinate(1999.965972, 2999.949068, _bounded=False)
+    assert Coordinate(0.017966, 0.026949).to_projection('EPSG:3857') == \
+        Coordinate(1999.9659715919531, 2999.9490680000413, _bounded=False)
+
+def test_coordinate_projection_round_trip_preserves_precision():
+    # Rounding used to make round trips of six-decimal input compare equal, at the cost
+    # of silently truncating anything finer - here, by about 1.2 centimeters
+    original = Coordinate(1.23456789, 2.34567891)
+    projected = original.to_projection('EPSG:3857')
+    returned = Coordinate.from_projection(projected.longitude, projected.latitude, 'EPSG:3857')
+
+    assert returned.is_close(original, abs_tol=1e-12)
+    assert round_half_up(returned.longitude, 8) == original.longitude
+    assert round_half_up(returned.latitude, 8) == original.latitude
+
+
+def test_coordinate_is_close():
+    base = Coordinate(1.0, 2.0)
+    assert base.is_close(Coordinate(1.0, 2.0))
+    assert base.is_close(Coordinate(1.0 + COORDINATE_TOLERANCE / 2, 2.0))
+    assert base.is_close(Coordinate(1.0, 2.0 - COORDINATE_TOLERANCE / 2))
+    assert not base.is_close(Coordinate(1.0 + COORDINATE_TOLERANCE * 2, 2.0))
+    assert not base.is_close(Coordinate(1.0, 2.0 + COORDINATE_TOLERANCE * 2))
+
+    # Tolerance is overridable in both directions
+    assert base.is_close(Coordinate(1.001, 2.0), abs_tol=1e-2)
+    assert not base.is_close(Coordinate(1.0 + 1e-9, 2.0), abs_tol=1e-12)
+
+    assert not base.is_close('not a coordinate')
+
+
+def test_coordinate_is_close_wraps_the_antimeridian():
+    # Either side of the antimeridian is a fraction of a millimeter apart, not 360 degrees
+    assert Coordinate(179.9999999, 0.).is_close(Coordinate(-180., 0.))
+    assert Coordinate(-179.9999999, 0.).is_close(Coordinate(180., 0.))
+    assert not Coordinate(179.9, 0.).is_close(Coordinate(-179.9, 0.))
+
+
+def test_coordinate_is_close_compares_z_and_m_strictly():
+    # A tolerance in degrees says nothing about a Z in meters or a caller-defined M
+    assert Coordinate(1., 2., z=5.).is_close(Coordinate(1., 2., z=5.))
+    assert not Coordinate(1., 2., z=5.).is_close(Coordinate(1., 2., z=5.000001))
+    assert not Coordinate(1., 2., z=5.).is_close(Coordinate(1., 2.))
+    assert not Coordinate(1., 2., m=1.).is_close(Coordinate(1., 2., m=2.))
+
+
+def test_coordinate_is_close_is_not_transitive():
+    # Documented behavior, and the reason this cannot be folded into __eq__: equality
+    # backing __hash__ has to be an equivalence relation, and this is not one
+    a = Coordinate(0., 0.)
+    b = Coordinate(COORDINATE_TOLERANCE * 0.6, 0.)
+    c = Coordinate(COORDINATE_TOLERANCE * 1.2, 0.)
+    assert a.is_close(b) and b.is_close(c)
+    assert not a.is_close(c)
+
+    # Equality itself stays exact, so hashing is unaffected
+    assert a != b
+    assert len({a, b, c}) == 3
 
 
 def test_coordinate_to_dms():

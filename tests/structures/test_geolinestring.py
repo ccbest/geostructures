@@ -81,14 +81,15 @@ def test_geolinestring_length():
 
 
 def test_geolinestring_centroid():
+    # The centroid is no longer quantized to seven decimal places on the way out
     ls = GeoLineString([Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0)])
-    assert ls.centroid == Coordinate(0.6666667, 0.3333333)
+    assert_coordinates_equal(ls.centroid, Coordinate(2 / 3, 1 / 3), abs_tol=1e-15)
 
     # Regression: Z/M-carrying vertices previously crashed centroid
     ls = GeoLineString([
         Coordinate(0.0, 0.0, z=1., m=2.), Coordinate(1.0, 0.0, z=1.), Coordinate(1.0, 1.0, z=1.),
     ])
-    assert ls.centroid == Coordinate(0.6666667, 0.3333333)
+    assert_coordinates_equal(ls.centroid, Coordinate(2 / 3, 1 / 3), abs_tol=1e-15)
 
 
 def test_geolinestring_contains_dunder():

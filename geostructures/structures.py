@@ -22,6 +22,7 @@ import numpy as np
 from pydantic import validate_call
 
 from geostructures import LOGGER
+from geostructures._const import COORDINATE_TOLERANCE
 from geostructures._base import (
     _RE_COORD, _RE_LINEAR_RING, _RE_POINT_WKT, _RE_POLYGON_WKT,
     _RE_LINESTRING_WKT, BaseShape, LineLikeMixin, PointLikeMixin, PolygonLikeMixin,
@@ -34,7 +35,7 @@ from geostructures._geometry import (
     convert_trig_angle, do_edges_intersect, ensure_edge_bounds,
     is_counter_clockwise, minimum_bounding_circle, polygon_centroid,
 )
-from geostructures.utils.functions import round_half_up, get_dt_from_geojson_props, is_sub_list
+from geostructures.utils.functions import get_dt_from_geojson_props, is_sub_list
 from geostructures.utils.logging import warn_once
 from geostructures.utils.conditional_imports import import_optional
 
@@ -400,14 +401,11 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
                 continue
 
             # Longitude at which the edge's line crosses the test latitude
-            lon_cross = round_half_up(
-                lon_a + (test_lat - lat_a) * (lon_b - lon_a) / (lat_b - lat_a),
-                10
-            )
+            lon_cross = lon_a + (test_lat - lat_a) * (lon_b - lon_a) / (lat_b - lat_a)
 
             if (
                 min(lat_a, lat_b) <= test_lat <= max(lat_a, lat_b)
-                and lon_cross == round_half_up(p_lon, 10)
+                and math.isclose(lon_cross, p_lon, abs_tol=COORDINATE_TOLERANCE)
             ):
                 # Test point lies on this edge
                 return include_boundary
@@ -709,8 +707,8 @@ class GeoBox(PolygonBase):
         _se = self.se_bound.to_float()
         z = self.nw_bound.z if self.nw_bound.z is not None else self.se_bound.z
         return Coordinate(
-            round_half_up(statistics.mean([_nw[0], _se[0]]), 7),
-            round_half_up(statistics.mean([_nw[1], _se[1]]), 7),
+            statistics.mean([_nw[0], _se[0]]),
+            statistics.mean([_nw[1], _se[1]]),
             z=z
         )
 
@@ -1414,7 +1412,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
     def centroid(self) -> Coordinate:
         # Slice to lon/lat; to_float() may also carry Z/M values
         lon, lat = [
-            round_half_up(statistics.mean(x), 7)
+            statistics.mean(x)
             for x in zip(*[y.to_float()[:2] for y in self.vertices])
         ]
         return Coordinate(lon, lat)

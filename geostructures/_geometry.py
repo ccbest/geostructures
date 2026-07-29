@@ -8,9 +8,8 @@ from typing import List, Sequence, Tuple, Optional, cast, Set
 import numpy as np
 from numpy.linalg import norm
 
-from geostructures._const import EARTH_RADIUS_METERS
+from geostructures._const import COORDINATE_TOLERANCE, EARTH_RADIUS_METERS
 from geostructures.coordinates import Coordinate
-from geostructures.utils.functions import round_half_up
 from geostructures.utils.logging import warn_once
 
 
@@ -541,10 +540,11 @@ def find_line_intersection(
     ) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         """Organizes line bounding points into min/max x and y values"""
         x_sort, y_sort = sorted([line[0][0], line[1][0]]), sorted([line[0][1], line[1][1]])
-        return (
-            (round_half_up(x_sort[0], 10), round_half_up(x_sort[1], 10)),
-            (round_half_up(y_sort[0], 10), round_half_up(y_sort[1], 10)),
-        )
+        return (x_sort[0], x_sort[1]), (y_sort[0], y_sort[1])
+
+    def within_bounds(value: float, bounds: Tuple[float, float]) -> bool:
+        """Tests a value against a min/max pair, tolerant of coordinate-level error"""
+        return bounds[0] - COORDINATE_TOLERANCE <= value <= bounds[1] + COORDINATE_TOLERANCE
 
     # Adjust lines if they cross the antimeridian
     line1 = ensure_edge_bounds(line1[0], line1[1])
@@ -576,20 +576,24 @@ def find_line_intersection(
         return None
 
     d = (det(*line1_flt), det(*line2_flt))
-    x_intersection = round_half_up(det(d, xdiff) / div, 10)
-    y_intersection = round_half_up(det(d, ydiff) / div, 10)
+    x_intersection = det(d, xdiff) / div
+    y_intersection = det(d, ydiff) / div
 
     if (
-        line1_bounds[0][0] <= x_intersection <= line1_bounds[0][1] and
-        line2_bounds[0][0] <= x_intersection <= line2_bounds[0][1] and
-        line1_bounds[1][0] <= y_intersection <= line1_bounds[1][1] and
-        line2_bounds[1][0] <= y_intersection <= line2_bounds[1][1]
+        within_bounds(x_intersection, line1_bounds[0]) and
+        within_bounds(x_intersection, line2_bounds[0]) and
+        within_bounds(y_intersection, line1_bounds[1]) and
+        within_bounds(y_intersection, line2_bounds[1])
     ):
         return (
             Coordinate(x_intersection, y_intersection),
 
             # If intersecting point is a line endpoint, is a boundary intersection
-            (x_intersection, y_intersection) in (*line1_flt, *line2_flt)
+            any(
+                math.isclose(x_intersection, endpoint[0], abs_tol=COORDINATE_TOLERANCE)
+                and math.isclose(y_intersection, endpoint[1], abs_tol=COORDINATE_TOLERANCE)
+                for endpoint in (*line1_flt, *line2_flt)
+            )
         )
 
     return None

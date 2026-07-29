@@ -29,8 +29,9 @@ def bearing_degrees(coord1: Coordinate, coord2: Coordinate, **kwargs) -> float:
             The finish point Coordinate
 
     Keyword Args:
-        precision: (int) (Default 5)
-            The decimal precision to round the resulting bearing to
+        precision: (int) (Optional)
+            The number of decimal places to round the resulting bearing to. If not
+            given, the bearing is returned unrounded.
 
     Returns:
         (float) the bearing in degrees
@@ -51,7 +52,8 @@ def bearing_degrees(coord1: Coordinate, coord2: Coordinate, **kwargs) -> float:
         math.radians(d_lon)
     )
     bearing = (math.degrees(math.atan2(x_val, y_val)) + 360) % 360
-    return round_half_up(bearing, kwargs.get('precision', 5))
+    precision = kwargs.get('precision')
+    return bearing if precision is None else round_half_up(bearing, precision)
 
 
 def haversine_distance_meters(coord1: Coordinate, coord2: Coordinate) -> float:
@@ -154,10 +156,7 @@ def inverse_haversine_radians(
         math.sin(angle_radians) * math.sin(_rad) * math.cos(y0),
         math.cos(_rad) - math.sin(y0) * math.sin(final_lat),
     )
-    final_lat = round_half_up(final_lat * 180 / math.pi, 7)
-    final_lon = round_half_up(final_lon * 180 / math.pi, 7)
-
-    return Coordinate(final_lon, final_lat, z=start.z)
+    return Coordinate(final_lon * 180 / math.pi, final_lat * 180 / math.pi, z=start.z)
 
 
 def rotate_coordinates(

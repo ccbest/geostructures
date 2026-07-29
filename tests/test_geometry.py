@@ -7,7 +7,7 @@ import sys
 from pytest import approx
 import pytest
 
-from geostructures._const import EARTH_RADIUS_METERS
+from geostructures._const import COORDINATE_TOLERANCE, EARTH_RADIUS_METERS
 from geostructures._geometry import *
 from geostructures._geometry import _circumcircle, _diameter_circle
 from geostructures.coordinates import Coordinate
@@ -239,6 +239,32 @@ def test_find_line_intersection():
     line1 = (Coordinate(5.0, 4.0), Coordinate(5.0, 4.0))
     line2 = (Coordinate(1.0, 2.0), Coordinate(2.0, 1.0))
     assert not find_line_intersection(line1, line2)
+
+
+def test_find_line_intersection_boundary_with_z():
+    # Regression: the boundary flag compared a (lon, lat) pair against whole to_float()
+    # tuples, which carry Z when present - so a Z-carrying endpoint never matched
+    line1 = (Coordinate(0.0, 1.0, z=5.), Coordinate(1.0, 0.0, z=5.))
+    line2 = (Coordinate(1.0, 0.0, z=7.), Coordinate(2.0, 0.0, z=7.))
+    coord, is_boundary = find_line_intersection(line1, line2)
+    assert_coordinates_equal(coord, Coordinate(1.0, 0.0))
+    assert is_boundary
+
+
+def test_find_line_intersection_tolerance():
+    # An endpoint touch that misses by less than the coordinate tolerance still counts
+    # as a boundary intersection, rather than depending on where the values happen to
+    # sit relative to a rounding grid
+    line1 = (Coordinate(0.0, 1.0), Coordinate(1.0, 0.0))
+    line2 = (Coordinate(1.0 - COORDINATE_TOLERANCE / 10, 0.0), Coordinate(2.0, 0.0))
+    result = find_line_intersection(line1, line2)
+    assert result is not None
+    assert result[1]
+
+    # A gap comfortably wider than the tolerance does not
+    line2 = (Coordinate(1.0 + COORDINATE_TOLERANCE * 100, 0.0), Coordinate(2.0, 0.0))
+    result = find_line_intersection(line1, line2)
+    assert result is None or not result[1]
 
     # In bounds and not parallel but no intersection
     line1 = (Coordinate(0.0, 0.0), Coordinate(0.5, 0.5))

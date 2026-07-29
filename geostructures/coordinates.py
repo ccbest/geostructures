@@ -7,6 +7,7 @@ __all__ = ['Coordinate']
 import math
 from typing import List, Optional, Tuple, Union
 
+from geostructures._const import COORDINATE_TOLERANCE
 from geostructures.utils.functions import round_half_up
 from geostructures.utils.conditional_imports import import_optional
 from geostructures.utils.logging import warn_once
@@ -178,7 +179,7 @@ class Coordinate:
         import_optional('pyproj')
         from pyproj import Transformer
         lon, lat = Transformer.from_crs(crs, "EPSG:4326", always_xy=True).transform(lon, lat)
-        return Coordinate(round_half_up(lon, 6), round_half_up(lat, 6))
+        return Coordinate(lon, lat)
 
     @classmethod
     def from_qdms(cls, lon: str, lat: str):
@@ -234,6 +235,52 @@ class Coordinate:
             z_map = dict(zip(list(zm_order.lower()), zm_vals))
             z, m = z_map.get("z"), z_map.get("m")
         return Coordinate(lon, lat, z=z, m=m)
+
+    def is_close(self, other: 'Coordinate', abs_tol: float = COORDINATE_TOLERANCE) -> bool:
+        """
+        Tests whether another coordinate is near enough to this one to be treated as
+        the same point.
+
+        Unlike equality, which is exact, this is a tolerance test - use it when
+        comparing coordinates that have been through a calculation, a reprojection, or
+        a serialization round trip, where the last few decimal places will not survive.
+
+        Note that approximate closeness is not transitive: a may be close to b, and b
+        close to c, while a and c are not. That is why this is a separate method rather
+        than the behavior of ==, which has to stay exact to keep Coordinates hashable.
+
+        Longitude and latitude are compared within abs_tol, wrapping across the
+        antimeridian so that 179.9999999 and -180.0 read as the same point. Z and M are
+        compared strictly, because a tolerance in degrees says nothing about a value in
+        meters or in whatever unit the caller has put in M.
+
+        Because the tolerance is an angle, the distance it corresponds to shrinks with
+        latitude - this test is stricter nearer the poles, never looser. Coordinates
+        sitting on a pole with differing longitudes describe the same point but are not
+        reported as close.
+
+        Args:
+            other:
+                The Coordinate to compare against
+
+            abs_tol: (float)
+                How far apart, in degrees, the two may be. Defaults to roughly 11
+                centimeters at the equator - the same tolerance geometric predicates
+                use to decide whether a point lies on a shape's edge.
+
+        Returns:
+            bool
+        """
+        if not isinstance(other, Coordinate):
+            return False
+
+        if self.z != other.z or self.m != other.m:
+            return False
+
+        # Shortest way around the globe, so coordinates either side of the antimeridian
+        # are measured across it rather than the long way around
+        lon_delta = abs((self.longitude - other.longitude + 180) % 360 - 180)
+        return lon_delta <= abs_tol and abs(self.latitude - other.latitude) <= abs_tol
 
     def to_dms(self) -> Tuple[Tuple[int, int, float, str], Tuple[int, int, float, str]]:
         """
@@ -317,7 +364,7 @@ class Coordinate:
         lon, lat = Transformer.from_crs("EPSG:4326", crs, always_xy=True).transform(
             self.longitude, self.latitude
         )
-        return Coordinate(round_half_up(lon, 6), round_half_up(lat, 6), _bounded=False)
+        return Coordinate(lon, lat, _bounded=False)
 
     def to_qdms(self, reverse: bool = False) -> Tuple[str, str]:
         """

@@ -37,6 +37,20 @@ to [Semantic Versioning](https://semver.org/).
   product, which loses nearly all precision for close coordinates — it reported
   about a tenth of a meter between a coordinate and itself. It now recovers the
   angle with `atan2`, which is well-conditioned across the whole range.
+- **`round_half_up` actually rounds halves up now.** It nudged values by a fixed
+  `10 ** -(precision + 12)` before deferring to `round()`. That epsilon falls
+  below the float's own spacing as the value grows, so the rounding mode changed
+  silently with the magnitude of the input — at the precisions this library uses
+  for coordinates, centroids, and geometric predicates it never took effect at
+  all, leaving plain banker's rounding behind a function named for the opposite.
+  It is now exact, and rounds halves **away from zero** rather than toward
+  positive infinity, so `round_half_up(-0.5, 0)` is `-1.0` where it was `-0.0`.
+  The previous direction quietly biased western longitudes and southern
+  latitudes against their positive counterparts.
+- **Boundary intersections are detected when Z values are present.**
+  `find_line_intersection` compared a `(lon, lat)` pair against whole
+  `to_float()` tuples, which carry Z when set, so a Z-carrying endpoint could
+  never register as a boundary intersection.
 
 ### ⚠️ Behavior Changes
 
@@ -50,6 +64,53 @@ to [Semantic Versioning](https://semver.org/).
   boundary coordinates would be smaller than the shape itself. Coordinates
   spanning more than a hemisphere cannot be covered by a spherical cap, and fall
   back to an enclosing but non-minimal circle with a warning.
+- **Geometric predicates use an explicit tolerance instead of rounding.**
+  `find_line_intersection` and the point-in-polygon ray caster snapped values to
+  ten decimal places to absorb float error. Rounding is a grid rather than a
+  tolerance, so two values the same tiny distance apart compared equal or
+  unequal depending on which side of a grid line they happened to fall on. Both
+  now compare against `COORDINATE_TOLERANCE` (1e-6 degrees, roughly 11 cm at the
+  equator, matching the six decimal places coordinates are normalized to
+  elsewhere). Points nearer an edge than that are treated as lying on it.
+- **Computed values are no longer quantized unless you ask.** Functions that
+  return values now keep their full precision by default; only functions that
+  return formatted strings (`Coordinate.to_dms`, `to_qdms`) still round, because
+  their output format requires a fixed number of digits.
+  - `GeoBox.centroid` and `GeoLineString.centroid` rounded to seven decimal
+    places, discarding roughly a centimeter of real precision and disagreeing
+    with `GeoPolygon.centroid`, which never rounded.
+  - `calc.bearing_degrees`' `precision` keyword now defaults to `None`, meaning
+    no rounding, rather than `5`. Its output is now identical to that of its
+    replacement, `geodesic.bearing_degrees`, so migrating no longer changes
+    results. Pass `precision=5` to restore the old value.
+  - `calc.inverse_haversine_radians` and `calc.inverse_haversine_degrees` no
+    longer round to seven decimal places.
+
+  - `Coordinate.to_projection` and `Coordinate.from_projection` no longer round
+    to six decimal places. That constant was applied in the target CRS's own
+    units, so it meant a micrometer in EPSG:3857 but eleven centimeters in a
+    degree-based CRS like EPSG:4269. Reprojecting a coordinate with more than
+    six decimal places used to discard up to 5.6 cm irrecoverably.
+
+  `Coordinate.from_qdms` still rounds to six decimal places, matching the
+  resolution its `DDDMMSSHH` input format can actually carry.
+
+  **If you compared reprojected coordinates with `==`**, that comparison
+  succeeded before only because both sides had been quantized onto the same
+  6-decimal grid, and it silently failed for any input finer than that. Use the
+  new `Coordinate.is_close` instead, or call `round_half_up(value, 6)` yourself
+  to opt back into the old precision.
+
+### Features
+
+- **`Coordinate.is_close(other, abs_tol=...)`** — a tolerance-based comparison
+  for coordinates that have been through a calculation, a reprojection, or a
+  serialization round trip. Longitude and latitude are compared within
+  `abs_tol` (defaulting to the same tolerance geometric predicates use to decide
+  whether a point lies on an edge), wrapping across the antimeridian; Z and M
+  are compared strictly, since a tolerance in degrees says nothing about a value
+  in meters. `==` remains exact — approximate closeness is not transitive, so it
+  cannot back `__hash__`.
 - **`bounding_edges` no longer emits a zero-length closing edge.** Because
   `bounding_coords` is self-closing, the boundary was closed a second time,
   producing a final `(first_coord, first_coord)` edge. An *n*-coordinate ring

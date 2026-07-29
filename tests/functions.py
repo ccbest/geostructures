@@ -32,25 +32,16 @@ def assert_coordinates_equal(c1: Coordinate, c2: Coordinate, abs_tol=1e-7):
     """
     Asserts that two coordinates are equal within a specified absolute tolerance.
 
+    Delegates to Coordinate.is_close so the test suite and the library agree on what
+    "near enough to be the same point" means; this only adds the failure message.
+
     Args:
         c1: The first Coordinate
         c2: The second Coordinate
         abs_tol: The absolute tolerance for floating point comparison.
                  Default is 1e-7 (approx 1.1cm at the equator).
     """
-    # Compare Longitude and Latitude using approximate equality
-    try:
-        assert c1.longitude == approx(c2.longitude, abs=abs_tol)
-        assert c1.latitude == approx(c2.latitude, abs=abs_tol)
-
-        # Strictly compare Z and M (usually integers or explicit floats that shouldn't drift)
-        # If these are calculated values, use approx for them as well.
-        assert c1.z == c2.z
-        assert c1.m == c2.m
-    except AssertionError as e:
-        print(c1.longitude, c1.latitude)
-        print(c2.longitude, c2.latitude)
-        raise e
+    assert c1.is_close(c2, abs_tol=abs_tol), f'{c1!r} is not within {abs_tol} of {c2!r}'
 
 
 def assert_multishapes_equal(m1: MultiShape, m2: MultiShape):
