@@ -469,7 +469,7 @@ By default, geostructures will use Haversine formulae for geodesic calculations.
 
 ```python
 from geostructures import Coordinate
-from geostructures.calc import *
+from geostructures.calc import rotate_coordinates
 from geostructures.geodesic import (
     set_geodesic_algorithm,
     haversine_distance, vincenty_distance, karney_distance,

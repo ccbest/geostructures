@@ -5,6 +5,40 @@ to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### ⚠️ Breaking API Changes
+
+- **The deprecated geodesic functions in `geostructures.calc` have been
+  removed.** They were deprecated with a runtime warning in 0.14.0 and carried
+  their own copies of the geodesic formulas, which had drifted from the
+  maintained implementations in `geostructures.geodesic`.
+
+  | Removed | Replacement |
+  | --- | --- |
+  | `calc.bearing_degrees` | `geodesic.bearing_degrees` |
+  | `calc.haversine_distance_meters` | `geodesic.distance_meters` |
+  | `calc.inverse_haversine_degrees` | `geodesic.destination_point` |
+  | `calc.inverse_haversine_radians` | `geodesic.destination_point` |
+
+  `calc.rotate_coordinates` is unaffected and stays where it is.
+
+  Two differences to be aware of when migrating:
+
+  - The replacements dispatch on the algorithm selected with
+    `set_geodesic_algorithm` (Haversine by default), where the removed
+    functions were always spherical Haversine. Call `geodesic.haversine_*`
+    directly to pin the old behavior.
+  - **`destination_point` does not carry the starting coordinate's Z value
+    through to the result, where `inverse_haversine_*` did.** If you relied on
+    that, set it on the result yourself. This difference is deliberate: shapes
+    with curved boundaries derive their `bounding_coords` from
+    `destination_point` around a center, and those coordinates are required to
+    stay 2D so that WKT Z/M designators reflect what is actually emitted.
+
+  `calc.bearing_degrees` already produced results identical to
+  `geodesic.bearing_degrees` as of the rounding changes below, and
+  `haversine_distance_meters` matches `geodesic.haversine_distance` to within
+  floating point noise, so neither of those swaps changes values.
+
 ### Fixed
 
 - **Zero-area polygons no longer crash `centroid`.** `GeoPolygon.centroid` and
