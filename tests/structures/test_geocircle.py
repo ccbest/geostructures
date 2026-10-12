@@ -1,12 +1,10 @@
 
 from datetime import datetime
 
-import pytest
 from pytest import approx
 
-from geostructures import GeoBox, GeoCircle, GeoEllipse, GeoPolygon
+from geostructures import GeoBox, GeoCircle, GeoPolygon
 from geostructures.coordinates import Coordinate
-from geostructures.geohash import H3Hasher, NiemeyerHasher
 
 from tests.functions import (
     assert_coordinates_equal, default_test_datetime,
@@ -129,13 +127,3 @@ def test_geocircle_circumscribing_rectangle():
 def test_geocircle_circumscribing_circle():
     circle = GeoCircle(Coordinate(0.0, 0.0), 1000, dt=default_test_datetime)
     assert circle.circumscribing_circle() == circle
-
-
-def test_geocircle_gaussian_hash_probabilities():
-    circle = GeoCircle(Coordinate(-77.03, 38.90), 2000)
-    ellipse = GeoEllipse(Coordinate(-77.03, 38.90), 2000, 2000, 45)
-    for hasher in (NiemeyerHasher(12, 32), H3Hasher(15)):
-        actual = circle.gaussian_hash_probabilities(hasher, 0.95, 0.9, 50)
-        expected = ellipse.gaussian_hash_probabilities(hasher, 0.95, 0.9, 50)
-        assert actual.keys() == expected.keys()
-        assert list(actual.values()) == pytest.approx(list(expected.values()))

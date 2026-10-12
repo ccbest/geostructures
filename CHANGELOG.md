@@ -181,6 +181,17 @@ to [Semantic Versioning](https://semver.org/).
 
 ### Features
 
+- **`HasherBase.hash_gaussian(shape, contour, mass, max_hashes)`** — treats a
+  `GeoCircle` or `GeoEllipse` as the `contour` probability contour of a 2-D
+  Gaussian (e.g. `0.95` for a 95% confidence ellipse) and returns the most
+  probable geohashes holding at least `mass` of its probability, as
+  `{geohash: probability}`. Starts at the hasher's resolution and coarsens as
+  needed to return no more than `max_hashes` geohashes, falling back to
+  `{'': 1.}` (the whole globe) if even the coarsest resolution needs more.
+  Supported by `H3Hasher` and `NiemeyerHasher`, which gain `coarsen()`,
+  `get_cell_boundary()` and `get_neighbors()` to support it.
+- **`H3Hasher` accepts resolution 0.** The base cells were rejected as though no
+  resolution had been given.
 - **`Coordinate.is_close(other, abs_tol=...)`** — a tolerance-based comparison
   for coordinates that have been through a calculation, a reprojection, or a
   serialization round trip. Longitude and latitude are compared within

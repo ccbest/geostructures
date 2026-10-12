@@ -457,6 +457,12 @@ hasher = NiemeyerHasher(length=8, base=16)
 set_of_geohashes = hasher.hash_shape(box)
 geobox = niemeyer_to_geobox(set_of_geohashes.pop(), base=16)
 hashmap = hasher.hash_collection(collection)
+
+# Treat a circle or ellipse as the 95% contour of a 2-D Gaussian, and return the most
+# probable geohashes holding 90% of its probability as { geohash: probability }.
+# Coarsens the resolution as needed to return no more than 50 geohashes.
+ellipse = GeoEllipse(Coordinate(-0.131092, 51.509865), semi_major=500, semi_minor=200, rotation=45)
+heatmap = H3Hasher(resolution=12).hash_gaussian(ellipse, contour=0.95, mass=0.9, max_hashes=50)
 ```
 
 #### Geodesics and Transformations
