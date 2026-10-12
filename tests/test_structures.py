@@ -1,11 +1,14 @@
+import math
 from datetime import datetime, timezone
 import pytest
 import shapely
 from shapely import wkt
 
 from geostructures.structures import *
+from geostructures._geometry import gaussian_probability_in_polygons
 from geostructures.calc import inverse_haversine_degrees
 from geostructures.coordinates import Coordinate
+from geostructures.geohash import H3Hasher, NiemeyerHasher
 from geostructures.multistructures import *
 from geostructures.utils.functions import round_half_up
 from geostructures.time import TimeInterval
@@ -901,6 +904,16 @@ def test_geocircle_copy():
     assert circle is not circle_copy
 
 
+def test_geocircle_gaussian_hash_probabilities():
+    circle = GeoCircle(Coordinate(-77.03, 38.90), 2000)
+    ellipse = GeoEllipse(Coordinate(-77.03, 38.90), 2000, 2000, 45)
+    for hasher in (NiemeyerHasher(12, 32), H3Hasher(15)):
+        actual = circle.gaussian_hash_probabilities(hasher, 0.95, 0.9, 50)
+        expected = ellipse.gaussian_hash_probabilities(hasher, 0.95, 0.9, 50)
+        assert actual.keys() == expected.keys()
+        assert list(actual.values()) == pytest.approx(list(expected.values()))
+
+
 def test_geocircle_linear_rings(geocircle):
     rings = geocircle.linear_rings()
     assert rings == [geocircle.bounding_coords()]
@@ -994,6 +1007,68 @@ def test_geoellipse_copy():
     # Assert equality but different pointer
     assert ellipse == ellipse_copy
     assert ellipse is not ellipse_copy
+
+
+def test_geoellipse_gaussian_hash_probabilities():
+    import h3
+
+    ellipse = GeoEllipse(Coordinate(-77.03, 38.90), 2000, 800, 30)
+
+    # Achievable at the hasher's resolution
+    hasher = NiemeyerHasher(6, 32)
+    expected = ellipse.gaussian_hash_probabilities(hasher, 0.95, 0.9, 50)
+    assert 1 < len(expected) <= 50
+    assert all(len(x) == 6 for x in expected)
+    assert sum(expected.values()) >= 0.9
+    # The least probable hash was required to reach the mass
+    assert sum(expected.values()) - min(expected.values()) < 0.9
+
+    # Hashes are selected most probable first
+    k = math.sqrt(-2 * math.log(1 - 0.95))
+    neighbors = [y for x in expected for y in hasher.get_neighbors(x) if y not in expected]
+    neighbor_probs = gaussian_probability_in_polygons(
+        [hasher.get_cell_boundary(x) for x in neighbors],
+        ellipse.center, 2000 / k, 800 / k, 30
+    )
+    assert min(expected.values()) >= max(neighbor_probs)
+
+    # Requires coarsening
+    assert ellipse.gaussian_hash_probabilities(NiemeyerHasher(12, 32), 0.95, 0.9, 50) == expected
+
+    actual = ellipse.gaussian_hash_probabilities(H3Hasher(15), 0.95, 0.9, 50)
+    assert len(actual) <= 50
+    assert {h3.get_resolution(x) for x in actual} == {9}
+    assert sum(actual.values()) >= 0.9
+
+    actual = ellipse.gaussian_hash_probabilities(H3Hasher(15), 0.95, 0.9, 1)
+    assert len(actual) == 1
+    assert sum(actual.values()) >= 0.9
+
+    # A larger contour means a tighter distribution, so fewer hashes are required
+    actual = ellipse.gaussian_hash_probabilities(hasher, 0.99, 0.9, 50)
+    assert len(actual) < len(expected)
+
+    # Centered on the corner of the four coarsest geohashes, so coarsens past them
+    assert GeoEllipse(Coordinate(0., 0.), 2000, 800, 30).gaussian_hash_probabilities(
+        NiemeyerHasher(3, 32), 0.95, 0.9, 1
+    ) == {'': 1.}
+    # Centered on a corner of resolution 1 cells, but within a base cell
+    lat, lon = h3.vertex_to_latlng(h3.cell_to_vertexes(h3.latlng_to_cell(0., 0., 1))[0])
+    actual = GeoEllipse(Coordinate(lon, lat), 2000, 800, 30).gaussian_hash_probabilities(
+        H3Hasher(3), 0.95, 0.9, 1
+    )
+    assert list(actual) == ['8083fffffffffff']
+    assert actual['8083fffffffffff'] == pytest.approx(1.)
+
+    # Centered on a corner of base cells
+    lat, lon = h3.vertex_to_latlng(h3.cell_to_vertexes(h3.latlng_to_cell(0., 0., 0))[0])
+    assert GeoEllipse(Coordinate(lon, lat), 2000, 800, 30).gaussian_hash_probabilities(
+        H3Hasher(3), 0.95, 0.9, 1
+    ) == {'': 1.}
+
+    for contour, mass, max_hashes in ((0., 0.9, 1), (1., 0.9, 1), (0.95, 0., 1), (0.95, 1., 1), (0.95, 0.9, 0)):
+        with pytest.raises(ValueError):
+            ellipse.gaussian_hash_probabilities(hasher, contour, mass, max_hashes)
 
 
 def test_geoellipse_linear_rings(geoellipse):

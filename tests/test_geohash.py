@@ -6,7 +6,7 @@ from geostructures import *
 from geostructures.collections import FeatureCollection
 from geostructures.geohash import (
     _coord_to_niemeyer, _get_niemeyer_subhashes, h3_to_geopolygon, niemeyer_to_geobox,
-    H3Hasher, NiemeyerHasher
+    H3Hasher, HasherBase, NiemeyerHasher
 )
 from geostructures.time import TimeInterval
 from geostructures.utils.agg_functions import *
@@ -45,6 +45,50 @@ def test_niemeyer_to_geobox():
     with pytest.raises(ValueError):
         # Character not in base charset
         _ = niemeyer_to_geobox('95555659z', 16)
+
+
+def test_hasherbase_unsupported():
+    class _Hasher(HasherBase):
+        def hash_collection(self, collection, **kwargs):
+            return {}
+
+        def hash_shape(self, shape, **kwargs):
+            return set()
+
+    hasher = _Hasher()
+    with pytest.raises(NotImplementedError):
+        hasher.coarsen()
+
+    with pytest.raises(NotImplementedError):
+        hasher.get_cell_boundary('a')
+
+    with pytest.raises(NotImplementedError):
+        hasher.get_neighbors('a')
+
+
+def test_h3hasher_coarsen():
+    assert H3Hasher(5).coarsen().resolution == 4
+    assert H3Hasher(1).coarsen().resolution == 0
+    assert H3Hasher(0).coarsen() is None
+
+    with pytest.raises(ValueError):
+        H3Hasher().coarsen()
+
+    # Resolution 0 (the base cells) is valid
+    assert H3Hasher(0).hash_shape(GeoPoint(Coordinate(0., 0.))) == {'8075fffffffffff'}
+
+
+def test_h3hasher_get_cell_boundary():
+    assert H3Hasher(7).get_cell_boundary('87195da49ffffff') == h3_to_geopolygon('87195da49ffffff').bounding_coords()
+
+
+def test_h3hasher_get_neighbors():
+    import h3
+
+    actual = H3Hasher(7).get_neighbors('87195da49ffffff')
+    assert len(actual) == 6
+    assert '87195da49ffffff' not in actual
+    assert all(h3.are_neighbor_cells(x, '87195da49ffffff') for x in actual)
 
 
 def test_h3hasher_hash_coordinates():
@@ -173,6 +217,23 @@ def test_hash_collection_with_unique_entities():
         '89754a9325bffff': 1,
         '89754e6499bffff': 1
     }
+
+def test_niemeyer_coarsen():
+    actual = NiemeyerHasher(5, 32).coarsen()
+    assert actual.length == 4
+    assert actual.base == 32
+    assert NiemeyerHasher(1, 32).coarsen() is None
+
+
+def test_niemeyer_get_cell_boundary():
+    assert NiemeyerHasher(4, 32).get_cell_boundary('9q8y') == niemeyer_to_geobox('9q8y', 32).bounding_coords()
+
+
+def test_niemeyer_get_neighbors():
+    actual = NiemeyerHasher(4, 32).get_neighbors('9q8y')
+    assert len(actual) == 8
+    assert actual == set(NiemeyerHasher._get_surrounding('9q8y', 32))
+
 
 def test_niemeyer_hash_collection():
     hasher = NiemeyerHasher(8, 16)

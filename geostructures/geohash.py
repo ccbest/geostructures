@@ -282,6 +282,42 @@ class HasherBase(abc.ABC):
     Base class for all geohasher objects.
     """
 
+    def coarsen(self) -> Optional['HasherBase']:
+        """
+        Returns an equivalent hasher one resolution level coarser, or None if
+        the hasher is already at its coarsest resolution.
+
+        Returns:
+            A hasher, or None
+        """
+        raise NotImplementedError(f'{type(self).__name__} does not support coarsening')
+
+    def get_cell_boundary(self, geohash: str) -> List[Coordinate]:
+        """
+        Returns the boundary of a geohash cell, as a linear ring of Coordinates.
+
+        Args:
+            geohash:
+                A geohash
+
+        Returns:
+            A list of Coordinates
+        """
+        raise NotImplementedError(f'{type(self).__name__} does not support cell boundaries')
+
+    def get_neighbors(self, geohash: str) -> Set[str]:
+        """
+        Returns the geohashes (at the same resolution) adjacent to a geohash.
+
+        Args:
+            geohash:
+                A geohash
+
+        Returns:
+            A set of geohashes
+        """
+        raise NotImplementedError(f'{type(self).__name__} does not support neighbors')
+
     @abc.abstractmethod
     def hash_collection(
         self,
@@ -435,6 +471,23 @@ class H3Hasher(HasherBase):
             )
         }
 
+    def coarsen(self) -> Optional['H3Hasher']:
+        if self.resolution is None:
+            raise ValueError('You must pass a H3 resolution.')
+
+        if self.resolution == 0:
+            return None
+
+        return H3Hasher(self.resolution - 1)
+
+    def get_cell_boundary(self, geohash: str) -> List[Coordinate]:
+        return h3_to_geopolygon(geohash).bounding_coords()
+
+    def get_neighbors(self, geohash: str) -> Set[str]:
+        import h3
+
+        return set(h3.grid_ring(geohash, 1))
+
     def hash_collection(
             self,
             collection: CollectionBase,
@@ -461,7 +514,7 @@ class H3Hasher(HasherBase):
             function
         """
         resolution = kwargs.get('resolution', self.resolution)
-        if not resolution:
+        if resolution is None:
             raise ValueError('You must pass a H3 resolution.')
 
         agg_fn = kwargs.get('agg_fn', len)
@@ -517,7 +570,7 @@ class H3Hasher(HasherBase):
             return set().union(*[self.hash_shape(x) for x in shape.geoshapes])
 
         resolution = kwargs.get('resolution', self.resolution)
-        if not resolution:
+        if resolution is None:
             raise ValueError('You must pass a H3 resolution.')
 
         if isinstance(shape, GeoPoint):
@@ -675,6 +728,18 @@ class NiemeyerHasher(HasherBase):
                     queue.add(near_gh)
 
         return valid
+
+    def coarsen(self) -> Optional['NiemeyerHasher']:
+        if self.length <= 1:
+            return None
+
+        return NiemeyerHasher(self.length - 1, self.base)
+
+    def get_cell_boundary(self, geohash: str) -> List[Coordinate]:
+        return niemeyer_to_geobox(geohash, self.base).bounding_coords()
+
+    def get_neighbors(self, geohash: str) -> Set[str]:
+        return set(self._get_surrounding(geohash, self.base))
 
     def hash_collection(
         self,

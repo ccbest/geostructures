@@ -13,6 +13,219 @@ from geostructures.coordinates import Coordinate
 from geostructures.utils.functions import round_half_up
 
 
+# Gauss-Legendre quadrature over [-1, 1], used to evaluate Owen's T function
+_GL_NODES, _GL_WEIGHTS = np.polynomial.legendre.leggauss(24)
+
+# Polygon edges are subdivided prior to projection, so that distortion from the
+# projection is negligible. Subdivisions are no longer than _MAX_EDGE_DEGREES, and short
+# enough that their deviation from the true edge is within _EDGE_TOLERANCE standard
+# deviations, but no edge is split into more than _MAX_EDGE_SUBDIVISIONS pieces.
+_MAX_EDGE_DEGREES = 0.5
+_EDGE_TOLERANCE = 1e-3
+_MAX_EDGE_SUBDIVISIONS = 1000
+
+
+def _std_normal_cdf(x: np.ndarray) -> np.ndarray:
+    """The standard normal CDF, Phi(x), computed with erfc to preserve tail precision"""
+    return np.frompyfunc(math.erfc, 1, 1)(-x / math.sqrt(2)).astype(float) / 2
+
+
+def _owens_t(h: np.ndarray, a: np.ndarray) -> np.ndarray:
+    """
+    Owen's T function, T(h, a), for 0 <= a <= 1. Over that range the integrand is
+    smooth, so Gauss-Legendre quadrature is highly accurate.
+
+    Args:
+        h:
+            An array of h values
+
+        a:
+            An array of a values, each between 0 and 1
+
+    Returns:
+        An array of T(h, a)
+    """
+    x = a[:, None] * (_GL_NODES[None, :] + 1) / 2  # Map nodes onto [0, a]
+    integrand = np.exp(-0.5 * h[:, None] ** 2 * (1 + x ** 2)) / (1 + x ** 2)
+    return a / 2 * (integrand @ _GL_WEIGHTS) / (2 * math.pi)
+
+
+def _std_normal_right_triangle_probability(c: np.ndarray, s: np.ndarray) -> np.ndarray:
+    """
+    The probability mass of the standard bivariate normal (centered on the origin)
+    over the right triangle with vertices at:
+        * the origin
+        * a point F, distance c from the origin
+        * a point distance s from F, perpendicular to the origin-F segment
+
+    This equals atan(s / c) / 2pi - T(c, s / c), where T is Owen's T function. For
+    s > c, the identity T(h, a) + T(ah, 1/a) = (Phi(h) + Phi(ah)) / 2 - Phi(h)Phi(ah)
+    keeps the T function argument within [0, 1].
+
+    Args:
+        c:
+            An array of non-negative distances from the origin to F
+
+        s:
+            An array of non-negative distances from F to the third vertex
+
+    Returns:
+        An array of probabilities
+    """
+    short = s <= c
+    num, den = np.where(short, s, c), np.where(short, c, s)
+    ratio = np.divide(num, den, out=np.zeros_like(num, dtype=float), where=den > 0)
+    t = _owens_t(np.where(short, c, s), ratio)
+
+    cdf_c, cdf_s = _std_normal_cdf(c), _std_normal_cdf(s)
+    # (Phi(c) + Phi(s)) / 2 - Phi(c)Phi(s), rearranged to use upper tails for precision
+    reflected = (cdf_c * _std_normal_cdf(-s) + cdf_s * _std_normal_cdf(-c)) / 2 - t
+
+    return np.arctan2(s, c) / (2 * math.pi) - np.where(short, t, reflected)
+
+
+def _project_to_whitened_plane(
+    lonlats: np.ndarray,
+    center: Coordinate,
+    sigma_major: float,
+    sigma_minor: float,
+    rotation: float,
+) -> np.ndarray:
+    """
+    Projects lon/lat points onto an azimuthal equidistant plane about a center
+    point (preserving distance and bearing from the center, as GeoEllipse does),
+    then scales and rotates the plane such that a Gaussian with the given standard
+    deviations becomes a standard bivariate normal.
+
+    Args:
+        lonlats:
+            An (n, 2) array of longitude/latitude pairs, in degrees
+
+        center:
+            The center of the Gaussian
+
+        sigma_major:
+            The standard deviation along the major axis, in meters
+
+        sigma_minor:
+            The standard deviation along the minor axis, in meters
+
+        rotation:
+            The major axis's degree offset from North (expressed as East of North)
+
+    Returns:
+        An (n, 2) array of projected points
+    """
+    lon, lat = np.radians(lonlats[:, 0]), np.radians(lonlats[:, 1])
+    lon0, lat0 = math.radians(center.longitude), math.radians(center.latitude)
+    d_lon = lon - lon0
+
+    hav = np.clip(
+        np.sin((lat - lat0) / 2) ** 2 + math.cos(lat0) * np.cos(lat) * np.sin(d_lon / 2) ** 2,
+        0.,
+        1.
+    )
+    dist = EARTH_RADIUS * 2 * np.arctan2(np.sqrt(hav), np.sqrt(1 - hav))
+    bearing = np.arctan2(
+        np.sin(d_lon) * np.cos(lat),
+        math.cos(lat0) * np.sin(lat) - math.sin(lat0) * np.cos(lat) * np.cos(d_lon)
+    )
+    east, north = dist * np.sin(bearing), dist * np.cos(bearing)
+
+    rot = math.radians(rotation)
+    return np.stack(
+        [
+            (east * math.sin(rot) + north * math.cos(rot)) / sigma_major,
+            (east * math.cos(rot) - north * math.sin(rot)) / sigma_minor,
+        ],
+        axis=1
+    )
+
+
+def gaussian_probability_in_polygons(
+    rings: List[List[Coordinate]],
+    center: Coordinate,
+    sigma_major: float,
+    sigma_minor: float,
+    rotation: float,
+) -> List[float]:
+    """
+    Integrates a 2-D Gaussian over each of a list of polygons.
+
+    The Gaussian is defined on an azimuthal equidistant projection about its center,
+    with the major axis oriented `rotation` degrees East of North. Polygon edges are
+    treated as straight lines in lon/lat space.
+
+    Each polygon is projected into a space where the Gaussian is a standard bivariate
+    normal, and decomposed into triangles fanning out from the origin. The mass of
+    each triangle is computed exactly (to quadrature precision) via Owen's T function.
+
+    Args:
+        rings:
+            A list of linear rings, each a list of Coordinates. Rings may be open
+            or closed.
+
+        center:
+            The center of the Gaussian
+
+        sigma_major:
+            The standard deviation along the major axis, in meters
+
+        sigma_minor:
+            The standard deviation along the minor axis, in meters
+
+        rotation:
+            The major axis's degree offset from North (expressed as East of North)
+
+    Returns:
+        A list of probabilities, one per ring
+    """
+    if not rings:
+        return []
+
+    verts = [np.array([coord.to_float() for coord in ring]) for ring in rings]
+    starts = np.concatenate(verts)
+    ring_ids = np.repeat(np.arange(len(rings)), [len(x) for x in verts])
+    deltas = np.concatenate([np.roll(x, -1, axis=0) for x in verts]) - starts
+    # Take the short way around if an edge crosses the antimeridian
+    deltas[:, 0] = (deltas[:, 0] + 180) % 360 - 180
+
+    # Subdivide long edges, which would otherwise be distorted by the projection
+    max_step = min(
+        _MAX_EDGE_DEGREES,
+        math.degrees(math.sqrt(8 * _EDGE_TOLERANCE * sigma_minor / EARTH_RADIUS))
+    )
+    n_sub = np.clip(
+        np.ceil(np.abs(deltas).max(axis=1) / max_step), 1, _MAX_EDGE_SUBDIVISIONS
+    ).astype(int)
+    edge_idx = np.repeat(np.arange(len(starts)), n_sub)
+    frac = (np.arange(n_sub.sum()) - np.repeat(np.cumsum(n_sub) - n_sub, n_sub)) / n_sub[edge_idx]
+    seg_starts = starts[edge_idx] + frac[:, None] * deltas[edge_idx]
+    seg_ends = seg_starts + deltas[edge_idx] / n_sub[edge_idx][:, None]
+
+    point_a = _project_to_whitened_plane(seg_starts, center, sigma_major, sigma_minor, rotation)
+    point_b = _project_to_whitened_plane(seg_ends, center, sigma_major, sigma_minor, rotation)
+
+    # Each segment AB forms a triangle with the origin. Splitting it at F, the foot of
+    # the perpendicular from the origin to line AB, gives two right triangles.
+    diff = point_b - point_a
+    length = np.hypot(diff[:, 0], diff[:, 1])
+    unit = np.divide(diff, length[:, None], out=np.zeros_like(diff), where=length[:, None] > 0)
+    s_a = (point_a * unit).sum(axis=1)  # signed distances from F along AB
+    s_b = (point_b * unit).sum(axis=1)
+    cross = point_a[:, 0] * unit[:, 1] - point_a[:, 1] * unit[:, 0]
+    c = np.abs(cross)
+
+    def _signed_mass(s):
+        return np.sign(s) * _std_normal_right_triangle_probability(c, np.abs(s))
+
+    # Signs cancel out the mass outside the polygon once summed around the ring
+    triangle_mass = np.sign(cross) * (_signed_mass(s_b) - _signed_mass(s_a))
+    totals = np.bincount(ring_ids[edge_idx], weights=triangle_mass, minlength=len(rings))
+
+    return np.clip(np.abs(totals), 0., 1.).tolist()
+
+
 def coordinate_vector_cross_product(o: Coordinate, a: Coordinate, b: Coordinate):
     """
     2D cross product of OA and OB vectors, i.e. z-component of their 3D cross product.
