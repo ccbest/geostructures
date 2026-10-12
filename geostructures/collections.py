@@ -5,25 +5,26 @@ Module for sequences of GeoShapes
 __all__ = ['FeatureCollection', 'CollectionBase', 'Track']
 
 from collections import defaultdict, Counter
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 from functools import cached_property
-import os
 from pathlib import Path
 import tempfile
-from typing import Callable, cast, Any, List, Dict, Optional, Union, Tuple, TypeVar
+from typing import Callable, cast, Any, List, Dict, Iterable, Optional, Union, Sequence, Tuple, TypedDict, TypeVar
 from zipfile import ZipFile
 
 import numpy as np
+from pydantic import validate_call
 
 from geostructures import Coordinate, LOGGER
 from geostructures._base import PolygonLikeMixin, PointLikeMixin, LineLikeMixin, MultiShapeBase, BaseShape
 from geostructures._geometry import convex_hull
-from geostructures.calc import haversine_distance_meters
+from geostructures.geodesic import distance_meters
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
 from geostructures.utils.functions import default_to_zulu
 from geostructures.utils.logging import warn_once
+from geostructures.utils.conditional_imports import import_optional
 
 
 _COL_TYPE = TypeVar('_COL_TYPE', bound='CollectionBase')
@@ -31,6 +32,7 @@ _COL_TYPE = TypeVar('_COL_TYPE', bound='CollectionBase')
 
 class CollectionBase:
 
+    @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(self, geoshapes: List[BaseShape]):
         super().__init__()
         self.geoshapes = geoshapes
@@ -61,10 +63,11 @@ class CollectionBase:
 
     @property
     def centroid(self):
-        lat, lon = tuple(
-            map(np.average, zip(*[shape.centroid.to_float() for shape in self.geoshapes]))
+        # Slice to lon/lat; to_float() may also carry Z/M values
+        lon, lat = tuple(
+            map(np.average, zip(*[shape.centroid.to_float()[:2] for shape in self.geoshapes]))
         )
-        return Coordinate(lat, lon)
+        return Coordinate(lon, lat)
 
     @cached_property
     def convex_hull(self):
@@ -101,10 +104,10 @@ class CollectionBase:
         """
         # Has to be checked before date - datetimes are dates, but dates are not datetimes
         if isinstance(dt, datetime):
+            # Treat a bare datetime as a zero-length interval, consistent
+            # with how shapes are time-bounded
             dt = default_to_zulu(dt)
-            return type(self)(
-                [x for x in self.geoshapes if x.dt is not None and x.dt == TimeInterval(dt, dt)]
-            )
+            dt = TimeInterval(dt, dt)
 
         if isinstance(dt, TimeInterval):
             return type(self)(
@@ -127,7 +130,37 @@ class CollectionBase:
         """
         return type(self)([x for x in self.geoshapes if x.intersects(shape)])
 
-    def filter_by_property(self: _COL_TYPE, property: str, func: Callable[[Any], bool]) -> _COL_TYPE:
+    def filter_contained_by(self: _COL_TYPE, shape: BaseShape) -> _COL_TYPE:
+        """
+        Filter the shape collection using a containing geoshape, which is optionally
+        time-bounded.
+
+        Args:
+            shape:
+                A geoshape
+
+        Returns:
+            A shape collection of the same type as the original
+        """
+        return type(self)([x for x in self.geoshapes if shape.contains(x)])
+
+    def filter_contains(self: _COL_TYPE, shape: BaseShape) -> _COL_TYPE:
+        """
+        Filter the shape collection using a geoshape each shape must contain,
+        which is optionally time-bounded.
+
+        Args:
+            shape:
+                A geoshape
+
+        Returns:
+            A shape collection of the same type as the original
+        """
+        return type(self)([x for x in self.geoshapes if x.contains(shape)])
+
+    def filter_by_property(  # pylint: disable=redefined-builtin
+        self: _COL_TYPE, property: str, func: Callable[[Any], bool]
+    ) -> _COL_TYPE:
         """
         Filter based on property and the given function.
         Args:
@@ -151,9 +184,9 @@ class CollectionBase:
         Construct a FeatureCollection from a FastKML Folder. Placemarks in
         the folder will be parsed into their corresponding geostructures.
         """
-        from geostructures.parsers import parse_fastkml
+        from geostructures.parsers import _parse_fastkml
 
-        return FeatureCollection(parse_fastkml(folder))
+        return cls(_parse_fastkml(folder))
 
     @classmethod
     def from_geojson(
@@ -225,7 +258,9 @@ class CollectionBase:
         Returns:
             An object of this class's type
         """
+        import_optional('geopandas')
         import geopandas as gpd
+        import_optional('pandas')
         import pandas as pd
 
         conv_map = {
@@ -283,6 +318,7 @@ class CollectionBase:
         time_end_field: str = 'datetime_e',
         read_layers: Optional[List[str]] = None
     ):
+        import_optional('shapefile')
         import shapefile
 
         def _get_dt(rec):
@@ -382,7 +418,7 @@ class CollectionBase:
                 conv_map[geom_type].from_shapely(shape)
             )
 
-        return FeatureCollection(shapes)
+        return cls(shapes)
 
     @cached_property
     def geospan(self) -> float:
@@ -408,7 +444,12 @@ class CollectionBase:
         """
         shapes = self.geoshapes
         if shape.dt:
-            shapes = self.filter_by_dt(shape.dt).geoshapes
+            # Time only constrains shapes that carry time information; un-timed
+            # shapes are tested spatially, matching single-shape semantics
+            shapes = [
+                x for x in self.geoshapes
+                if x.dt is None or shape.dt.intersects(x.dt)
+            ]
 
         for col_shape in shapes:
             if col_shape.intersects(shape):
@@ -417,6 +458,7 @@ class CollectionBase:
         return False
 
     def to_fastkml_folder(self, folder_name: str):
+        import_optional('fastkml')
         from fastkml import Folder
 
         return Folder(
@@ -430,16 +472,28 @@ class CollectionBase:
             'features': [
                 x.to_geojson(
                     properties=properties,
-                    id=idx,  # default to idx, but overridden by kwargs if specified
-                    **kwargs
+                    # Default the id to idx unless specified in kwargs
+                    **{'id': idx, **kwargs}
                 ) for idx, x in enumerate(self.geoshapes)
             ]
         }
 
     def to_geopandas(self, include_properties: Optional[List[str]] = None):
         """
+        Convert the collection to a geopandas GeoDataFrame, with shape
+        properties included as columns.
+
+        Args:
+            include_properties: (Optional)
+                The property keys to include as columns. Defaults to all
+                properties present on any shape.
+
+        Returns:
+            geopandas.GeoDataFrame
         """
+        import_optional('pandas')
         import pandas as pd
+        import_optional('geopandas')
         import geopandas as gpd
 
         keys = include_properties or set(
@@ -464,115 +518,142 @@ class CollectionBase:
         include_properties: Optional[List[str]] = None,
     ) -> None:
         """
-        Writes the collection to a ESRI shapefile. Note that shape"file"s actually
-        consist of several files, so you should provide a directory rather than
-        a file name.
+        Write the collection to a zip-archived ESRI shapefile set.
 
-        Requires the pyshp library (canonically imported as 'shapefile').
-
-        Args:
-            zip_file:
-                The zipfile to write shape files to.
-
-            include_properties: (Default None)
-                A list of properties to include. If None, all properties will be included.
-
-        Returns:
-            None
+        Each geometry family (points, multipoints, lines, polygons) is **further
+        split** by its dimensionality (XY / XYM / XYZ) so that every writer
+        receives only *one* shape type – required by pyshp.
         """
+        import_optional('shapefile')
         import shapefile
 
-        def _convert_dt(val: Any):
-            """Convert date/datetime values to string"""
-            if isinstance(val, (datetime, date)):
-                return val.isoformat()
-            return val
+        # 1. Split the collection into geometry families
+        def _iter_coords(geom) -> Iterable["Coordinate"]:
+            """Yield every Coordinate contained in *geom* (recursively)."""
+            if isinstance(geom, GeoPoint):
+                yield geom.centroid
 
-        points: List[GeoPoint] = []
-        multipoints: List[MultiGeoPoint] = []
-        lines: List[LineLikeMixin] = []
-        shapes: List[PolygonLikeMixin] = []
-        for shape in self.geoshapes:
-            if isinstance(shape, GeoPoint):
-                points.append(shape)
+            elif isinstance(geom, MultiGeoPoint):
+                for pt in geom.geoshapes:
+                    yield pt.centroid
 
-            elif isinstance(shape, MultiGeoPoint):
-                multipoints.append(shape)
+            elif isinstance(geom, GeoLineString):
+                yield from geom.vertices
 
-            elif isinstance(shape, LineLikeMixin):
-                lines.append(shape)
+            elif isinstance(geom, MultiGeoLineString):
+                for line in geom.geoshapes:
+                    yield from line.vertices
 
-            elif isinstance(shape, PolygonLikeMixin):
-                shapes.append(shape)
 
+            elif isinstance(geom, PolygonLikeMixin):
+                for ring in geom.linear_rings():
+                    yield from ring
+
+            # Unrecognized shape types yield nothing
+
+        def _dimensionality(geom) -> str:
+            """Return 'XYZ' (has Z), 'XYM' (has M, no Z) or 'XY'."""
+            has_z = has_m = False
+            for c in _iter_coords(geom):
+                has_z |= getattr(c, "z", None) is not None
+                has_m |= getattr(c, "m", None) is not None
+                if has_z:  # once True the result cannot change
+                    break
+            if has_z:
+                return "XYZ"
+            if has_m:
+                return "XYM"
+            return "XY"
+
+        def _convert_dt(val: Any) -> Any:
+            """Convert date / datetime to ISO strings so dBASE does not choke."""
+            return val.isoformat() if isinstance(val, (date, datetime)) else val
+
+        class Families(TypedDict):
+            points: list[GeoPoint]
+            multipoints: list[MultiGeoPoint]
+            lines: list[LineLikeMixin]
+            shapes: list[PolygonLikeMixin]
+
+        families: Families = {
+            "points": [],
+            "multipoints": [],
+            "lines": [],
+            "shapes": [],
+        }
+        for g in self.geoshapes:
+            if isinstance(g, GeoPoint):
+                families["points"].append(g)
+            elif isinstance(g, MultiGeoPoint):
+                families["multipoints"].append(g)
+            elif isinstance(g, LineLikeMixin):
+                families["lines"].append(g)
+            elif isinstance(g, PolygonLikeMixin):
+                families["shapes"].append(g)
             else:
-                raise ValueError(f'Unrecognized shape type {type(shape)}')
+                raise ValueError(f"Unrecognised geometry type: {type(g)}")
 
-        with tempfile.TemporaryDirectory() as tempdir:
-            for shapetype, shape_group in (
-                ('points', points), ('multipoints', multipoints),
-                ('lines', lines), ('shapes', shapes)
-            ):
-                if not shape_group:
-                    continue
+        # 2. Work in a temp directory so we can zip afterwards
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
 
-                writer = shapefile.Writer(os.path.join(tempdir, shapetype))
+            for fam_name, geoms in families.items():
+                # 2a. Further split by dimensionality
+                dims = defaultdict(list)  # key: 'XY' / 'XYM' / 'XYZ'
+                for g in cast(Sequence, geoms):
+                    dims[_dimensionality(g)].append(g)
 
-                # 2-Tuples of properties and their datatypes
-                _types = set(
-                    (_key, type(_val))
-                    for x in shape_group
-                    for _key, _val in x.properties.items()
-                    if (not include_properties) or _key in include_properties
-                )
-                typemap = dict(_types)
+                for dim_key, sublist in dims.items():
+                    # 2b. Create writer for this (family, dimensionality)
+                    base = tmpdir_path / f"{fam_name}_{dim_key.lower()}"
+                    with shapefile.Writer(base) as w:
+                        # Collect properties & declare dBASE fields
+                        dtype_pairs = {
+                            (k, type(v))
+                            for geom in sublist
+                            for k, v in geom.properties.items()
+                            if include_properties is None or k in include_properties
+                        }
+                        dtype_map = dict(dtype_pairs)
 
-                # Declare fields
-                for field, _type in typemap.items():
-                    if issubclass(_type, bool):
-                        # bools are subclasses of int (WAT) - have to check first
-                        writer.field(field, 'L')
-                    elif issubclass(_type, (float, int)) and not issubclass(_type, datetime):
-                        # datetimes are subclasses of ints too
-                        writer.field(field, 'N')
-                    else:
-                        writer.field(field, 'C')
+                        for field, dtype in dtype_map.items():
+                            if issubclass(dtype, bool):
+                                w.field(field, "L")
+                            elif issubclass(dtype, (int, float)) and not issubclass(dtype, datetime):
+                                w.field(field, "N")
+                            else:
+                                w.field(field, "C")
+                        w.field("ID", "N")
 
-                writer.field('ID', 'N')
+                        # Warn about inconsistent property types
+                        if dtype_pairs:
+                            mc = Counter(k for k, _ in dtype_pairs).most_common(1)[0]
+                            if mc[1] > 1:
+                                LOGGER.warning(
+                                    "Conflicting data types found in properties; "
+                                    "your shapefile may not be written correctly."
+                                )
 
-                if _types:
-                    # Check to make sure data types are consistent
-                    c = Counter(x[0] for x in _types)
-                    if c.most_common(1)[0][1] > 1:
-                        # Just log a warning - still want to try to write the file
-                        LOGGER.warning(
-                            'Conflicting data types found in properties; '
-                            'your shapefile may not get written correctly'
-                        )
+                        # Write features
+                        for idx, geom in enumerate(sublist):
+                            props = geom.properties
+                            w.record(*[_convert_dt(props.get(k)) for k in dtype_map], idx)
+                            geom.to_pyshp(w)
 
-                # Write shapes to file
-                for idx, shape in enumerate(shape_group):  # type: ignore
-                    # Write out properties
-                    props = shape.properties
-                    writer.record(*[_convert_dt(props.get(k)) for k in typemap], idx)
-                    shape.to_pyshp(writer)  # type: ignore
+                    # 2c. Add the four components to the zip
+                    for ext in (".shp", ".shx", ".dbf"):
+                        comp_path = f"{base}{ext}"
+                        zip_file.write(comp_path, f"{base.name}{ext}")
 
-                writer.close()
-                zip_file.write(writer.shx.name, writer.shx.name.split(os.sep)[-1])
-                zip_file.write(writer.shp.name, writer.shp.name.split(os.sep)[-1])
-                zip_file.write(writer.dbf.name, writer.dbf.name.split(os.sep)[-1])
-
-                with open(os.path.join(tempdir, f'{shapetype}.prj'), 'w+') as f:
-                    # Taken from pyshp's readme
-                    wkt = 'GEOGCS["WGS 84",'
-                    wkt += 'DATUM["WGS_1984",'
-                    wkt += 'SPHEROID["WGS 84",6378137,298.257223563]]'
-                    wkt += ',PRIMEM["Greenwich",0],'
-                    wkt += 'UNIT["degree",0.0174532925199433]]'
-                    f.write(wkt)
-                    zip_file.write(f.name, f.name.split(os.sep)[-1])
-
-        return
+                    prj = tmpdir_path / f"{base.name}.prj"
+                    prj.write_text(
+                        'GEOGCS["WGS 84",'
+                        'DATUM["WGS_1984",'
+                        'SPHEROID["WGS 84",6378137,298.257223563]],'
+                        'PRIMEM["Greenwich",0],'
+                        'UNIT["degree",0.0174532925199433]]'
+                    )
+                    zip_file.write(prj, prj.name)
 
 
 class FeatureCollection(CollectionBase):
@@ -629,6 +710,7 @@ class Track(CollectionBase):
     A sequence of chronologically-ordered (by start time) GeoShapes
     """
 
+    @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(self, geoshapes: List[BaseShape]):
         if not all(x.dt for x in geoshapes):
             raise ValueError('All track geoshapes must have an associated time value.')
@@ -651,33 +733,55 @@ class Track(CollectionBase):
 
         return True
 
-    def __getitem__(self, val: slice):
+    def __getitem__(self, val: Union[int, datetime, slice]):
         """
-        Permits track slicing by datetime.
+        Permits track indexing by position, and slicing by datetime.
 
         Args:
             val:
-                A slice of datetimes or a datetime
+                An integer index, a slice of datetimes (or integers), or
+                a datetime
 
         Examples:
             ```python
             # Returns all points from 1 JAN 2020 00:00 (inclusive) through
             # 2 JAN 2020 00:00 (not inclusive)
-            track[datetime(2020, 1, 1):datetime(2020, 1, 2)
+            track[datetime(2020, 1, 1):datetime(2020, 1, 2)]
+
+            # Returns all points whose time bounds contain the instant
+            track[datetime(2020, 1, 1, 12)]
+
+            # Returns the first ping
+            track[0]
             ```
 
         Returns:
-            Track
+            Track, or a single geoshape when indexed by integer
         """
-        _start = default_to_zulu(
-            val.start or self.geoshapes[0].start
-        )
-        _stop = default_to_zulu(
-            val.stop or self.geoshapes[-1].end + timedelta(seconds=1)
-        )
-        return Track(
-            [x for x in self.geoshapes if _start <= x.start and x.end < _stop]
-        )
+        if isinstance(val, int):
+            return self.geoshapes[val]
+
+        if isinstance(val, datetime):
+            instant = TimeInterval(default_to_zulu(val), default_to_zulu(val))
+            return Track(
+                [x for x in self.geoshapes if x.dt is not None and instant.intersects(x.dt)]
+            )
+
+        if isinstance(val, slice):
+            if isinstance(val.start, int) or isinstance(val.stop, int):
+                return Track(self.geoshapes[val])
+
+            if not self.geoshapes:
+                return Track([])
+
+            _start = default_to_zulu(val.start) if val.start else self.geoshapes[0].start
+            _stop = default_to_zulu(val.stop) if val.stop else None
+            return Track([
+                x for x in self.geoshapes
+                if _start <= x.start and (_stop is None or x.end < _stop)
+            ])
+
+        raise TypeError(f'Tracks cannot be indexed by {type(val)}')
 
     def __repr__(self):
         """REPL representation"""
@@ -696,7 +800,7 @@ class Track(CollectionBase):
             raise ValueError('Cannot compute distances between fewer than two pings.')
 
         return np.array([
-            haversine_distance_meters(x.centroid, y.centroid)
+            distance_meters(x.centroid, y.centroid)
             for x, y in zip(self.geoshapes, self.geoshapes[1:])
         ])
 
@@ -785,7 +889,7 @@ class Track(CollectionBase):
                 new_pings.append(ping_group[0])
                 continue
 
-            _lons, _lats = list(zip(*[x.centroid.to_float() for x in ping_group]))
+            _lons, _lats = list(zip(*[x.centroid.to_float()[:2] for x in ping_group]))
             new_pings.append(
                 GeoPoint(
                     Coordinate(sum(_lons)/len(_lons), sum(_lats)/len(_lats)),
@@ -820,6 +924,9 @@ class Track(CollectionBase):
         Returns:
             Track: A new Track instance with only valid geoshapes, removing impossible journeys.
         """
+        if not self.geoshapes:
+            return Track([])
+
         # Track shapes are guaranteed to have .start
         times = [shape.start for shape in self.geoshapes]
         coords = [pt.centroid for pt in self.geoshapes]
@@ -827,8 +934,7 @@ class Track(CollectionBase):
         valid_geoshapes = [self.geoshapes[i]]  # Keep the first point as valid
 
         for j in range(1, len(self.geoshapes)):
-            # Use pre-baked Haversine calculation
-            dx = haversine_distance_meters(coords[i], coords[j])
+            dx = distance_meters(coords[i], coords[j])
             dt = (times[j] - times[i]).total_seconds()  # Time difference in seconds
             if dt == 0:
                 warn_once(

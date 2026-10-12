@@ -1,17 +1,22 @@
 """Module for parsing external structures into geostructures"""
 
 __all__ = [
-    'parse_fastkml', 'parse_geojson', 'parse_wkt'
+    'parse_geojson', 'parse_kml', 'parse_shapefile', 'parse_wkt'
 ]
 
 import json
+from io import BytesIO
+from pathlib import Path
 import re
 from typing import cast, Any, Dict, List, Optional, Union
+from zipfile import ZipFile
 
 from geostructures.collections import FeatureCollection
 from geostructures.structures import GeoPolygon, GeoPoint, GeoLineString
 from geostructures.multistructures import MultiGeoPoint, MultiGeoPolygon, MultiGeoLineString
 from geostructures.typing import GeoShape, SimpleShape
+from geostructures.utils.conditional_imports import import_optional
+from geostructures.utils.logging import warn_once
 
 
 _PARSER_MAP: Dict[str, SimpleShape] = {
@@ -23,16 +28,26 @@ _PARSER_MAP: Dict[str, SimpleShape] = {
     'MULTIPOLYGON': MultiGeoPolygon,
 }
 
+_TYPE_RE = re.compile(r'\s*([A-Za-z]+)')
 
-def parse_fastkml(
+# ZIP archives - and therefore KMZ files - always begin with this magic number
+_KMZ_MAGIC = b'PK\x03\x04'
+
+_XML_DECLARATION = re.compile(r'^\s*<\?xml[^>]*\?>')
+
+
+def _parse_fastkml(
     kml,
     _shapes: Optional[List[GeoShape]] = None,
     _depth: int = 0,
     _props: Optional[Dict[str, str]] = None,
 ):
     """
-    Recurses through a KML, extracting all Placemarks and converting
-    them into their corresponding geostructures.
+    Recurses through a FastKML object tree, extracting all Placemarks and
+    converting them into their corresponding geostructures.
+
+    This is the low-level, in-memory workhorse behind the public
+    ``parse_kml``; most callers should use ``parse_kml`` instead.
 
     Args:
         kml:
@@ -53,6 +68,7 @@ def parse_fastkml(
     Returns:
         List[GeoShape]
     """
+    import_optional('fastkml')
     from fastkml import KML, Document, Folder, Placemark
 
     _shapes = _shapes if _shapes is not None else []
@@ -61,20 +77,37 @@ def parse_fastkml(
     if isinstance(kml, (KML, Document, Folder)):
         # Recurse
         if isinstance(kml, Folder):
-            # Inject subfolder name into props for traceability
-            _props[f'sub_folder_{_depth}'] = kml.name or 'Unnamed Folder'
+            # Inject subfolder name into props for traceability. Use a copy so
+            # the folder name does not leak to siblings outside this folder
+            _props = {**_props, f'sub_folder_{_depth}': kml.name or 'Unnamed Folder'}
 
         for feature in kml.features:
-            parse_fastkml(feature, _shapes, _depth + 1, _props)
+            _parse_fastkml(feature, _shapes, _depth + 1, _props)
 
         return _shapes
 
     if isinstance(kml, Placemark):
         # Parse the shape and mutate _shapes
-        parser = _PARSER_MAP[kml.geometry.__geo_interface__['type'].upper()]  # type: ignore
-        shape = parser.from_fastkml_placemark(kml)
-        props = shape._properties or {}
-        props.update(_props)
+        if kml.geometry is None:
+            # It's possible to create a placeless placemark
+            return _shapes
+
+        geom_type = kml.geometry.__geo_interface__['type'].upper()
+        parser = _PARSER_MAP.get(geom_type)
+        if geom_type == 'LINEARRING':
+            # KML allows a LinearRing as a direct placemark geometry; it has no
+            # geostructures equivalent so treat it as the polygon it encloses
+            parser = GeoPolygon
+        if parser is None:
+            # e.g. a heterogeneous MultiGeometry surfaces as a GeometryCollection,
+            # which has no single geostructures equivalent. Skip it rather than
+            # crashing the entire parse.
+            warn_once(f'Skipping KML placemark with unsupported geometry type {geom_type!r}.')
+            return _shapes
+
+        shape = parser.from_fastkml_placemark(kml)  # type: ignore
+        for key, value in _props.items():
+            shape.set_property(key, value, inplace=True)
         for prop in ('name', 'description', 'address', 'phone_number'):
             # Inject KML properties into shape properties
             if getattr(kml, prop) is not None:
@@ -138,23 +171,189 @@ def parse_geojson(
     )
 
 
-def parse_wkt(wkt: str) -> GeoShape:
+def parse_wkt(wkt: str, /, **kwargs):
     """
-    Parses a WKT string into its corresponding geostructure.
+    Convert a WKT string to its corresponding geostructure.
+
+    Extra keyword arguments are forwarded to the *.from_wkt()* call so you
+    can supply *dt* or *properties* if desired.
+    """
+    m = _TYPE_RE.match(wkt)
+    if not m:
+        raise ValueError('Invalid WKT. could not find geometry keyword.')
+
+    geom_type = m.group(1).upper()
+    try:
+        parser = _PARSER_MAP[geom_type]
+    except KeyError as exc:
+        raise ValueError(f'Unsupported WKT geometry {geom_type}.') from exc
+
+    return parser.from_wkt(wkt, **kwargs)                 # type: ignore[arg-type]
+
+
+def parse_shapefile(
+    zip_fpath: Union[str, Path],
+    time_start_field: str = 'datetime_s',
+    time_end_field: str = 'datetime_e',
+    read_layers: Optional[List[str]] = None,
+) -> FeatureCollection:
+    """
+    Parse a zip-archived ESRI shapefile set into a FeatureCollection - the
+    inverse of ``serialize_shapefile``.
 
     Args:
-        wkt: (str)
-            A well known text string, representing a simplified geometry
+        zip_fpath:
+            Path to the zip archive containing the shapefile component files.
+
+        time_start_field:
+            The record field holding each shape's start time, if present.
+
+        time_end_field:
+            The record field holding each shape's end time, if present.
+
+        read_layers: (Optional)
+            Restrict reading to these layer (component) names. Defaults to all.
 
     Returns:
-        GeoShape, subtype determined by input
+        FeatureCollection
     """
-    wkt_type_match = re.match(r'^[a-zA-Z]+', wkt)
-    if wkt_type_match is None:
-        raise ValueError('Invalid WKT')
+    return FeatureCollection.from_shapefile(
+        zip_fpath,
+        time_start_field=time_start_field,
+        time_end_field=time_end_field,
+        read_layers=read_layers,
+    )
 
-    wkt_type = wkt_type_match.group()
-    if wkt_type not in _PARSER_MAP:
-        raise ValueError('Invalid WKT.')
 
-    return _PARSER_MAP[wkt_type].from_wkt(wkt)  # type: ignore
+def parse_kml(
+    data: Union[str, bytes, Path, Any],
+    encoding: str = 'utf8'
+) -> FeatureCollection:
+    """
+    Parse KML/KMZ input into a FeatureCollection, detecting the input type.
+
+    Accepts any of:
+        - An in-memory FastKML object (KML, Document, Folder, or Placemark)
+        - A path (str or pathlib.Path) to a .kml or .kmz file
+        - A raw KML document, as a str or bytes
+        - Raw KMZ archive bytes
+
+    Shapes read from a file are tagged with ``filepath`` (and ``filename``)
+    properties for traceability.
+
+    Args:
+        data:
+            The KML input, in any of the forms above.
+
+        encoding:
+            The text encoding used to decode raw or file bytes (default utf8).
+
+    Returns:
+        FeatureCollection
+    """
+    import_optional('fastkml')
+    from fastkml import KML, Document, Folder, Placemark
+
+    # 1. An already-parsed, in-memory FastKML object
+    if isinstance(data, (KML, Document, Folder, Placemark)):
+        return FeatureCollection(_parse_fastkml(data))
+
+    # 2. Raw bytes - either a KMZ archive or an encoded KML document
+    if isinstance(data, bytes):
+        if data.startswith(_KMZ_MAGIC):
+            return FeatureCollection(_parse_kmz(BytesIO(data), encoding))
+        return FeatureCollection(_parse_kml_bytes(data, encoding))
+
+    # 3. A raw KML document passed as text (as opposed to a file path).
+    # lstrip a byte order mark too - not whitespace, so lstrip() leaves it
+    if isinstance(data, str) and data.lstrip('\ufeff \t\r\n').startswith('<'):
+        return FeatureCollection(_parse_kml_bytes(data.encode(encoding), encoding))
+
+    # 4. A filesystem path to a .kml or .kmz file
+    if isinstance(data, (str, Path)):
+        return _read_kml_file(Path(data), encoding)
+
+    raise TypeError(f'Cannot parse KML from object of type {type(data).__name__!r}.')
+
+
+def _parse_kml_bytes(content: bytes, encoding: str) -> List[GeoShape]:
+    """Parse a raw KML document (bytes) into a list of GeoShapes."""
+    import_optional('fastkml')
+    from fastkml import KML
+
+    # fastkml's from_string expects text; decode with the caller-provided encoding.
+    # The XML declaration no longer applies to decoded text, and lxml (fastkml's
+    # preferred backend when installed) rejects str input that carries an
+    # encoding declaration - strip it, along with any byte order mark.
+    text = content.decode(encoding).lstrip('\ufeff')
+    kml = KML.from_string(_XML_DECLARATION.sub('', text, count=1))
+    return _parse_fastkml(kml)
+
+
+def _parse_kmz(source, encoding: str, filepath: Optional[str] = None) -> List[GeoShape]:
+    """
+    Parse every .kml member of a KMZ archive into a list of GeoShapes.
+
+    Args:
+        source:
+            A path or file-like object accepted by zipfile.ZipFile.
+
+        encoding:
+            The text encoding used to decode each member.
+
+        filepath: (Optional)
+            When reading from disk, the archive path to tag onto each shape
+            (as a str, so the property stays JSON-serializable). Omitted when
+            parsing raw bytes, which have no path.
+
+    Returns:
+        List[GeoShape]
+    """
+    shapes: List[GeoShape] = []
+    with ZipFile(source, 'r') as z:
+        # Filter for .kml files inside the zip. macOS zip tooling adds binary
+        # AppleDouble entries (__MACOSX/._doc.kml) that match by extension but
+        # are not KML documents
+        kml_files = [
+            x for x in z.namelist()
+            if x.lower().endswith('.kml')
+            and not x.startswith('__MACOSX/')
+            and not x.rsplit('/', 1)[-1].startswith('._')
+        ]
+        for kml_f in kml_files:
+            parsed = _parse_kml_bytes(z.read(kml_f), encoding)
+            for shape in parsed:
+                if filepath is not None:
+                    shape.set_property('filepath', filepath)
+                shape.set_property('filename', kml_f)
+            shapes.extend(parsed)
+    return shapes
+
+
+def _read_kml_file(fpath: Path, encoding: str) -> FeatureCollection:
+    """
+    Read a .kml or .kmz file from disk and parse it into a FeatureCollection.
+    If a KMZ is provided, all KML files within it are parsed and combined.
+    """
+    try:
+        exists = fpath.exists()
+    except OSError:
+        # A string that is not KML and not a usable path - too long for the
+        # filesystem, or carrying a null byte. Report it the same way an ordinary
+        # non-existent path is reported rather than leaking a raw errno.
+        exists = False
+
+    if not exists:
+        raise FileNotFoundError(fpath)
+
+    if fpath.suffix.lower() == '.kmz':
+        shapes = _parse_kmz(fpath, encoding, filepath=str(fpath))
+    else:
+        # Assume plain KML
+        shapes = _parse_kml_bytes(fpath.read_bytes(), encoding)
+        for shape in shapes:
+            # Store the path as a str so the property stays JSON-serializable
+            shape.set_property('filepath', str(fpath))
+            shape.set_property('filename', fpath.name)
+
+    return FeatureCollection(shapes)

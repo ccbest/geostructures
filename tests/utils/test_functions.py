@@ -43,8 +43,47 @@ def test_round_half_up():
 
     assert round_half_up(-1.59, 1) == -1.6
     assert round_half_up(-1.51, 1) == -1.5
-    assert round_half_up(-1.55, 1) == -1.5
-    assert round_half_up(-1.65, 1) == -1.6
+    assert round_half_up(-1.55, 1) == -1.6
+    assert round_half_up(-1.65, 1) == -1.7
+
+
+def test_round_half_up_ties_at_every_magnitude():
+    # The previous implementation nudged values by a fixed 10**-(precision + 12) before
+    # deferring to round(). That epsilon falls below the float's own spacing as soon as
+    # the value grows, so the rounding mode silently changed with the magnitude of the
+    # input - for coordinate-sized values it was never half-up at all.
+    for magnitude in (0, 1, 2, 10, 100, 1_000):
+        assert round_half_up(magnitude + 0.5, 0) == magnitude + 1
+        assert round_half_up(magnitude + 0.05, 1) == magnitude + 0.1
+        assert round_half_up(magnitude + 0.0000005, 6) == magnitude + 0.000001
+
+
+def test_round_half_up_is_symmetric_about_zero():
+    # Halves round away from zero, so a value and its negation round to opposites.
+    # The old implementation rounded both toward positive infinity, which biased
+    # western longitudes and southern latitudes against their counterparts.
+    assert round_half_up(0.5, 0) == 1.0
+    assert round_half_up(-0.5, 0) == -1.0
+
+    for value in (0.5, 2.5, 1.55, 179.9999995, 0.0000005):
+        for precision in (0, 1, 6):
+            assert round_half_up(-value, precision) == -round_half_up(value, precision)
+
+
+def test_round_half_up_uses_displayed_decimal():
+    # 2.675 is stored as 2.67499999999999982..., so rounding the binary value would
+    # give 2.67. Rounding what the float displays as is what a caller reading the
+    # number expects.
+    assert round_half_up(2.675, 2) == 2.68
+    assert round_half_up(1.005, 2) == 1.01
+    assert round_half_up(0.145, 2) == 0.15
+
+
+def test_round_half_up_is_idempotent():
+    for value in (1.55, -1.55, 179.9999995, 0.0000005, 2.675):
+        for precision in (0, 1, 2, 6, 7):
+            once = round_half_up(value, precision)
+            assert round_half_up(once, precision) == once
 
 
 def test_sanitize_json():
@@ -84,4 +123,21 @@ def test_is_sub_list():
     assert not is_sub_list(
         ['a', 'b'],
         [1, 2, 3]
+    )
+
+
+def test_get_dt_from_geojson_props_z_suffix():
+    # GeoJSON timestamps commonly carry a Z suffix, which
+    # datetime.fromisoformat cannot parse until python 3.11
+    from datetime import datetime, timezone
+    from geostructures.time import TimeInterval
+    from geostructures.utils.functions import get_dt_from_geojson_props
+
+    rec = {
+        'datetime_start': '2020-01-01T00:00:00Z',
+        'datetime_end': '2020-01-02T00:00:00Z',
+    }
+    assert get_dt_from_geojson_props(rec) == TimeInterval(
+        datetime(2020, 1, 1, tzinfo=timezone.utc),
+        datetime(2020, 1, 2, tzinfo=timezone.utc),
     )

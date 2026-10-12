@@ -136,6 +136,22 @@ def test_timeinterval_from_fastkml():
     with pytest.raises(ValueError):
         TimeInterval._from_fastkml('something else')
 
+
+def test_timeinterval_from_fastkml_open_ended():
+    # KML allows open-ended TimeSpans; the known endpoint becomes an instant
+    begin_only = TimeSpan(begin=KmlDateTime(datetime(2020, 1, 1, tzinfo=timezone.utc)))
+    expected = TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
+    assert TimeInterval._from_fastkml(begin_only) == expected
+
+    end_only = TimeSpan(end=KmlDateTime(datetime(2020, 1, 2, tzinfo=timezone.utc)))
+    expected = TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 2))
+    assert TimeInterval._from_fastkml(end_only) == expected
+
+    # Time objects carrying no time information at all produce no interval
+    assert TimeInterval._from_fastkml(TimeSpan()) is None
+    assert TimeInterval._from_fastkml(TimeStamp()) is None
+
+
 def test_timeinterval_from_str():
     start = '2020-01-01T00:00:00.000'
     assert TimeInterval.from_str(start) == TimeInterval(
@@ -168,3 +184,65 @@ def test_timeinterval_from_str():
     with pytest.raises(ValueError):
         # Bad format passed
         TimeInterval.from_str(start, time_format='2020.01.01 00:00:00.000')
+
+
+def test_timeinterval_aware_naive_mix():
+    # Aware datetimes used to raise a TypeError when compared against the
+    # naive datetime.min/datetime.max defaults before normalization
+    interval = TimeInterval(datetime(2020, 1, 1, tzinfo=timezone.utc))
+    assert interval.start == datetime(2020, 1, 1, tzinfo=timezone.utc)
+    assert interval.end.tzinfo is not None
+
+    interval = TimeInterval(end=datetime(2020, 1, 1, tzinfo=timezone.utc))
+    assert interval.start.tzinfo is not None
+
+    # Mixed aware/naive arguments normalize to UTC before comparison
+    interval = TimeInterval(
+        datetime(2020, 1, 1, tzinfo=timezone.utc),
+        datetime(2020, 1, 2)
+    )
+    assert interval.end == datetime(2020, 1, 2, tzinfo=timezone.utc)
+
+    with pytest.raises(ValueError):
+        TimeInterval(
+            datetime(2020, 1, 2, tzinfo=timezone.utc),
+            datetime(2020, 1, 1)
+        )
+
+
+def test_timeinterval_boundary_semantics():
+    # Right-open: adjacent intervals are disjoint and their intersection is None
+    a = TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))
+    b = TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 3))
+    assert a.isdisjoint(b)
+    assert a.intersection(b) is None
+    assert not a.intersects(b)
+
+    # An instant on the exclusive end bound is disjoint; on the inclusive
+    # start bound it intersects
+    instant = TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 2))
+    assert a.isdisjoint(instant)
+    assert not a.intersects(instant)
+    assert b.intersects(instant)
+
+    # Instants intersect only when equal
+    assert instant.intersects(TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 2)))
+    assert instant.isdisjoint(TimeInterval(datetime(2020, 1, 2, 1), datetime(2020, 1, 2, 1)))
+
+
+def test_timeinterval_from_str_plain_iso():
+    expected = TimeInterval(datetime(2020, 1, 1, 12), datetime(2020, 1, 1, 12))
+    assert TimeInterval.from_str('2020-01-01T12:00:00') == expected
+    assert TimeInterval.from_str('2020-01-01 12:00:00') == expected
+
+
+def test_parse_timestamp_does_not_mutate_formats():
+    from geostructures.time import _DEFAULT_DATE_FORMATS
+
+    before = list(_DEFAULT_DATE_FORMATS)
+    TimeInterval._parse_timestamp('2020-01-01')
+    assert _DEFAULT_DATE_FORMATS == before
+
+    custom = ['%Y-%m-%dT%H:%M:%S', '%Y']
+    TimeInterval._parse_timestamp('2020', custom)
+    assert custom == ['%Y-%m-%dT%H:%M:%S', '%Y']

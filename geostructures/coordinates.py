@@ -4,54 +4,96 @@ Representation of a specific point on earth
 
 __all__ = ['Coordinate']
 
-from functools import cached_property
 import math
-from typing import List, Optional, Tuple, Union, cast
+from typing import List, Optional, Tuple, Union
 
+from geostructures._const import COORDINATE_TOLERANCE
 from geostructures.utils.functions import round_half_up
+from geostructures.utils.conditional_imports import import_optional
 from geostructures.utils.logging import warn_once
 
 
+# Bound once at module level; Coordinate.__init__ is the library's hottest
+# code path and the attribute-chain lookup is measurable there
+_set_slot = object.__setattr__
+
+
 class Coordinate:
-    """Representation of a coordinate on the globe (i.e., a lon/lat pair)"""
+    """
+    Representation of a coordinate on the globe (i.e., a lon/lat pair).
+
+    Coordinates are immutable; to alter one, create a new Coordinate. This
+    keeps hashes stable, so coordinates (and the shapes containing them) are
+    always safe to place in sets and dictionaries.
+
+    Longitude and latitude (and Z/M values, if given) are coerced to floats,
+    so strings, integers, and numpy scalars are all accepted.
+    """
+
+    __slots__ = ('longitude', 'latitude', 'z', 'm', '_xyz')
+
+    longitude: float
+    latitude: float
+    z: Optional[float]
+    m: Optional[float]
+    _xyz: Optional[List[float]]
 
     def __init__(
         self,
-        longitude: Union[float, int, str],
-        latitude: Union[float, int, str],
-        z: Optional[float] = None,
-        m: Optional[float] = None,
+        longitude: Union[float, str],
+        latitude: Union[float, str],
+        z: Optional[Union[float, str]] = None,
+        m: Optional[Union[float, str]] = None,
         _bounded: bool = True,
     ):
-        lon, lat = float(longitude), float(latitude)
+        # Manual coercion; this is the library's hottest constructor, so
+        # heavier validation machinery (e.g. pydantic) is avoided on purpose
+        longitude = float(longitude)
+        latitude = float(latitude)
+
         if _bounded:
-            while not -90 <= lat <= 90:
+            while not -90 <= latitude <= 90:
                 # Crosses one of the poles
-                lat = 90 - (lat - 90) if lat > 90 else -90 - (lat + 90)
-                lon = lon + 180 if lon < 0 else lon - 180
+                latitude = 90 - (latitude - 90) if latitude > 90 else -90 - (latitude + 90)
+                longitude = longitude + 180 if longitude < 0 else longitude - 180
 
-            while not -180 <= lon <= 180:
+            while not -180 <= longitude <= 180:
                 # Crosses the antimeridian
-                lon = lon - 360 if lon > 180 else lon + 360
+                longitude = longitude - 360 if longitude > 180 else longitude + 360
 
-        # Longitudes are bounded to [-180, 180)
-        if lon == 180:
-            lon = -180
+            # Longitudes are bounded to [-180, 180)
+            if longitude == 180:
+                longitude = -180
 
-        self.longitude = lon
-        self.latitude = lat
-        self.z = z
-        self.m = m
+        _set_slot(self, 'longitude', longitude)
+        _set_slot(self, 'latitude', latitude)
+        _set_slot(self, 'z', float(z) if z is not None else None)
+        _set_slot(self, 'm', float(m) if m is not None else None)
+        _set_slot(self, '_xyz', None)
+
+    def __setattr__(self, name, value):
+        raise AttributeError(
+            'Coordinates are immutable; create a new Coordinate instead'
+        )
+
+    def __delattr__(self, name):
+        raise AttributeError(
+            'Coordinates are immutable; create a new Coordinate instead'
+        )
+
+    def __getstate__(self):
+        return self.longitude, self.latitude, self.z, self.m
+
+    def __setstate__(self, state):
+        for slot, value in zip(('longitude', 'latitude', 'z', 'm'), state):
+            _set_slot(self, slot, value)
+        _set_slot(self, '_xyz', None)
 
     def __eq__(self, other):
         if not isinstance(other, Coordinate):
             return False
-
-        return (
-            self.latitude == other.latitude and
-            self.longitude == other.longitude and
-            self.z == other.z
-        )
+        return (self.latitude, self.longitude, self.z, self.m) == \
+            (other.latitude, other.longitude, other.z, other.m)
 
     def __hash__(self):
         return hash((self.longitude, self.latitude, self.z, self.m))
@@ -60,21 +102,27 @@ class Coordinate:
         parts = filter(lambda x: x is not None, (self.longitude, self.latitude, self.z, self.m))
         return f'<Coordinate({", ".join(map(str, parts))})>'
 
-    @cached_property
-    def xyz(self):
+    @property
+    def xyz(self) -> List[float]:
         """Converts lat/lon to unit coordinates [x,y,z]"""
-        r_lat = math.radians(self.latitude)
-        r_lon = math.radians(self.longitude)
-        return [
-            math.cos(r_lat) * math.cos(r_lon),
-            math.cos(r_lat) * math.sin(r_lon),
-            math.sin(r_lat)
-        ]
+        xyz = self._xyz
+        if xyz is None:
+            r_lat = math.radians(self.latitude)
+            r_lon = math.radians(self.longitude)
+            xyz = [
+                math.cos(r_lat) * math.cos(r_lon),
+                math.cos(r_lat) * math.sin(r_lon),
+                math.sin(r_lat)
+            ]
+            _set_slot(self, '_xyz', xyz)
+        return xyz
 
     @classmethod
     def _from_xyz(cls, xyz: List[float]):
         assert len(xyz) == 3
-        latitude = math.asin(xyz[2])
+        # Clamp to [-1, 1]; normalizing a vector can leave the z component a hair
+        # outside asin's domain
+        latitude = math.asin(max(-1.0, min(1.0, xyz[2])))
         longitude = math.atan2(xyz[1], xyz[0])
         return Coordinate(math.degrees(longitude), math.degrees(latitude))
 
@@ -105,7 +153,8 @@ class Coordinate:
     @classmethod
     def from_mgrs(cls, mgrs_str: str):
         """Create a Coordinate object from a MGRS string"""
-        import mgrs  # pylint: disable=import-outside-toplevel
+        import_optional('mgrs')
+        import mgrs
         _MGRS = mgrs.MGRS()
 
         # Spaces in the mgrs string can produce inaccurate coordinates
@@ -127,14 +176,10 @@ class Coordinate:
                 A string representing the target EPSG code. e.g EPSG:3857
 
         """
+        import_optional('pyproj')
         from pyproj import Transformer
-        transformer = Transformer.from_crs(crs, 'EPSG:4326')
-        x, y = transformer.transform(lat, lon)
-
-        return Coordinate(
-            round_half_up(y, 6),
-            round_half_up(x, 6),
-        )
+        lon, lat = Transformer.from_crs(crs, "EPSG:4326", always_xy=True).transform(lon, lat)
+        return Coordinate(lon, lat)
 
     @classmethod
     def from_qdms(cls, lon: str, lat: str):
@@ -181,14 +226,61 @@ class Coordinate:
         Returns:
             Coordinate
         """
-        parts, zm = wkt_str.split(' '), {}
+        parts = wkt_str.split()
+        lon, lat = map(float, parts[:2])
+        z = m = None
         if len(parts) > 2:
-            warn_once(
-                'Z/M values are not supported for geometric operations and will be ignored.'
-            )
-            zm = dict(zip(list(zm_order.lower()), map(float, parts[2:])))
+            warn_once('Z/M values are not supported for geometric operations and will be ignored.')
+            zm_vals = list(map(float, parts[2:]))
+            z_map = dict(zip(list(zm_order.lower()), zm_vals))
+            z, m = z_map.get("z"), z_map.get("m")
+        return Coordinate(lon, lat, z=z, m=m)
 
-        return Coordinate(*cast(Tuple[float, float], parts[:2]), z=zm.get('z'), m=zm.get('m'))
+    def is_close(self, other: 'Coordinate', abs_tol: float = COORDINATE_TOLERANCE) -> bool:
+        """
+        Tests whether another coordinate is near enough to this one to be treated as
+        the same point.
+
+        Unlike equality, which is exact, this is a tolerance test - use it when
+        comparing coordinates that have been through a calculation, a reprojection, or
+        a serialization round trip, where the last few decimal places will not survive.
+
+        Note that approximate closeness is not transitive: a may be close to b, and b
+        close to c, while a and c are not. That is why this is a separate method rather
+        than the behavior of ==, which has to stay exact to keep Coordinates hashable.
+
+        Longitude and latitude are compared within abs_tol, wrapping across the
+        antimeridian so that 179.9999999 and -180.0 read as the same point. Z and M are
+        compared strictly, because a tolerance in degrees says nothing about a value in
+        meters or in whatever unit the caller has put in M.
+
+        Because the tolerance is an angle, the distance it corresponds to shrinks with
+        latitude - this test is stricter nearer the poles, never looser. Coordinates
+        sitting on a pole with differing longitudes describe the same point but are not
+        reported as close.
+
+        Args:
+            other:
+                The Coordinate to compare against
+
+            abs_tol: (float)
+                How far apart, in degrees, the two may be. Defaults to roughly 11
+                centimeters at the equator - the same tolerance geometric predicates
+                use to decide whether a point lies on a shape's edge.
+
+        Returns:
+            bool
+        """
+        if not isinstance(other, Coordinate):
+            return False
+
+        if self.z != other.z or self.m != other.m:
+            return False
+
+        # Shortest way around the globe, so coordinates either side of the antimeridian
+        # are measured across it rather than the long way around
+        lon_delta = abs((self.longitude - other.longitude + 180) % 360 - 180)
+        return lon_delta <= abs_tol and abs(self.latitude - other.latitude) <= abs_tol
 
     def to_dms(self) -> Tuple[Tuple[int, int, float, str], Tuple[int, int, float, str]]:
         """
@@ -226,15 +318,32 @@ class Coordinate:
         if reverse:
             out = out[::-1]
 
-        if self.z:
+        if self.z is not None:
             out.append(self.z)
-        if self.m:
+        if self.m is not None:
             out.append(self.m)
         return tuple(out)
 
+    def to_position(self) -> List[float]:
+        """
+        Converts the coordinate to a GeoJSON-style position: longitude,
+        latitude, and altitude (Z) when present.
+
+        Unlike to_float(), M values are never included - position-based
+        formats (GeoJSON, KML, shapely geometries) define the third element
+        as altitude and have no representation for M.
+
+        Returns:
+            List of floats, length 2 or 3
+        """
+        if self.z is not None:
+            return [self.longitude, self.latitude, self.z]
+        return [self.longitude, self.latitude]
+
     def to_mgrs(self) -> str:
         """Convert this coordinate to a MGRS string"""
-        import mgrs  # pylint: disable=import-outside-toplevel
+        import_optional('mgrs')
+        import mgrs
         _MGRS = mgrs.MGRS()
 
         return _MGRS.toMGRS(self.latitude, self.longitude)
@@ -250,15 +359,12 @@ class Coordinate:
         Return:
             A coordinate in the target projection system.
         """
+        import_optional('pyproj')
         from pyproj import Transformer
-        transformer = Transformer.from_crs('EPSG:4326', crs)
-        x, y = transformer.transform(self.latitude, self.longitude)
-
-        return Coordinate(
-            round_half_up(y, 6),
-            round_half_up(x, 6),
-            False
+        lon, lat = Transformer.from_crs("EPSG:4326", crs, always_xy=True).transform(
+            self.longitude, self.latitude
         )
+        return Coordinate(lon, lat, _bounded=False)
 
     def to_qdms(self, reverse: bool = False) -> Tuple[str, str]:
         """
@@ -292,25 +398,49 @@ class Coordinate:
 
         return f'{lon[3]}{"".join(_lon)}', f'{lat[3]}{"".join(_lat)}'
 
-    def to_str(self, reverse: bool = False) -> Tuple:
+    def to_str(self, reverse: bool = False, precision: Optional[int] = None) -> Tuple:
         """
         Converts the coordinate to a tuple of strings (longitude, latitude).
         If the Coordinate contains Z and/or M datapoints, the tuple will be extended
-        to include both (in that order)
+        to include both (in that order).
+
+        Scientific notation (e.g., 1e-18) is strictly suppressed.
 
         Args:
             reverse: (bool)
                 (Default False) If True, reverses the coordinate order to (latitude, longitude)
 
+            precision: (int) (Optional)
+                The number of decimal places to round to. If None, defaults to 12
+                to ensure high precision while suppressing scientific notation.
+
         Returns:
             Tuple of up to length 4, consisting of (longitude, latitude, altitude, M)
         """
-        out = [str(self.longitude), str(self.latitude)]
+
+        def _fmt(val: float) -> str:
+            # Force fixed-point notation. 16 is approx standard float precision.
+            # Using str(val) is dangerous because it defaults to scientific notation
+            # for very small numbers (e.g., 2.2e-18).
+            _prec = precision if precision is not None else 12
+            formatted = f"{val:.{_prec}f}"
+
+            # If user didn't request a specific precision, we trim trailing zeros
+            # to keep the string compact but accurate.
+            if precision is None:
+                formatted = formatted.rstrip('0').rstrip('.')
+                # Edge case: if value was 0.0, rstrip leaves empty string or just "0"
+                if formatted == '':
+                    return '0.0'
+
+            return formatted
+
+        out = [_fmt(self.longitude), _fmt(self.latitude)]
         if reverse:
             out = out[::-1]
 
-        if self.z:
-            out.append(str(self.z))
-        if self.m:
-            out.append(str(self.m))
+        if self.z is not None:
+            out.append(_fmt(self.z))
+        if self.m is not None:
+            out.append(_fmt(self.m))
         return tuple(out)

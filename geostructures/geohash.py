@@ -20,6 +20,7 @@ from geostructures.collections import CollectionBase
 from geostructures.multistructures import MultiGeoPoint
 from geostructures.time import TimeInterval
 from geostructures.typing import GeoShape, LineLike, MultiShape, PointLike, PolygonLike, SinglePolygon
+from geostructures.utils.conditional_imports import import_optional
 
 
 _NIEMEYER_CONFIG_TYPE = TypedDict(
@@ -43,8 +44,8 @@ _NIEMEYER_CONFIG: Dict[int, _NIEMEYER_CONFIG_TYPE] = {
             **{x + 48: x for x in range(10)},
             **{x + 97: x + 10 for x in range(6)},
         },
-        'min_y': -180.,
-        'max_y': 180.,
+        'min_y': -90.,
+        'max_y': 90.,
         'min_x': -180.,
         'max_x': 180.
     },
@@ -71,8 +72,8 @@ _NIEMEYER_CONFIG: Dict[int, _NIEMEYER_CONFIG_TYPE] = {
             **{x + 97: x + 38 for x in range(26)},
             **{61: 10, 95: 37}
         },
-        'min_y': -180.,
-        'max_y': 180.,
+        'min_y': -90.,
+        'max_y': 90.,
         'min_x': -180.,
         'max_x': 180.
     }
@@ -151,7 +152,7 @@ def _coord_to_niemeyer(coordinate: Coordinate, length: int, base: int) -> str:
     lon_interval = [config['min_x'], config['max_x']]
     character, bit = 0, 0
     lon_component = True
-    lon, lat = coordinate.to_float()
+    lon, lat = coordinate.longitude, coordinate.latitude
 
     geohash_position = 0
     while geohash_position < length:
@@ -225,6 +226,7 @@ def h3_to_geopolygon(
     Returns:
         GeoPolygon
     """
+    import_optional('h3')
     from h3 import cell_to_boundary
     boundary = [Coordinate(*x[::-1]) for x in cell_to_boundary(h3_geohash)]
     return GeoPolygon(
@@ -373,7 +375,9 @@ class H3Hasher(HasherBase):
         self,
         resolution: Optional[int] = None,
     ):
-        import h3  # noqa: F401
+        # Deliberate fail-fast so users without the extra fail at
+        # construction rather than mid-pipeline
+        import_optional('h3')
 
         self.resolution = resolution
 
@@ -392,9 +396,12 @@ class H3Hasher(HasherBase):
         Returns:
             A set of H3 geohashes
         """
+        import_optional('h3')
         import h3
         poly = h3.LatLngPoly(
-            *[[x.to_float(reverse=True) for x in ring] for ring in polygon.linear_rings()]
+            # Slice to lat/lng; to_float() may also carry Z/M values, which
+            # h3.LatLngPoly rejects
+            *[[x.to_float(reverse=True)[:2] for x in ring] for ring in polygon.linear_rings()]
         )
         return set(h3.polygon_to_cells(
             poly,
@@ -420,6 +427,7 @@ class H3Hasher(HasherBase):
         Returns:
             A set of H3 geohashes
         """
+        import_optional('h3')
         import h3
 
         _hexes = set()
@@ -429,12 +437,11 @@ class H3Hasher(HasherBase):
                 h3.latlng_to_cell(segment[0].latitude, segment[0].longitude, resolution),
                 h3.latlng_to_cell(segment[1].latitude, segment[1].longitude, resolution)
             )
+
             # Add single ring buffer
-            all_hexes = set(
-                _geohash
-                for geohash in line_hashes
-                for _geohash in h3.grid_ring(geohash, 1)
-            )
+            all_hexes = set(line_hashes)
+            for geohash in line_hashes:
+                all_hexes.update(h3.grid_ring(geohash, 1))
 
             # Test which hexes actually intersect the line
             for _hex in all_hexes:
@@ -461,6 +468,7 @@ class H3Hasher(HasherBase):
         Returns:
             A set of H3 geohashes
         """
+        import_optional('h3')
         import h3
 
         return {
@@ -484,6 +492,7 @@ class H3Hasher(HasherBase):
         return h3_to_geopolygon(geohash).bounding_coords()
 
     def get_neighbors(self, geohash: str) -> Set[str]:
+        import_optional('h3')
         import h3
 
         return set(h3.grid_ring(geohash, 1))
@@ -513,7 +522,7 @@ class H3Hasher(HasherBase):
             A dictionary of H3 geohashes mapped to the result of the aggregation
             function
         """
-        resolution = kwargs.get('resolution', self.resolution)
+        resolution = cast(Optional[int], kwargs.get('resolution', self.resolution))
         if resolution is None:
             raise ValueError('You must pass a H3 resolution.')
 
@@ -544,7 +553,10 @@ class H3Hasher(HasherBase):
             A dictionary of H3 geohashes mapped to the result of the aggregation
             function
         """
-        resolution = kwargs.get('resolution', self.resolution)
+        resolution = cast(Optional[int], kwargs.get('resolution', self.resolution))
+        if resolution is None:
+            raise ValueError('You must pass a H3 resolution.')
+
         agg_fn = kwargs.get('agg_fn', len)
         hash_dict: Dict[str, List[Coordinate]] = defaultdict(list)
         for coordinate in coordinates:
@@ -567,7 +579,9 @@ class H3Hasher(HasherBase):
             The unique list of hashes that comprise the shape
         """
         if isinstance(shape, MultiShape):
-            return set().union(*[self.hash_shape(x) for x in shape.geoshapes])
+            return set().union(
+                *(self.hash_shape(x, **kwargs) for x in shape.geoshapes)
+            )
 
         resolution = kwargs.get('resolution', self.resolution)
         if resolution is None:
@@ -619,14 +633,14 @@ class NiemeyerHasher(HasherBase):
 
         return [
             # from directly above, then clockwise
-            _coord_to_niemeyer(Coordinate(lon, lat + lat_err * 2), length, base),
-            _coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat + lat_err * 2), length, base),
-            _coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat), length, base),
-            _coord_to_niemeyer(Coordinate(lon + lon_err * 2, lat - lat_err * 2), length, base),
-            _coord_to_niemeyer(Coordinate(lon, lat - lat_err * 2), length, base),
-            _coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat - lat_err * 2), length, base),
-            _coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat), length, base),
-            _coord_to_niemeyer(Coordinate(lon - lon_err * 2, lat + lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon,                  lat + lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon + lon_err * 2,    lat + lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon + lon_err * 2,    lat), length, base),
+            _coord_to_niemeyer(Coordinate(lon + lon_err * 2,    lat - lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon,                  lat - lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon - lon_err * 2,    lat - lat_err * 2), length, base),
+            _coord_to_niemeyer(Coordinate(lon - lon_err * 2,    lat), length, base),
+            _coord_to_niemeyer(Coordinate(lon - lon_err * 2,    lat + lat_err * 2), length, base),
         ]
 
     def _hash_linestring(

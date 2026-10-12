@@ -11,7 +11,7 @@ _LOG_FORMATTER = logging.Formatter('[%(levelname)s] %(name)s: %(message)s')
 _LOG_HANDLER.setFormatter(_LOG_FORMATTER)
 LOGGER.addHandler(_LOG_HANDLER)
 
-_WARNINGS = set()
+_WARNINGS: set = set()
 
 
 def warn_once(warning: str):

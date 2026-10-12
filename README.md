@@ -1,7 +1,7 @@
 
 # Geostructures
 
-[![Unit Tests](https://github.com/ccbest/geostructures/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/ccbest/geostructures/actions/workflows/unit-tests.yml)
+[![CI](https://github.com/ccbest/geostructures/actions/workflows/ci.yml/badge.svg)](https://github.com/ccbest/geostructures/actions/workflows/ci.yml)
 
 A lightweight implementation of shapes drawn across a geo-temporal plane.
 
@@ -23,12 +23,23 @@ $ pip install geostructures
 
 #### Requirements
 
-Geostructures only requires `numpy` to function.
+Geostructures aims to have as low overhead as possible, thus only requiring `numpy` for core 
+functionality. 
+
+Many optional features (listed below) will require additional packages. If you call any features
+without the requirements installed, geostructures will raise an `ImportError` and give you 
+the installation command needed to proceed.
 
 #### Optional Requirements
 
+We try to keep pace with all optional dependencies' most recent major versions, however
+installing these dependencies using the below commands will ensure the correct version is used.
+
 * `pip install geostructures[df]`
   * Add dataframe support for geopandas and pandas
+
+* `pip install geostructures[karney]`
+  * Add support for Karney geodesic measures 
 
 * `pip install geostructures[kml]`
   * Add KML read/write support using FastKML
@@ -42,6 +53,11 @@ Geostructures only requires `numpy` to function.
 * `pip install geostructures[proj]`
   * Add support for coordinate projection conversion
 
+* `pip install geostructures[shapefile]`
+  * Add support to reading/writing ESRI shapefiles
+
+* `pip install geostructures[shapely]`
+  * Add support for converting geostructures to/from shapely objects
 
 ### Overview
 
@@ -314,8 +330,40 @@ k = KML()  # also works with fastkml.Folder
 k.append(polygon.to_fastkml_placemark())
 polygon.from_fastkml_placemark(k.features[0])
 
-# Collections (and Tracks) of shapes have additional supported formats
+# Read any KML/KMZ source into a FeatureCollection. parse_kml auto-detects the
+# input: a .kml/.kmz file path, a raw KML string or bytes, raw KMZ bytes, or an
+# in-memory fastkml object.
+from geostructures.parsers import parse_kml
+parse_kml('/path/to/file.kml')      # or a .kmz
+parse_kml('<kml>...</kml>')         # raw KML document
+parse_kml(k)                        # an in-memory fastkml object
+
+# serialize_kml is the inverse: write a collection (or a single shape) back out.
+# KML vs KMZ is inferred from the file extension; pass kmz=True/False to override.
+from geostructures.serializers import serialize_kml
+serialize_kml(polygon, '/path/to/file.kml')   # plain KML
+serialize_kml(polygon, '/path/to/file.kmz')   # zipped KMZ
+serialize_kml(polygon)                         # returns bytes (no file written)
+
+# The parsers/serializers modules mirror each other across {geojson, wkt, kml, shapefile}.
+# Each serialize_* returns the serialized form when no file is given, or writes to a
+# path / file-like when one is. (Text formats return str; kml/shapefile return bytes.)
+from geostructures.parsers import parse_geojson, parse_wkt, parse_shapefile
+from geostructures.serializers import serialize_geojson, serialize_wkt, serialize_shapefile
+
 collection = FeatureCollection([polygon])
+
+serialize_geojson(collection)                       # -> JSON string (indent=... to pretty-print)
+serialize_geojson(collection, '/path/to/file.geojson')
+parse_geojson(serialize_geojson(collection))
+
+serialize_wkt(polygon)                              # -> 'POLYGON ((...))'  (single shape only)
+parse_wkt(serialize_wkt(polygon))
+
+serialize_shapefile(collection, '/path/to/file.zip')  # zip-archived shapefile set
+parse_shapefile('/path/to/file.zip')
+
+# Collections (and Tracks) of shapes have additional supported formats
 
 # Creates a geopandas DataFrame
 collection.to_geopandas()
@@ -411,33 +459,48 @@ geobox = niemeyer_to_geobox(set_of_geohashes.pop(), base=16)
 hashmap = hasher.hash_collection(collection)
 ```
 
-#### Common Geospatial Calculations
+#### Geodesics and Transformations
+
+Geostructures supports geodesic calculations using the Haversine, Vincenty, and Karney formulae. 
+These functions can be called individually, or you can set them globally to be used across the 
+library.
+
+By default, geostructures will use Haversine formulae for geodesic calculations.
+
 ```python
 from geostructures import Coordinate
-from geostructures.calc import *
-
-# The straight-line direction of travel to get from point A to point B
-bearing_degrees(Coordinate(-0.154092, 51.539865), Coordinate(-0.140592, 51.505665))
-
-# The great-sphere distance between two points
-haversine_distance_meters(Coordinate(-0.154092, 51.539865), Coordinate(-0.140592, 51.505665))
-
-# The resulting coordinate of traveling some distance from point A in a given direction
-inverse_haversine_degrees(
-    Coordinate(-0.154092, 51.539865),
-    45,  # degrees clockwise from true north
-    200  # the distance traveled (in meters)
+from geostructures.calc import rotate_coordinates
+from geostructures.geodesic import (
+    set_geodesic_algorithm,
+    haversine_distance, vincenty_distance, karney_distance,
+    haversine_bearing, vincenty_bearing, karney_bearing,
+    haversine_destination, vincenty_destination, karney_destination,
 )
 
-# The same, except using radians for direction of travel
-inverse_haversine_radians(Coordinate(-0.154092, 51.539865), 0.7853981633974483, 200)
+# Tell geostructures to use Vincenty formula for all geodesic calculations
+# Supports: 'haversine', 'vincenty', 'karney'
+set_geodesic_algorithm('vincenty')
+
+c1 = Coordinate(-0.154092, 51.539865)
+c2 = Coordinate(-0.140592, 51.505665)
+
+# Manually call functions without overriding geostructures' behavior
+h_dist = haversine_distance(c1, c2)
+v_dist = vincenty_distance(c1, c2)
+k_dist = karney_distance(c1, c2)
+
+h_bearing = haversine_bearing(c1, c2)
+v_bearing = vincenty_bearing(c1, c2)
+k_bearing = karney_bearing(c1, c2)
+
+h_dest = haversine_destination(c1, 90, 1_000) # Start at c1 and travel 1km straight east
+v_dest = vincenty_destination(c1, 90, 1_000)
+k_dest = karney_destination(c1, 90, 1_000)
+
 
 # Rotate coordinates around a defined origin
 rotate_coordinates(
-    [
-        Coordinate(-0.154092, 51.539865), 
-        Coordinate(-0.140592, 51.505665)
-    ],
+    [c1, c2],
     origin=Coordinate(-0.16, 50.24),
     degrees=45,
 )

@@ -14,6 +14,8 @@ from geostructures import GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon
 from geostructures.time import TimeInterval
 from geostructures.collections import Track, FeatureCollection
 
+from tests.functions import assert_geopolygons_equal
+
 
 def test_collection_bool():
     track1 = Track([
@@ -64,6 +66,14 @@ def test_collection_centroid():
         GeoPoint(Coordinate(3.0, 1.5), datetime(2020, 1, 3)),
     ])
     assert track1.centroid == Coordinate(2.0, 1.5)
+
+    # Regression: Z/M-carrying members previously polluted or crashed centroid
+    col = FeatureCollection([
+        GeoPoint(Coordinate(1.0, 1.0, z=10., m=5.)),
+        GeoPoint(Coordinate(3.0, 2.0, z=20., m=7.)),
+    ])
+    assert col.centroid == Coordinate(2.0, 1.5)
+    assert col.centroid.z is None
 
 
 def test_collection_len():
@@ -147,13 +157,42 @@ def test_collection_filter_by_dt():
         ),
     ])
 
+    # A bare datetime behaves like a zero-length interval: it matches both
+    # the exact instant and any interval containing it
     assert col.filter_by_dt(datetime(2020, 1, 1)) == FeatureCollection([
         GeoCircle(
             Coordinate(0.0, 1.0),
             500,
             dt=datetime(2020, 1, 1)
         ),
+        GeoCircle(
+            Coordinate(0.0, 1.0),
+            500,
+            dt=TimeInterval(datetime(2019, 12, 1), datetime(2020, 1, 2))
+        ),
     ])
+
+
+def test_collection_filter_contained_by():
+    col = FeatureCollection([
+        GeoPoint(Coordinate(-1, 0)),
+        GeoPoint(Coordinate(0, 0)),
+        GeoPoint(Coordinate(1, 0)),
+    ])
+    expected = FeatureCollection([GeoPoint(Coordinate(0, 0))])
+    actual = col.filter_contained_by(GeoCircle(Coordinate(0., 0.), 100))
+    assert actual == expected
+
+
+def test_collection_filter_contains():
+    col = FeatureCollection([
+        GeoCircle(Coordinate(-1, 0), 100),
+        GeoCircle(Coordinate(0, 0), 100),
+        GeoCircle(Coordinate(1, 0), 100),
+    ])
+    expected = FeatureCollection([GeoCircle(Coordinate(0, 0), 100)])
+    actual = col.filter_contains(GeoPoint(Coordinate(0., 0.)))
+    assert actual == expected
 
 
 def test_collection_filter_by_intersection():
@@ -438,7 +477,7 @@ def test_collection_convex_hull():
     ])
 
 
-def test_collection_to_from_shapefile(caplog):
+def test_collection_to_from_shapefile(pyshp_round_trip, caplog):
     # Tests both to and from because of temporary file usage
     # Shapes will be assigned an ID when written to shapefile, so have to hard code in tests
 
@@ -475,12 +514,8 @@ def test_collection_to_from_shapefile(caplog):
         )
     ])
 
-    with tempfile.TemporaryDirectory() as f:
-        with ZipFile(os.path.join(f, 'test.zip'), 'w') as zfile:
-            shapecol.to_shapefile(zfile)
-
-        new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
-        assert set(new_shapecol.geoshapes) == set(shapecol.geoshapes)
+    new = pyshp_round_trip(shapecol)
+    assert set(new.geoshapes) == set(shapecol.geoshapes)
 
     # Test again with Z and M values
     shapecol = FeatureCollection([
@@ -502,6 +537,10 @@ def test_collection_to_from_shapefile(caplog):
             GeoLineString([Coordinate(0., 1., 99., 100.), Coordinate(1., 0., 99., 100.)]),
             GeoLineString([Coordinate(0., 0., 99., 100.), Coordinate(1., 1., 99., 100.)]),
         ], properties={'ID': 2}),
+        MultiGeoLineString([
+            GeoLineString([Coordinate(0., 1., m=1), Coordinate(1., 0., m=1)]),
+            GeoLineString([Coordinate(0., 0., m=2), Coordinate(1., 1., m=2)]),
+        ], properties={'ID': 2}),
         MultiGeoPolygon(
             [
                 GeoBox(
@@ -517,31 +556,56 @@ def test_collection_to_from_shapefile(caplog):
         )
     ])
 
-    with tempfile.TemporaryDirectory() as f:
-        with ZipFile(os.path.join(f, 'test.zip'), 'w') as zfile:
-            shapecol.to_shapefile(zfile)
-
-        new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
-        for x in new_shapecol:
-            if x not in shapecol:
-                raise
-        # assert set(new_shapecol.geoshapes) == set(shapecol.geoshapes)
+    new = pyshp_round_trip(shapecol)
+    assert set(new.geoshapes) == set(shapecol.geoshapes)
 
     # Test that non-polygons get written/read correctly (should be read as a polygon)
     shapecol = FeatureCollection([
         GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0), properties={'ID': 0}),
         GeoCircle(Coordinate(0.0, 2.0), 1000, properties={'ID': 1}),
-        GeoRing(Coordinate(0.0, 2.0), 1000, 500, properties={'ID': 2}),
+        GeoRing(
+            Coordinate(0.0, 2.0),
+            1000,
+            500,
+            angle_min=10,
+            angle_max=350,
+            properties={'ID': 2}
+        ),
     ])
+
+    # Convert original shapes to expected polygons (Shapefiles don't support circles/boxes natively)
+    expected_shapes = [x.to_polygon() for x in shapecol.geoshapes]
+
     with tempfile.TemporaryDirectory() as f:
-        with ZipFile(os.path.join(f, 'test.zip'), 'w') as zfile:
+        zip_path = os.path.join(f, 'test.zip')
+
+        # Write
+        with ZipFile(zip_path, 'w') as zfile:
             shapecol.to_shapefile(zfile)
 
-        new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
-        assert set(new_shapecol.geoshapes) == set(x.to_polygon() for x in shapecol.geoshapes)
+        # Read
+        new_shapecol = FeatureCollection.from_shapefile(zip_path)
 
-        new_shapecol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'), read_layers=['nonexistent'])
-        assert new_shapecol.geoshapes == []
+        # 1. Verify counts
+        assert len(new_shapecol) == len(expected_shapes)
+
+        # 2. Match by ID and verify geometry approximately
+        # Note: Shapefile properties are read back, so we use ID to align the shapes
+        new_map = {int(s.properties['ID']): s for s in new_shapecol}
+        exp_map = {int(s.properties['ID']): s for s in expected_shapes}
+
+        assert new_map.keys() == exp_map.keys()
+
+        for sid, new_shape in new_map.items():
+            exp_shape = exp_map[sid]
+            assert_geopolygons_equal(new_shape, exp_shape)
+
+        # 3. Test nonexistent layer filter
+        new_shapecol_empty = FeatureCollection.from_shapefile(
+            zip_path,
+            read_layers=['nonexistent']
+        )
+        assert new_shapecol_empty.geoshapes == []
 
     # Test writing/reading properties
     pointcol = FeatureCollection([
@@ -564,43 +628,41 @@ def test_collection_to_from_shapefile(caplog):
             }
         ),
     ])
-    with tempfile.TemporaryDirectory() as f:
-        with ZipFile(os.path.join(f, 'test.zip'), 'w') as zfile:
-            pointcol.to_shapefile(zfile)
+    new = pyshp_round_trip(pointcol)
+    assert set(new.geoshapes) == set(pointcol.geoshapes)
 
-        new_pointcol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
-        assert set(new_pointcol.geoshapes) == set(pointcol.geoshapes)
 
-    # Test limiting the properties written
-    with tempfile.TemporaryDirectory() as f:
-        with ZipFile(os.path.join(f, 'test.zip'), 'w') as zfile:
-            # should ignore the 'ex2' prop
-            pointcol.to_shapefile(zfile, include_properties=['ex_prop'])
-
-        new_pointcol = FeatureCollection.from_shapefile(os.path.join(f, 'test.zip'))
-
-        expected = FeatureCollection([
-            GeoPoint(
-                Coordinate(1.0, 0.0),
-                properties={'ID': 0, 'ex_prop': 'test2'}
-            ),
-            GeoPoint(
-                Coordinate(2.0, 0.0),
-                properties={'ID': 1, 'ex_prop': 'test'}
-            ),
-        ])
-        assert set(new_pointcol.geoshapes) == set(expected.geoshapes)
+    orig = FeatureCollection([
+        GeoPoint(
+            Coordinate(1.0, 0.0),
+            properties={'ID': 0, 'ex_prop': 'test2'}
+        ),
+        GeoPoint(
+            Coordinate(2.0, 0.0),
+            properties={'ID': 1, 'ex_prop': 'test'}
+        ),
+    ])
+    expected = FeatureCollection([
+        GeoPoint(
+            Coordinate(1.0, 0.0),
+            properties={'ex_prop': 'test2'}
+        ),
+        GeoPoint(
+            Coordinate(2.0, 0.0),
+            properties={'ex_prop': 'test'}
+        ),
+    ])
+    new = pyshp_round_trip(orig, include_properties=['ex_prop'])
+    assert set(new.geoshapes) == set(expected.geoshapes)
 
     # Test that writing mixed property data types logs a warning
-    with tempfile.TemporaryDirectory() as f:
-        pointcol = FeatureCollection([
-            GeoPoint(Coordinate(1.0, 0.0), properties={'ID': 0, 'prop': 1}),
-            GeoPoint(Coordinate(2.0, 0.0), properties={'ID': 1, 'prop': '2'}),
-        ])
-        with ZipFile(os.path.join(f, 'test.zip'), 'w') as zfile:
-            pointcol.to_shapefile(zfile)
-
-        assert 'Conflicting data types found in properties; your shapefile may not get written correctly' in caplog.text
+    caplog.clear()
+    pointcol = FeatureCollection([
+        GeoPoint(Coordinate(1.0, 0.0), properties={'ID': 0, 'prop': 1}),
+        GeoPoint(Coordinate(2.0, 0.0), properties={'ID': 1, 'prop': '2.0'}),
+    ])
+    pyshp_round_trip(pointcol)
+    assert 'Conflicting data types found in properties' in caplog.text
 
 
 def test_featurecollection_add():
@@ -959,6 +1021,17 @@ def test_track_convolve_duplicate_timestamps():
     )
     assert track.convolve_duplicate_timestamps() == expected
 
+    # Regression: Z/M-carrying pings previously crashed the lon/lat averaging
+    track = Track(
+        [
+            GeoPoint(Coordinate(0., 1., z=5., m=1.), datetime(2020, 1, 1)),
+            GeoPoint(Coordinate(1., 0., z=6., m=2.), datetime(2020, 1, 1)),
+        ]
+    )
+    assert track.convolve_duplicate_timestamps() == Track(
+        [GeoPoint(Coordinate(0.5, 0.5), datetime(2020, 1, 1))]
+    )
+
     track = Track(
         [
             GeoPoint(Coordinate('0.0000', '1.0000'), datetime(2020, 1, 1)),
@@ -1014,9 +1087,6 @@ def test_track_filter_impossible_journeys(caplog):
     ])
     _ = track.filter_impossible_journeys(5)
     assert 'Duplicate timestamps detected' in caplog.text
-
-
-
 
 
 def test_track_intersects():
@@ -1082,3 +1152,112 @@ def test_track_intersection():
 
     gbox = GeoBox(Coordinate(0., 2.), Coordinate(2., 0.), dt=datetime(2020, 1, 1, 3))
     assert len(track1.filter_by_intersection(gbox)) == 1
+
+
+def test_collection_intersects_untimed_shapes():
+    # A collection member without time information intersects a timed query
+    # shape spatially, matching single-shape semantics
+    col = FeatureCollection([GeoPoint(Coordinate(0., 0.))])
+    timed_circle = GeoCircle(Coordinate(0., 0.), 500, dt=datetime(2020, 1, 1))
+    assert col.intersects(timed_circle)
+
+    # Timed members are still excluded when time doesn't match
+    col = FeatureCollection([GeoPoint(Coordinate(0., 0.), dt=datetime(2019, 1, 1))])
+    assert not col.intersects(timed_circle)
+
+
+def test_collection_to_geojson_id_kwarg():
+    col = FeatureCollection([GeoPoint(Coordinate(0., 0.))])
+    assert col.to_geojson()['features'][0]['id'] == 0
+    assert col.to_geojson(id='custom')['features'][0]['id'] == 'custom'
+
+
+def test_track_from_shapely_returns_track():
+    import shapely
+
+    # Track.from_shapely used to silently return a FeatureCollection; shapely
+    # geometries carry no time information, so it must now raise
+    geom = shapely.GeometryCollection([shapely.Point(0., 0.)])
+    assert isinstance(FeatureCollection.from_shapely(geom), FeatureCollection)
+    with pytest.raises(ValueError):
+        Track.from_shapely(geom)
+
+
+def test_track_getitem():
+    point1 = GeoPoint(Coordinate(0., 0.), dt=datetime(2020, 1, 1))
+    point2 = GeoPoint(
+        Coordinate(1., 1.),
+        dt=TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 3))
+    )
+    track = Track([point1, point2])
+
+    # Integer indexing returns the underlying shape
+    assert track[0] == point1
+
+    # Integer slicing returns a Track
+    assert track[0:1] == Track([point1])
+
+    # Datetime indexing returns shapes whose bounds contain the instant
+    assert track[datetime(2020, 1, 2, 12)] == Track([point2])
+
+    # Datetime slicing, including on an empty track
+    assert track[datetime(2020, 1, 1):datetime(2020, 1, 2)] == Track([point1])
+    assert Track([])[datetime(2020, 1, 1):datetime(2020, 1, 2)] == Track([])
+
+    with pytest.raises(TypeError):
+        _ = track['not an index']
+
+
+def test_track_filter_impossible_journeys_empty():
+    assert Track([]).filter_impossible_journeys(10) == Track([])
+
+
+def test_track_distances_respect_geodesic_algorithm():
+    from geostructures.geodesic import set_geodesic_algorithm
+
+    def make_track():
+        return Track([
+            GeoPoint(Coordinate(0., 0.), dt=datetime(2020, 1, 1)),
+            GeoPoint(Coordinate(1., 1.), dt=datetime(2020, 1, 2)),
+        ])
+
+    try:
+        set_geodesic_algorithm('haversine')
+        haversine_dist = make_track().centroid_distances[0]
+
+        set_geodesic_algorithm('vincenty')
+        vincenty_dist = make_track().centroid_distances[0]
+    finally:
+        set_geodesic_algorithm('haversine')
+
+    # The two earth models agree to within ~0.5% but are not identical
+    assert haversine_dist != vincenty_dist
+    assert abs(haversine_dist - vincenty_dist) / haversine_dist < 0.01
+
+
+def test_collection_filter_by_dt_invalid_type():
+    col = FeatureCollection([GeoPoint(Coordinate(0., 0.), dt=datetime(2020, 1, 1))])
+    with pytest.raises(ValueError):
+        col.filter_by_dt('not a datetime')
+
+
+def test_collection_to_fastkml_folder():
+    col = FeatureCollection([GeoPoint(Coordinate(0., 0.))])
+    folder = col.to_fastkml_folder('my folder')
+    assert folder.name == 'my folder'
+    assert len(folder.features) == 1
+
+
+def test_collection_to_shapefile_m_values(pyshp_round_trip):
+    # Shapes carrying only M values are written as the pyshp *M variants
+    col = FeatureCollection([
+        GeoPoint(Coordinate(0., 0., m=5.)),
+        GeoLineString([Coordinate(0., 0., m=1.), Coordinate(1., 1., m=2.)]),
+        GeoPolygon([
+            Coordinate(0., 0., m=1.), Coordinate(1., 0., m=1.),
+            Coordinate(1., 1., m=1.), Coordinate(0., 0., m=1.)
+        ]),
+    ])
+    result = pyshp_round_trip(col)
+    assert len(result) == 3
+    assert all(shape.has_m for shape in result.geoshapes)

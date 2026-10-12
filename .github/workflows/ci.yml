@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint & type check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            pyproject.toml
+            VERSION
+
+      - name: Install package with dev extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+
+      - name: Lint (ruff)
+        run: ruff check geostructures
+
+      - name: Lint (pylint)
+        run: pylint geostructures
+
+      - name: Type check (mypy)
+        run: mypy geostructures
+
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: |
+            pyproject.toml
+            VERSION
+
+      - name: Install package (no extras)
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          pip install .
+
+      - name: Compile-only check
+        # Proves the package imports and runs without any optional deps
+        run: pytest ./tests/test_compile.py
+
+      - name: Install package with dev extras
+        run: pip install .[dev]
+
+      - name: Run tests with coverage
+        run: |
+          coverage run --source geostructures -m pytest --ignore ./tests/test_compile.py
+          coverage report -m --fail-under 99
+
+  build:
+    name: Packaging check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+          python -m build
+
+      - name: Check dist artifacts (twine)
+        run: twine check dist/*

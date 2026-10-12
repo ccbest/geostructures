@@ -2,31 +2,39 @@
 Base class declarations for geostructures
 """
 
+from __future__ import annotations
+
 from abc import abstractmethod, ABC
 from datetime import datetime, timedelta
 from functools import lru_cache, cached_property
 import re
 from typing import (
-    Any, Callable, Dict, List, Optional, Protocol, Tuple, TYPE_CHECKING,
-    TypeVar, Union, cast
+    Any, Callable, Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING,
+    TypeVar, Union,  cast
 )
+from typing_extensions import Self
 
 from geostructures.coordinates import Coordinate
 from geostructures.time import TimeInterval, GEOTIME_TYPE
 from geostructures.utils.functions import default_to_zulu, sanitize_json
+from geostructures.utils.conditional_imports import import_optional
 
 
 if TYPE_CHECKING:  # pragma: no cover
     from geostructures import GeoCircle, GeoBox
     from geostructures.typing import GeoShape, PolygonLike
+    import fastkml
+    import shapely
 
 
-# A wkt coordinate, e.g. '-1.0 2.0', that can be up to 4 numbers long (can include Z and M)
-_RE_COORD_STR = r'(?:-?\d{1,3}(?:\.?\d*)?\s?){2,4}\s?'
+# A wkt coordinate, e.g. '-1.0 2.0', that can be up to 4 numbers long (can include Z and M).
+# Numbers may use scientific notation (e.g. '1.2e-18'), which shapely emits for
+# near-zero values
+_RE_COORD_STR = r'(?:-?\d{1,3}(?:\.?\d*)?(?:[eE][-+]?\d+)?\s?){2,4}\s?'
 _RE_COORD = re.compile(_RE_COORD_STR)
 
 # A single linear ring, e.g. '(0.0 0.0, 1.0 1.0, ... )'
-_RE_LINEAR_RING_STR = r'\((?:\s?' + _RE_COORD_STR + r'\s?\,?)+\)'
+_RE_LINEAR_RING_STR = r'\([\deE\.\s,+-]+\)'
 _RE_LINEAR_RING = re.compile(_RE_LINEAR_RING_STR)
 
 # A group of linear rings (shell and holes), e.g. '((0.0 0.0, 1.0 1.0, ... ), ( ... ))'
@@ -52,7 +60,9 @@ _RE_LINESTRING_WKT = re.compile(
 )
 
 _RE_MULTIPOINT_WKT = re.compile(
-    r'^MULTIPOINT' + _RE_ZM_STR + _RE_LINEAR_RING_STR + '$',
+    r'^MULTIPOINT' + _RE_ZM_STR + r'\(\s?'  # header
+    r'(?:\(?\s?' + _RE_COORD_STR + r'\)?,?\s?)+' +
+    r'\s?\)$',
     flags=re.IGNORECASE
 )
 _RE_MULTIPOLYGON_WKT = re.compile(
@@ -65,21 +75,49 @@ _RE_MULTILINESTRING_WKT = re.compile(
 )
 
 
-SHAPE_VAR = TypeVar('SHAPE_VAR', bound='BaseShapeProtocol')
+SHAPE_VAR = TypeVar('SHAPE_VAR', bound='BaseShape')
 
 
-class BaseShapeProtocol(Protocol):
+class BaseShape(ABC):
 
     dt: Optional[TimeInterval]
     _properties: Dict
     to_shapely: Callable
 
+    def __init__(
+            self,
+            dt: Optional[GEOTIME_TYPE] = None,
+            properties: Optional[Dict] = None,
+    ):
+        super().__init__()
+        if isinstance(dt, datetime):
+            # Convert to a zero-second time interval
+            dt = default_to_zulu(dt)
+            self.dt: Optional[TimeInterval] = TimeInterval(dt, dt)
+        else:
+            self.dt = dt
+
+        self._properties = properties or {}
+        self.to_shapely = self._make_shp_proxy()
+
     def __contains__(self, other: Union['GeoShape', Coordinate]):
         return self.contains(other)  # pragma: no cover
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['to_shapely'] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__ = state
+        self.to_shapely = self._make_shp_proxy()
+
+    def __reduce_ex__(self, protocol):
+        return (self.__class__._rebuild_from_state, (self.__getstate__(),))
+
     @property
     @abstractmethod
-    def __geo_interface__(self):
+    def __geo_interface__(self):  # pragma: no cover
         pass
 
     @abstractmethod
@@ -128,6 +166,22 @@ class BaseShapeProtocol(Protocol):
     def has_m(self) -> bool:
         """Determines whether any coordinates in the shape have associated M values"""
 
+    @staticmethod
+    def _wkt_zm_designator(coords: Iterable[Coordinate]) -> str:
+        """
+        The WKT dimensionality designator (' Z', ' M', or ' ZM') matching the
+        coordinates actually being emitted, or an empty string for 2D. Computed
+        from the emitted coordinates rather than shape-level has_z/has_m because
+        curve-derived coordinates (e.g. a GeoCircle outline) may not carry the
+        center's Z value.
+        """
+        has_z = has_m = False
+        for coord in coords:
+            has_z = has_z or coord.z is not None
+            has_m = has_m or coord.m is not None
+        zm = ('Z' if has_z else '') + ('M' if has_m else '')
+        return f' {zm}' if zm else ''
+
     @property
     def properties(self):
         props = self._properties.copy()
@@ -165,6 +219,10 @@ class BaseShapeProtocol(Protocol):
         """
         return f'({",".join(" ".join(coord.to_str()) for coord in ring)})'
 
+    def _make_shp_proxy(self):
+        """Create a 1-slot LRU wrapper around _to_shapely()."""
+        return lru_cache(maxsize=1)(self._to_shapely)
+
     @staticmethod
     def _parse_wkt_linear_ring(wkt_str: str, wkt_coords: str):
         """
@@ -188,6 +246,12 @@ class BaseShapeProtocol(Protocol):
         zm = _RE_ZM.findall(wkt_str) or ['ZM']
         parsed_coords = [Coordinate.from_wkt(coord, zm_order=zm[0]) for coord in coords]
         return parsed_coords
+
+    @classmethod
+    def _rebuild_from_state(cls, state):
+        obj = cls.__new__(cls)
+        obj.__setstate__(state)
+        return obj
 
     def buffer_dt(
         self: SHAPE_VAR,
@@ -243,6 +307,8 @@ class BaseShapeProtocol(Protocol):
     def contains_shape(self, shape: 'GeoShape', **kwargs) -> bool:
         """
         Tests whether this shape fully contains another one.
+
+        Does not test for time containment. To test for time and shape overlap, use .contains()
 
         Args:
             shape:
@@ -338,7 +404,7 @@ class BaseShapeProtocol(Protocol):
             self,
             dt: Union[datetime, TimeInterval, None],
             inplace: bool = True
-    ) -> 'BaseShapeProtocol':
+    ) -> 'BaseShape':
         """
         Sets time bounds on this geoshape. Will not mutate unless inplace is True
 
@@ -406,13 +472,20 @@ class BaseShapeProtocol(Protocol):
         Returns:
             fastkml.Placemark
         """
+        import_optional('fastkml')
         from fastkml import Placemark
         from fastkml.data import ExtendedData, Data
 
         return Placemark(
             geometry=self,  # Relies on geo interface
             extended_data=ExtendedData(
-                elements=[Data(name=k, value=v) for k, v in self._properties.items()]
+                elements=[
+                    # KML ExtendedData is untyped; values are stored as strings.
+                    # None must not be stringified - an empty Data element
+                    # round-trips as an absent property rather than 'None'
+                    Data(name=k, value=None if v is None else str(v))
+                    for k, v in self._properties.items()
+                ]
             ),
             times=self.dt._to_fastkml() if self.dt is not None else None,
             **kwargs
@@ -420,7 +493,21 @@ class BaseShapeProtocol(Protocol):
 
     @abstractmethod
     def to_geo_interface(self, **kwargs) -> Dict:
-        pass
+        """
+        Converts the shape to its __geo_interface__, but allows kwargs such as "k"
+        to be passed.
+
+        Keyword Args:
+            include_bbox: bool (default False)
+                If True, will include the `bbox` (bounding box) key in the geo interface
+
+            k: (int)
+                For shapes with smooth curves, increasing k increases the number of
+                points generated along the curve
+
+        Returns:
+            Dict
+        """
 
     def to_geojson(
         self,
@@ -478,37 +565,7 @@ class BaseShapeProtocol(Protocol):
         """
 
 
-class BaseShape(BaseShapeProtocol, ABC):
-
-    """Abstract base class for all geoshapes"""
-
-    def __init__(
-            self,
-            dt: Optional[GEOTIME_TYPE] = None,
-            properties: Optional[Dict] = None,
-    ):
-        super().__init__()
-        if isinstance(dt, datetime):
-            # Convert to a zero-second time interval
-            dt = default_to_zulu(dt)
-            self.dt: Optional[TimeInterval] = TimeInterval(dt, dt)
-        else:
-            self.dt = dt
-
-        self._properties = properties or {}
-        self.to_shapely = lru_cache(maxsize=1)(self._to_shapely)
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        state['to_shapely'] = None
-        return state
-
-    def __setstate__(self, state):
-        state['to_shapely'] = lru_cache(maxsize=1)(self._to_shapely)
-        self.__dict__ = state
-
-
-class SimpleShapeMixin(BaseShapeProtocol, ABC):
+class SimpleShapeMixin(BaseShape, ABC):
 
     """
     Mixin for shapes that adhere to OGC's Simple Features
@@ -520,40 +577,81 @@ class SimpleShapeMixin(BaseShapeProtocol, ABC):
     @classmethod
     @abstractmethod
     def from_geojson(
-        cls: SHAPE_VAR,
+        cls,
         gjson: Dict[str, Any],
         time_start_property: str = 'datetime_start',
         time_end_property: str = 'datetime_end',
         time_format: Optional[str] = None,
-    ) -> SHAPE_VAR:
-        pass
+    ) -> Self:
+        """
+        Converts a geojson structure into the corresponding GeoShape
+
+        Args:
+            gjson: Dict[str, Any]
+                A geojson structure
+
+            time_start_property:
+                The name of the geojson feature property that contains the start time, if any
+
+            time_end_property:
+                The name of the geojson feature property that contains the end time, if any
+
+            time_format:
+                The timestamp format, in 1989 C standard format. Reference
+                https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes
+                for additional information.
+
+        Returns:
+            GeoShape
+        """
 
     @classmethod
-    def from_fastkml_placemark(cls, placemark):
+    def from_fastkml_placemark(cls, placemark: fastkml.Placemark) -> Self:
         """
         Create a geostructure from the corresponding type of FastKML
         Placemark.
         """
+        import_optional('fastkml')
+        import fastkml
+
+        if placemark.geometry is None:  # pragma: no cover
+            raise ValueError('Malformed KML - placemark is missing geometry data.')
+
         dt = None
         if placemark.times is not None:
             dt = TimeInterval._from_fastkml(placemark.times)
 
-        props = {}
+        props: Dict[str, Any] = {}
         if placemark.extended_data is not None:
-            props = {x.name: x.value for x in placemark.extended_data.elements}
+            for elem in placemark.extended_data.elements:
+                if isinstance(elem, fastkml.SchemaData):
+                    props.update({
+                        x.name: x.value for x in elem.data if x.name is not None
+                    })
+                elif elem.name is not None:  # fastkml.data.Data
+                    props[elem.name] = elem.value
 
-        shape = cls.from_geojson(placemark.geometry.__geo_interface__)
+        geo_interface: Dict[str, Any] = dict(placemark.geometry.__geo_interface__)
+        if geo_interface['type'].upper() == 'LINEARRING':
+            # GeoJSON has no LinearRing type; treat it as the polygon it
+            # encloses (its coordinates are a single ring)
+            geo_interface = {
+                'type': 'Polygon',
+                'coordinates': [geo_interface['coordinates']],
+            }
+        shape = cls.from_geojson(geo_interface)
         shape.set_dt(dt, inplace=True)
-        shape._properties = props
+        for key, value in props.items():
+            shape.set_property(key, value, inplace=True)
         return shape
 
     @classmethod
     def from_shapely(
         cls,
-        shape,
+        shape: shapely.geometry.base.BaseGeometry,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
-    ):
+    ) -> Self:
         """
         Creates a corresponding geostructure from a shapely object
         """
@@ -575,10 +673,9 @@ class SimpleShapeMixin(BaseShapeProtocol, ABC):
         Construct a corresponding geostructure from a Well-Known Text
         (WKT) string.
         """
-        pass
 
 
-class PolygonLikeMixin(BaseShapeProtocol, ABC):
+class PolygonLikeMixin(BaseShape, ABC):
 
     """
     Mixin for shapes, singular or multi, that is enclosed by a line, e.g.
@@ -725,7 +822,7 @@ class PolygonLikeMixin(BaseShapeProtocol, ABC):
         """
 
 
-class LineLikeMixin(BaseShapeProtocol, ABC):
+class LineLikeMixin(BaseShape, ABC):
 
     vertices: List[Coordinate]
 
@@ -767,7 +864,7 @@ class LineLikeMixin(BaseShapeProtocol, ABC):
         )
 
 
-class PointLikeMixin(BaseShapeProtocol, ABC):
+class PointLikeMixin(BaseShape, ABC):
     """
     Class for point-like objects (GeoPoints and MultiPoints).
 
@@ -786,7 +883,9 @@ class MultiShapeBase(SimpleShapeMixin, BaseShape, ABC):
         return set(self.geoshapes) == set(other.geoshapes) and self.dt == other.dt
 
     def __hash__(self) -> int:
-        return hash((tuple(hash(x) for x in self.geoshapes), self.dt))
+        # __eq__ compares geoshapes as sets, so the hash must likewise be
+        # insensitive to ordering and duplicates
+        return hash((frozenset(self.geoshapes), self.dt))
 
     def __iter__(self):
         return self.geoshapes.__iter__()
@@ -835,8 +934,6 @@ class MultiShapeBase(SimpleShapeMixin, BaseShape, ABC):
         for self_shape in self.geoshapes:
             if self_shape.intersects_shape(shape):
                 return True
-
-            return False
 
         return False
 

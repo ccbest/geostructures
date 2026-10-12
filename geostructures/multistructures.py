@@ -1,30 +1,37 @@
 
+from __future__ import annotations
+
 
 __all__ = ['MultiGeoPolygon', 'MultiGeoLineString', 'MultiGeoPoint']
 
 
 import copy
 from functools import cached_property
-from typing import Any, Dict, List, Optional, Tuple, Sequence, cast
+from typing import Any, Dict, List, Optional, Tuple, Sequence, cast, TYPE_CHECKING
 
 import numpy as np
+from pydantic import validate_call
 
 from geostructures._base import (
     _RE_MULTIPOLYGON_WKT, _RE_MULTIPOINT_WKT,
-    _RE_MULTILINESTRING_WKT, _RE_LINEAR_RING, _RE_LINEAR_RINGS,
+    _RE_MULTILINESTRING_WKT, _RE_LINEAR_RING, _RE_LINEAR_RINGS, _RE_COORD, _RE_ZM,
     PolygonLikeMixin, MultiShapeBase,
     PointLikeMixin, LineLikeMixin, SimpleShapeMixin
 )
 from geostructures.time import GEOTIME_TYPE
-from geostructures._geometry import convex_hull
-from geostructures.calc import haversine_distance_meters
+from geostructures._geometry import convex_hull, minimum_bounding_circle, polygon_centroid
 from geostructures.coordinates import Coordinate
 from geostructures.structures import GeoCircle, GeoLineString, GeoPoint, GeoPolygon, PolygonBase
 from geostructures.utils.functions import get_dt_from_geojson_props
+from geostructures.utils.conditional_imports import import_optional
+
+if TYPE_CHECKING:  # pragma: no cover
+    import shapefile
 
 
 class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
 
+    @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
         geoshapes: List[GeoLineString],
@@ -40,7 +47,7 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
             'type': 'MultiLineString',
             'coordinates': [
                 [
-                    list(vertex.to_float()) for vertex in shape.vertices
+                    vertex.to_position() for vertex in shape.vertices
                 ]
                 for shape in self.geoshapes
             ]
@@ -53,8 +60,12 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
     @cached_property
     def centroid(self):
         # TODO: weighted by line length
+        # Slice to lon/lat; to_float() may also carry Z/M values
         lon, lat = np.mean(
-            np.array([coord.to_float() for shape in self.geoshapes for coord in shape.vertices]),
+            np.array([
+                coord.to_float()[:2]
+                for shape in self.geoshapes for coord in shape.vertices
+            ]),
             axis=0
         )
         return Coordinate(lon, lat)
@@ -64,13 +75,12 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
         return [x.segments for x in self.geoshapes]
 
     def circumscribing_circle(self) -> 'GeoCircle':
-        centroid = self.centroid
-        max_dist = max(
-            haversine_distance_meters(coord, centroid)
-            for shape in self.geoshapes
-            for coord in shape.vertices
+        return GeoCircle(
+            *minimum_bounding_circle(
+                [coord for shape in self.geoshapes for coord in shape.vertices]
+            ),
+            dt=self.dt,
         )
-        return GeoCircle(centroid, max_dist, dt=self.dt)
 
     def convex_hull(self) -> GeoPolygon:
         return GeoPolygon(
@@ -123,7 +133,7 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
     @classmethod
     def from_pyshp(
         cls,
-        shape,
+        shape: shapefile.POLYLINE,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
     ):
@@ -144,16 +154,17 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
             MultiGeoLineString
         """
         linestrings = []
-        z = shape.z if hasattr(shape, 'z') else None
-        m = shape.m if hasattr(shape, 'm') else None
+        # Iterate rather than pop so the caller's pyshp shape is not mutated
+        z = iter(shape.z) if hasattr(shape, 'z') else None
+        m = iter(shape.m) if hasattr(shape, 'm') else None
         for linestring in shape.__geo_interface__.get('coordinates', []):
             linestrings.append(
                 GeoLineString(
                     [
                         Coordinate(
                             *cast(Tuple[float, float], coord),
-                            z=z.pop(0) if z else None,
-                            m=m.pop(0) if m else None,
+                            z=next(z, None) if z else None,
+                            m=next(m, None) if m else None,
                         ) for coord in linestring
                     ]
                 )
@@ -204,10 +215,11 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
         """
         Converts the geoshape into a Shapely shape.
         """
-        import shapely  # pylint: disable=import-outside-toplevel
+        import_optional('shapely')
+        import shapely
 
         lines = [
-            [x.to_float() for x in shape.vertices]
+            [x.to_position() for x in shape.vertices]
             for shape in self.geoshapes
         ]
 
@@ -224,12 +236,16 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
         Returns:
             str
         """
+        zm = self._wkt_zm_designator(
+            vertex for shape in self.geoshapes for vertex in shape.vertices
+        )
         lines = [self._linear_ring_to_wkt(shape.vertices) for shape in self.geoshapes]
-        return f'MULTILINESTRING({", ".join(lines)})'
+        return f'MULTILINESTRING{zm}({", ".join(lines)})'
 
 
 class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
 
+    @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
         geoshapes: List[GeoPoint],
@@ -244,13 +260,10 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
         return {
             'type': 'MultiPoint',
             'coordinates': [
-                list(point.centroid.to_float())
+                point.centroid.to_position()
                 for point in self.geoshapes
             ]
         }
-
-    def __hash__(self) -> int:
-        return hash(tuple(hash(x) for x in self.geoshapes))
 
     def __repr__(self):
         pl = "s" if len(self.geoshapes) != 1 else ""
@@ -258,18 +271,17 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
 
     @cached_property
     def centroid(self):
+        # Slice to lon/lat; to_float() may also carry Z/M values
         return Coordinate(*np.average(
-            np.array([point.centroid.to_float() for point in self.geoshapes]),
+            np.array([point.centroid.to_float()[:2] for point in self.geoshapes]),
             axis=0
         ))
 
     def circumscribing_circle(self) -> 'GeoCircle':
-        centroid = self.centroid
-        max_dist = max(
-            haversine_distance_meters(point.centroid, centroid)
-            for point in self.geoshapes
+        return GeoCircle(
+            *minimum_bounding_circle([point.centroid for point in self.geoshapes]),
+            dt=self.dt,
         )
-        return GeoCircle(centroid, max_dist, dt=self.dt)
 
     def convex_hull(self, **_) -> GeoPolygon:
         return GeoPolygon(
@@ -320,7 +332,7 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
     @classmethod
     def from_pyshp(
         cls,
-        shape,
+        shape: shapefile.MULTIPOINT,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None
     ):
@@ -341,15 +353,16 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
             MultiGeoPoint
         """
         points = []
-        z = shape.z if hasattr(shape, 'z') else None
-        m = shape.m if hasattr(shape, 'm') else None
+        # Iterate rather than pop so the caller's pyshp shape is not mutated
+        z = iter(shape.z) if hasattr(shape, 'z') else None
+        m = iter(shape.m) if hasattr(shape, 'm') else None
         for point in shape.__geo_interface__.get('coordinates', []):
             points.append(
                 GeoPoint(
                     Coordinate(
                         *cast(Tuple[float, float], point),
-                        z=z.pop(0) if z else None,
-                        m=m.pop(0) if m else None,
+                        z=next(z, None) if z else None,
+                        m=next(m, None) if m else None,
                     )
                 )
             )
@@ -367,9 +380,10 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
         if not _RE_MULTIPOINT_WKT.match(wkt_str):
             raise ValueError(f'Invalid WKT MultiPoint: {wkt_str}')
 
-        coords = cls._parse_wkt_linear_ring(wkt_str, _RE_LINEAR_RING.findall(wkt_str)[0])
+        zm = _RE_ZM.findall(wkt_str) or ['ZM']
         shapes = [
-            GeoPoint(coord) for coord in coords
+            GeoPoint(Coordinate.from_wkt(x, zm_order=zm[0]))
+            for x in _RE_COORD.findall(wkt_str)
         ]
 
         return MultiGeoPoint(
@@ -396,9 +410,10 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
         """
         Converts the geoshape into a Shapely shape.
         """
-        import shapely  # pylint: disable=import-outside-toplevel
+        import_optional('shapely')
+        import shapely
 
-        points = [x.centroid.to_float() for x in self.geoshapes]
+        points = [x.centroid.to_position() for x in self.geoshapes]
 
         return shapely.geometry.MultiPoint(points)
 
@@ -413,12 +428,14 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
         Returns:
             str
         """
-        points = [' '.join(x.centroid.to_str()) for x in self.geoshapes]
-        return f'MULTIPOINT({", ".join(points)})'
+        zm = self._wkt_zm_designator(x.centroid for x in self.geoshapes)
+        points = ['(' + ' '.join(x.centroid.to_str()) + ')' for x in self.geoshapes]
+        return f'MULTIPOINT{zm}({", ".join(points)})'
 
 
 class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
 
+    @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
         geoshapes: Sequence[PolygonBase],
@@ -435,7 +452,7 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
             'coordinates': [
                 [
                     [
-                        list(coord.to_float()) for coord in ring
+                        coord.to_position() for coord in ring
                     ] for ring in shape
                 ]
                 for shape in self.linear_rings()
@@ -452,13 +469,7 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
 
     @cached_property
     def centroid(self):
-        # Decompose polygon into triangles using vertex pairs around the origin
-        poly1 = np.array([x.to_float() for poly in self.geoshapes for x in poly.bounding_coords()])
-        poly2 = np.roll(poly1, -1, axis=0)
-        # Find signed area of each triangle
-        signed_areas = 0.5 * np.cross(poly1, poly2)
-        # Return average of triangle centroids, weighted by area
-        return Coordinate(*np.average((poly1 + poly2) / 3, axis=0, weights=signed_areas))
+        return Coordinate(*polygon_centroid([x.bounding_coords() for x in self.geoshapes]))
 
     def bounding_coords(self, **kwargs) -> List[List[Coordinate]]:
         return [x.bounding_coords(**kwargs) for x in self.geoshapes]
@@ -467,13 +478,12 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
         return [x.bounding_edges(**kwargs) for x in self.geoshapes]
 
     def circumscribing_circle(self) -> 'GeoCircle':
-        centroid = self.centroid
-        max_dist = max(
-            haversine_distance_meters(x, centroid)
-            for poly in self.geoshapes
-            for x in poly.bounding_coords()
+        return GeoCircle(
+            *minimum_bounding_circle(
+                [coord for poly in self.geoshapes for coord in poly.bounding_coords()]
+            ),
+            dt=self.dt,
         )
-        return GeoCircle(centroid, max_dist, dt=self.dt)
 
     def convex_hull(self, **kwargs) -> GeoPolygon:
         return GeoPolygon(
@@ -558,7 +568,12 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
         )
 
     @classmethod
-    def from_pyshp(cls, shape, dt: Optional[GEOTIME_TYPE] = None, properties: Optional[Dict] = None):
+    def from_pyshp(
+        cls,
+        shape: shapefile.POLYGON,
+        dt: Optional[GEOTIME_TYPE] = None,
+        properties: Optional[Dict] = None
+    ):
         """
         Create a MultiGeoShape from a pyshyp multipolygon.
 
@@ -576,17 +591,18 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
             MultiGeoShape
         """
         shapes = []
-        z = shape.z if hasattr(shape, 'z') else None
-        m = shape.m if hasattr(shape, 'm') else None
-        for shape in shape.__geo_interface__.get('coordinates', []):
+        # Iterate rather than pop so the caller's pyshp shape is not mutated
+        z = iter(shape.z) if hasattr(shape, 'z') else None
+        m = iter(shape.m) if hasattr(shape, 'm') else None
+        for polygon in shape.__geo_interface__.get('coordinates', []):
             linear_rings = [
                 [
                     Coordinate(
                         *cast(Tuple[float, float], coord),
-                        z=z.pop(0) if z else None,
-                        m=m.pop(0) if m else None,
+                        z=next(z, None) if z else None,
+                        m=next(m, None) if m else None,
                     ) for coord in linear_ring
-                ] for linear_ring in shape
+                ] for linear_ring in polygon
             ]
             holes = [GeoPolygon(x) for x in linear_rings[1:]] if len(linear_rings) > 1 else None
             shapes.append(
@@ -617,8 +633,8 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
             holes = []
             if len(linear_rings) > 1:
                 for hole in linear_rings[1:]:
-                    coords = cls._parse_wkt_linear_ring(wkt_str, hole)
-                    holes.append(GeoPolygon(coords))
+                    hole_coords = cls._parse_wkt_linear_ring(wkt_str, hole)
+                    holes.append(GeoPolygon(hole_coords))
 
             shapes.append(GeoPolygon(coords, holes=holes or None))
 
@@ -655,7 +671,7 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
             'coordinates': [
                 [
                     [
-                        list(coord.to_float()) for coord in ring
+                        coord.to_position() for coord in ring
                     ] for ring in shape
                 ]
                 for shape in self.linear_rings(k=kwargs.pop('k', None))
@@ -680,7 +696,8 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
         """
         Converts the geoshape into a Shapely shape.
         """
-        import shapely  # pylint: disable=import-outside-toplevel
+        import_optional('shapely')
+        import shapely
 
         converted = []
         for shape in self.linear_rings(**kwargs):
@@ -690,9 +707,9 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
 
             converted.append(
                 (
-                    tuple(coord.to_float() for coord in shell),
+                    tuple(tuple(coord.to_position()) for coord in shell),
                     [
-                        tuple(coord.to_float() for coord in ring)
+                        tuple(tuple(coord.to_position()) for coord in ring)
                         for ring in holes
                     ]
                 )
@@ -711,10 +728,14 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
         Returns:
             str
         """
+        shapes = self.linear_rings(**kwargs)
+        zm = self._wkt_zm_designator(
+            coord for shape in shapes for ring in shape for coord in ring
+        )
         bbox_strs = []
-        for shape in self.linear_rings(**kwargs):
+        for shape in shapes:
             bbox_strs.append('(' + ', '.join(
                 [self._linear_ring_to_wkt(ring) for ring in shape]
             ) + ')')
 
-        return f'MULTIPOLYGON({", ".join(bbox_strs)})'
+        return f'MULTIPOLYGON{zm}({", ".join(bbox_strs)})'

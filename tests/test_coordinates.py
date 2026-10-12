@@ -1,5 +1,9 @@
 
+import pytest
+
 from geostructures import Coordinate
+from geostructures._const import COORDINATE_TOLERANCE
+from geostructures.utils.functions import round_half_up
 
 
 def test_coordinate_init():
@@ -52,8 +56,18 @@ def test_coordinate_to_float():
     assert Coordinate(0., 1.).to_float() == (0.0, 1.0)
 
 
+def test_coordinate_to_position():
+    # Positions carry Z (altitude) but never M - position-based formats
+    # (GeoJSON, KML, shapely) define no third slot for M
+    assert Coordinate(0., 1.).to_position() == [0.0, 1.0]
+    assert Coordinate(0., 1., z=5.).to_position() == [0.0, 1.0, 5.0]
+    assert Coordinate(0., 1., m=9.).to_position() == [0.0, 1.0]
+    assert Coordinate(0., 1., z=5., m=9.).to_position() == [0.0, 1.0, 5.0]
+
+
 def test_coordinate_to_str():
-    assert Coordinate(0., 1.).to_str() == ('0.0', '1.0')
+    assert Coordinate(0., 1.).to_str() == ('0', '1')
+    assert Coordinate(0.1, 1.1).to_str() == ('0.1', '1.1')
 
 
 def test_coordinate_to_mgrs():
@@ -64,10 +78,68 @@ def test_coordinate_from_mgrs():
     assert [round(x, 5) for x in Coordinate.from_mgrs('31NAA6602100000').to_float()] == [0., 0.]
 
 def test_coordinate_from_projection():
-    assert Coordinate.from_projection(2000,3000,'EPSG:3857') == Coordinate(0.026949,0.017966)
+    # Reprojection is no longer quantized to six decimal places on the way out
+    assert Coordinate.from_projection(2000, 3000, 'EPSG:3857') == \
+        Coordinate(0.01796630568239043, 0.026949457529889528)
 
 def test_coordinate_to_projection():
-    assert Coordinate(0.026949,0.017966).to_projection('EPSG:3857') == Coordinate(1999.966004, 2999.948957, False)
+    assert Coordinate(0.017966, 0.026949).to_projection('EPSG:3857') == \
+        Coordinate(1999.9659715919531, 2999.9490680000413, _bounded=False)
+
+def test_coordinate_projection_round_trip_preserves_precision():
+    # Rounding used to make round trips of six-decimal input compare equal, at the cost
+    # of silently truncating anything finer - here, by about 1.2 centimeters
+    original = Coordinate(1.23456789, 2.34567891)
+    projected = original.to_projection('EPSG:3857')
+    returned = Coordinate.from_projection(projected.longitude, projected.latitude, 'EPSG:3857')
+
+    assert returned.is_close(original, abs_tol=1e-12)
+    assert round_half_up(returned.longitude, 8) == original.longitude
+    assert round_half_up(returned.latitude, 8) == original.latitude
+
+
+def test_coordinate_is_close():
+    base = Coordinate(1.0, 2.0)
+    assert base.is_close(Coordinate(1.0, 2.0))
+    assert base.is_close(Coordinate(1.0 + COORDINATE_TOLERANCE / 2, 2.0))
+    assert base.is_close(Coordinate(1.0, 2.0 - COORDINATE_TOLERANCE / 2))
+    assert not base.is_close(Coordinate(1.0 + COORDINATE_TOLERANCE * 2, 2.0))
+    assert not base.is_close(Coordinate(1.0, 2.0 + COORDINATE_TOLERANCE * 2))
+
+    # Tolerance is overridable in both directions
+    assert base.is_close(Coordinate(1.001, 2.0), abs_tol=1e-2)
+    assert not base.is_close(Coordinate(1.0 + 1e-9, 2.0), abs_tol=1e-12)
+
+    assert not base.is_close('not a coordinate')
+
+
+def test_coordinate_is_close_wraps_the_antimeridian():
+    # Either side of the antimeridian is a fraction of a millimeter apart, not 360 degrees
+    assert Coordinate(179.9999999, 0.).is_close(Coordinate(-180., 0.))
+    assert Coordinate(-179.9999999, 0.).is_close(Coordinate(180., 0.))
+    assert not Coordinate(179.9, 0.).is_close(Coordinate(-179.9, 0.))
+
+
+def test_coordinate_is_close_compares_z_and_m_strictly():
+    # A tolerance in degrees says nothing about a Z in meters or a caller-defined M
+    assert Coordinate(1., 2., z=5.).is_close(Coordinate(1., 2., z=5.))
+    assert not Coordinate(1., 2., z=5.).is_close(Coordinate(1., 2., z=5.000001))
+    assert not Coordinate(1., 2., z=5.).is_close(Coordinate(1., 2.))
+    assert not Coordinate(1., 2., m=1.).is_close(Coordinate(1., 2., m=2.))
+
+
+def test_coordinate_is_close_is_not_transitive():
+    # Documented behavior, and the reason this cannot be folded into __eq__: equality
+    # backing __hash__ has to be an equivalence relation, and this is not one
+    a = Coordinate(0., 0.)
+    b = Coordinate(COORDINATE_TOLERANCE * 0.6, 0.)
+    c = Coordinate(COORDINATE_TOLERANCE * 1.2, 0.)
+    assert a.is_close(b) and b.is_close(c)
+    assert not a.is_close(c)
+
+    # Equality itself stays exact, so hashing is unaffected
+    assert a != b
+    assert len({a, b, c}) == 3
 
 
 def test_coordinate_to_dms():
@@ -86,3 +158,62 @@ def test_coordinate_to_qdms():
 def test_coordinate_from_qdms():
     assert Coordinate.from_qdms('W000070513', 'N51303551') == Coordinate(-0.118092, 51.509864)
 
+
+def test_coordinate_unbounded_preserves_180():
+    # Bounded coordinates normalize longitude 180 to -180
+    assert Coordinate(180., 10.).longitude == -180.
+
+    # Unbounded coordinates (used for antimeridian-crossing edge math)
+    # must not be normalized
+    assert Coordinate(180., 10., _bounded=False).longitude == 180.
+    assert Coordinate(185., 10., _bounded=False).longitude == 185.
+
+
+
+def test_coordinate_to_qdms_reverse():
+    lat_str, lon_str = Coordinate(-0.118092, 51.509865).to_qdms(reverse=True)
+    assert (lon_str, lat_str) == ('W000070513', 'N51303551')
+
+
+def test_coordinate_to_str_with_z_m():
+    assert Coordinate(0.5, 1.5, z=2.).to_str() == ('0.5', '1.5', '2')
+    assert Coordinate(0.5, 1.5, z=2., m=3.).to_str() == ('0.5', '1.5', '2', '3')
+    assert Coordinate(0.5, 1.5).to_str(reverse=True) == ('1.5', '0.5')
+
+
+def test_coordinate_immutable():
+    import pickle
+
+    coord = Coordinate(0., 1., z=2.)
+    with pytest.raises(AttributeError):
+        coord.longitude = 5.
+    with pytest.raises(AttributeError):
+        del coord.latitude
+    with pytest.raises(AttributeError):
+        coord.new_attribute = 'nope'
+
+    # Hash remains stable and pickling works
+    assert hash(coord) == hash(Coordinate(0., 1., z=2.))
+    assert pickle.loads(pickle.dumps(coord)) == coord
+
+    # The xyz cache does not affect equality or mutability
+    _ = coord.xyz
+    assert coord.xyz == Coordinate(0., 1., z=2.).xyz
+
+
+def test_coordinate_type_coercion():
+    # Strings, ints, and numpy scalars all coerce to float
+    import numpy as np
+
+    coord = Coordinate('0.5', 1, z='2', m=np.float64(3.))
+    assert coord.longitude == 0.5
+    assert coord.latitude == 1.
+    assert coord.z == 2.
+    assert coord.m == 3.
+    assert all(isinstance(v, float) for v in (coord.longitude, coord.latitude, coord.z, coord.m))
+
+    with pytest.raises(ValueError):
+        Coordinate('not a number', 0.)
+
+    with pytest.raises(TypeError):
+        Coordinate(None, 0.)
