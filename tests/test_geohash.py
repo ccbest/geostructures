@@ -406,7 +406,7 @@ def test_hash_gaussian():
     assert 1 < len(expected) <= 50
     assert all(len(x) == 6 for x in expected)
     assert sum(expected.values()) >= 0.9
-    # The least probable hash was required to reach the mass
+    # The least probable hash was required to reach grid_probability
     assert sum(expected.values()) - min(expected.values()) < 0.9
 
     # Hashes are selected most probable first
@@ -430,7 +430,7 @@ def test_hash_gaussian():
     assert len(actual) == 1
     assert sum(actual.values()) >= 0.9
 
-    # A larger contour means a tighter distribution, so fewer hashes are required
+    # A larger shape_probability means a tighter distribution, so fewer hashes are required
     actual = hasher.hash_gaussian(ellipse, 0.99, 0.9, 50)
     assert len(actual) < len(expected)
 
@@ -451,9 +451,15 @@ def test_hash_gaussian():
         GeoEllipse(Coordinate(lon, lat), 2000, 800, 30), 0.95, 0.9, 1
     ) == {'': 1.}
 
-    for contour, mass, max_hashes in ((0., 0.9, 1), (1., 0.9, 1), (0.95, 0., 1), (0.95, 1., 1), (0.95, 0.9, 0)):
+    invalid = ((0., 0.9, 1), (1., 0.9, 1), (0.95, 0., 1), (0.95, 1., 1), (0.95, 0.9, 0))
+    for shape_probability, grid_probability, max_hashes in invalid:
         with pytest.raises(ValueError):
-            hasher.hash_gaussian(ellipse, contour, mass, max_hashes)
+            hasher.hash_gaussian(ellipse, shape_probability, grid_probability, max_hashes)
+
+    # Keyword arguments
+    assert hasher.hash_gaussian(
+        ellipse, shape_probability=0.95, grid_probability=0.9, max_hashes=50
+    ) == expected
 
     with pytest.raises(TypeError):
         hasher.hash_gaussian(GeoBox(Coordinate(0., 1.), Coordinate(1., 0.)), 0.95, 0.9, 1)

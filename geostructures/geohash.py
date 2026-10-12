@@ -289,12 +289,12 @@ def _most_probable_hashes(
     sigma_major: float,
     sigma_minor: float,
     rotation: float,
-    mass: float,
+    grid_probability: float,
     max_hashes: int,
 ) -> Optional[Dict[str, float]]:
     """
     Finds the fewest geohashes, at a hasher's resolution, that together hold at least
-    `mass` of a 2-D Gaussian's probability.
+    `grid_probability` of a 2-D Gaussian's probability.
 
     Geohashes are discovered by expanding outward from the one containing the center,
     most probable first. Once the center geohash has been expanded, any geohash not yet
@@ -317,7 +317,7 @@ def _most_probable_hashes(
         rotation:
             The major axis's degree offset from North (expressed as East of North)
 
-        mass:
+        grid_probability:
             The fraction of probability the geohashes must hold
 
         max_hashes:
@@ -350,11 +350,12 @@ def _most_probable_hashes(
             max_prob = max(max_prob, prob)
             heapq.heappush(frontier, (-prob, neighbor))
 
-        # No geohash holds more than max_prob, so at least mass / max_prob are required
-        if mass > max_hashes * max_prob:
+        # No geohash holds more than max_prob, so at least
+        # grid_probability / max_prob geohashes are required
+        if grid_probability > max_hashes * max_prob:
             return None
 
-        if expanded_total < mass and expanded_count < max_hashes and frontier:
+        if expanded_total < grid_probability and expanded_count < max_hashes and frontier:
             continue
 
         # The most probable geohash yet to be expanded bounds every undiscovered
@@ -363,13 +364,13 @@ def _most_probable_hashes(
         selected: Dict[str, float] = {}
         total = 0.
         for geohash, prob in sorted(probs.items(), key=lambda x: x[1], reverse=True):
-            if total >= mass or prob < bound:
+            if total >= grid_probability or prob < bound:
                 break
 
             selected[geohash] = prob
             total += prob
 
-        if total >= mass:
+        if total >= grid_probability:
             return selected if len(selected) <= max_hashes else None
 
         if len(selected) >= max_hashes or not frontier:
@@ -421,36 +422,52 @@ class HasherBase(abc.ABC):
     def hash_gaussian(
         self,
         shape: Union[GeoCircle, GeoEllipse],
-        contour: float,
-        mass: float,
+        shape_probability: float,
+        grid_probability: float,
         max_hashes: int,
     ) -> Dict[str, float]:
         """
-        Interprets a circle or ellipse as a contour of a 2-D Gaussian distribution, and
-        returns the most probable geohashes which together hold at least `mass` of the
-        Gaussian's probability, along with the probability held by each.
+        Interprets a circle or ellipse as describing a 2-D Gaussian (normal)
+        distribution, and returns the most probable geohashes which together hold at
+        least `grid_probability` of the Gaussian's probability, along with the
+        probability held by each.
 
         The Gaussian is centered on the shape's center with its major axis along the
-        ellipse's rotation, scaled such that the shape encloses `contour` of its
-        probability. It is defined on an azimuthal equidistant projection about the
+        ellipse's rotation, scaled such that the shape encloses `shape_probability` of
+        its probability. It is defined on an azimuthal equidistant projection about the
         center. Holes are ignored.
 
+        For a location measured with Gaussian error, the probability within each
+        geohash is the probability that the true location lies within it, assuming
+        every location was equally likely before the measurement.
+
+        A Gaussian never falls to zero, so covering all of its probability would
+        require every geohash on the globe. `grid_probability` must therefore be
+        less than 1; it trades the tails of the distribution, which are spread thinly
+        across many geohashes, for a finer resolution within `max_hashes`.
+
         Geohashes are returned at this hasher's resolution if possible. If more than
-        `max_hashes` geohashes would be required to reach `mass`, the resolution is
-        coarsened as many times as necessary to require no more than `max_hashes`.
-        If even the coarsest resolution requires too many, returns {'': 1.}; the
-        empty geohash covers the entire globe.
+        `max_hashes` geohashes would be required to reach `grid_probability`, the
+        resolution is coarsened as many times as necessary to require no more than
+        `max_hashes`. If even the coarsest resolution requires too many, returns
+        {'': 1.}; the empty geohash covers the entire globe.
 
         Args:
             shape:
                 A GeoCircle or GeoEllipse
 
-            contour:
+            shape_probability:
                 The fraction of the Gaussian's probability enclosed by the shape,
-                between 0 and 1 (exclusive). For example, 0.95 treats the shape as
-                a 95% confidence region.
+                between 0 and 1 (exclusive). For example, 0.95 if the shape contains
+                95% of the probability.
 
-            mass:
+                Check how the shape was produced. An ellipse whose axes are 2.45
+                standard deviations encloses 95% of a 2-D Gaussian, but some sources
+                label an ellipse "95%" after scaling its axes by 1.96 (the 1-D
+                value), which encloses only about 85% in 2-D. A "1-sigma" ellipse
+                encloses about 39%.
+
+            grid_probability:
                 The fraction of the Gaussian's probability that the returned geohashes
                 must hold, between 0 and 1 (exclusive)
 
@@ -460,11 +477,11 @@ class HasherBase(abc.ABC):
         Returns:
             A dictionary of geohashes mapped to the probability within each geohash
         """
-        if not 0 < contour < 1:
-            raise ValueError('contour must be between 0 and 1, exclusive')
+        if not 0 < shape_probability < 1:
+            raise ValueError('shape_probability must be between 0 and 1, exclusive')
 
-        if not 0 < mass < 1:
-            raise ValueError('mass must be between 0 and 1, exclusive')
+        if not 0 < grid_probability < 1:
+            raise ValueError('grid_probability must be between 0 and 1, exclusive')
 
         if max_hashes < 1:
             raise ValueError('max_hashes must be at least 1')
@@ -478,12 +495,13 @@ class HasherBase(abc.ABC):
 
         # A 2-D Gaussian encloses 1 - exp(-k^2 / 2) of its probability within
         # k standard deviations (Mahalanobis distance)
-        k = math.sqrt(-2 * math.log(1 - contour))
+        k = math.sqrt(-2 * math.log(1 - shape_probability))
 
         hasher: Optional[HasherBase] = self
         while hasher is not None:
             result = _most_probable_hashes(
-                hasher, shape.centroid, semi_major / k, semi_minor / k, rotation, mass, max_hashes
+                hasher, shape.centroid, semi_major / k, semi_minor / k, rotation,
+                grid_probability, max_hashes
             )
             if result is not None:
                 return result
