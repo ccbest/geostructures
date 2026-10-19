@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta, timezone
 import pickle
 import tempfile
+import weakref
 
 from fastkml import Placemark
 from fastkml.times import TimeStamp, KmlDateTime
@@ -218,6 +219,24 @@ def test_baseshape_pickle():
         # Make sure the original wasn't mutated and the new call works
         assert point.to_shapely() == shapely.Point((0.0, 0.0))
         assert new_point.to_shapely() == shapely.Point((0.0, 0.0))
+
+
+def test_baseshape_to_shapely_cache():
+    point = GeoPoint(Coordinate(0.0, 0.0))
+
+    # Converted once, then reused
+    shp = point.to_shapely()
+    assert point.to_shapely() is shp
+
+    # Cache is excluded from pickled state and rebuilt on demand
+    new_point = pickle.loads(pickle.dumps(point))
+    assert '_shapely' not in new_point.__dict__
+    assert new_point.to_shapely() == shp
+
+    # Shape is released by refcount alone (no reference cycle)
+    ref = weakref.ref(point)
+    del point, shp
+    assert ref() is None
 
 
 def test_baseshape_to_fastkml_placemark():

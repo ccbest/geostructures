@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from abc import abstractmethod, ABC
 from datetime import datetime, timedelta
-from functools import lru_cache, cached_property
+from functools import cached_property
 import re
 from typing import (
-    Any, Callable, Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING,
+    Any, Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING,
     TypeVar, Union,  cast
 )
 from typing_extensions import Self
@@ -82,7 +82,9 @@ class BaseShape(ABC):
 
     dt: Optional[TimeInterval]
     _properties: Dict
-    to_shapely: Callable
+
+    # Lazily-populated cache for to_shapely(); excluded from pickled state
+    _shapely: Optional['shapely.geometry.base.BaseGeometry'] = None
 
     def __init__(
             self,
@@ -98,19 +100,17 @@ class BaseShape(ABC):
             self.dt = dt
 
         self._properties = properties or {}
-        self.to_shapely = self._make_shp_proxy()
 
     def __contains__(self, other: Union['GeoShape', Coordinate]):
         return self.contains(other)  # pragma: no cover
 
     def __getstate__(self):
         state = self.__dict__.copy()
-        state['to_shapely'] = None
+        state.pop('_shapely', None)
         return state
 
     def __setstate__(self, state):
         self.__dict__ = state
-        self.to_shapely = self._make_shp_proxy()
 
     def __reduce_ex__(self, protocol):
         return (self.__class__._rebuild_from_state, (self.__getstate__(),))
@@ -218,10 +218,6 @@ class BaseShape(ABC):
             The wkt-formatted string,
         """
         return f'({",".join(" ".join(coord.to_str()) for coord in ring)})'
-
-    def _make_shp_proxy(self):
-        """Create a 1-slot LRU wrapper around _to_shapely()."""
-        return lru_cache(maxsize=1)(self._to_shapely)
 
     @staticmethod
     def _parse_wkt_linear_ring(wkt_str: str, wkt_coords: str):
@@ -544,6 +540,15 @@ class BaseShape(ABC):
             },
             ** kwargs
         }
+
+    def to_shapely(self):
+        """
+        Converts the geoshape into a Shapely shape. The result is cached on
+        first call and reused thereafter.
+        """
+        if self._shapely is None:
+            self._shapely = self._to_shapely()
+        return self._shapely
 
     @abstractmethod
     def _to_shapely(self):
