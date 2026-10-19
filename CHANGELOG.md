@@ -208,6 +208,21 @@ to [Semantic Versioning](https://semver.org/).
 
 ### Features
 
+- **`PointCollection`, an array-backed collection of points.** Stores
+  longitude, latitude, optional Z/M, time bounds and properties as parallel
+  numpy arrays instead of one `GeoPoint` per point, for datasets of millions of
+  points. Supports `bounds`, `centroid`, `filter_by_dt`, `filter_contained_by`,
+  `filter_by_intersection`, `filter_by_property` and `intersects` with the same
+  results as `FeatureCollection`. It also exposes the boolean masks behind the
+  filters (`mask_by_dt`, `mask_contained_by`, `mask_by_intersection`) and
+  vectorized `from_geopandas`/`to_geopandas`. Containment by `GeoBox`,
+  `GeoCircle` (Haversine), `GeoPolygon` and `MultiGeoPolygon`, holes included,
+  is vectorized. Other shapes are tested one coordinate at a time, at about
+  `FeatureCollection` speed. `GeoPoint`s are created only on integer
+  indexing, iteration, or `to_points()` / `to_feature_collection()` /
+  `to_track()`. On one million time-stamped points
+  (`benchmarks/bench_points.py`), building is about 450x faster, filtering
+  15-200x faster, and memory drops from about 424 to 24 bytes per point.
 - **`HasherBase.hash_gaussian(shape, shape_probability, grid_probability, max_hashes)`**
   — treats a `GeoCircle` or `GeoEllipse` as enclosing `shape_probability` of a
   2-D Gaussian (e.g. `0.95` for an ellipse containing 95% of the probability)

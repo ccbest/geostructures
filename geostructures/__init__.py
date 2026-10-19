@@ -8,6 +8,7 @@ from geostructures.structures import (
 )
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
 from geostructures.collections import FeatureCollection, Track
+from geostructures.columnar import PointCollection
 
 __all__ = [
     'Coordinate',
@@ -22,6 +23,7 @@ __all__ = [
     'MultiGeoLineString',
     'MultiGeoPoint',
     'MultiGeoPolygon',
+    'PointCollection',
     'Track',
     'LOGGER',
 ]

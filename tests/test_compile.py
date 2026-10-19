@@ -15,4 +15,6 @@ def test_compile():
     import geostructures.time
     import geostructures.typing
     import geostructures.collections
+    import geostructures.columnar
+    import geostructures._vectorized
     import geostructures.parsers
