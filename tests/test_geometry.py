@@ -11,6 +11,7 @@ from geostructures._const import COORDINATE_TOLERANCE, EARTH_RADIUS_METERS
 from geostructures._geometry import *
 from geostructures._geometry import _circumcircle, _diameter_circle
 from geostructures.coordinates import Coordinate
+from geostructures.structures import GeoEllipse
 from geostructures.utils.functions import round_half_up
 
 from tests.functions import assert_coordinates_equal
@@ -316,6 +317,56 @@ def test_find_line_intersection_tolerance():
     line1 = (Coordinate(179, -1), Coordinate(-179, 1))
     line2 = (Coordinate(178, -1), Coordinate(-178, 1))
     assert find_line_intersection(line1, line2) == (Coordinate(-180., -0.), False)
+
+
+def test_gaussian_probability_in_polygons():
+    center = Coordinate(10., 45.)
+    assert gaussian_probability_in_polygons([], center, 1000, 300, 0) == []
+
+    # Encloses the whole distribution, as an open and as a closed ring
+    box = [Coordinate(9., 46.), Coordinate(9., 44.), Coordinate(11., 44.), Coordinate(11., 46.)]
+    # Everything east of the center
+    half = [Coordinate(10., 46.), Coordinate(10., 44.), Coordinate(11., 44.), Coordinate(11., 46.)]
+    # Everything northeast of the center
+    quadrant = [Coordinate(10., 46.), Coordinate(10., 45.), Coordinate(11., 45.), Coordinate(11., 46.)]
+    # Far from the center
+    distant = [Coordinate(20., 46.), Coordinate(20., 45.), Coordinate(21., 45.), Coordinate(21., 46.)]
+    actual = gaussian_probability_in_polygons(
+        [box, [*box, box[0]], half, quadrant, distant], center, 1000, 300, 20
+    )
+    # Orthant probability for correlated normals is 1/4 + asin(rho) / 2pi
+    sin, cos = math.sin(math.radians(20)), math.cos(math.radians(20))
+    rho = (1000 ** 2 - 300 ** 2) * sin * cos / math.sqrt(
+        (1000 ** 2 * sin ** 2 + 300 ** 2 * cos ** 2) * (1000 ** 2 * cos ** 2 + 300 ** 2 * sin ** 2)
+    )
+    assert actual == pytest.approx([1., 1., 0.5, 0.25 + math.asin(rho) / (2 * math.pi), 0.], abs=1e-4)
+
+    # Ellipse drawn at the 95% contour, in both orientations
+    k = math.sqrt(-2 * math.log(1 - 0.95))
+    ring = GeoEllipse(center, 2000, 800, 30).bounding_coords(k=720)
+    actual = gaussian_probability_in_polygons(
+        [ring, list(reversed(ring))], center, 2000 / k, 800 / k, 30
+    )
+    assert actual == pytest.approx([0.95, 0.95], abs=1e-4)
+
+    # North-south strip, +/- 1km either side of the center. Contains +/- 1 sigma
+    # when the major axis is oriented east, or nearly everything when oriented north
+    center = Coordinate(0., 0.)
+    offset = math.degrees(1000 / EARTH_RADIUS_METERS)
+    strip = [
+        Coordinate(-offset, 1.), Coordinate(-offset, -1.),
+        Coordinate(offset, -1.), Coordinate(offset, 1.)
+    ]
+    actual = gaussian_probability_in_polygons([strip], center, 1000, 100, 90)
+    assert actual == pytest.approx([math.erf(1 / math.sqrt(2))], abs=1e-4)
+    actual = gaussian_probability_in_polygons([strip], center, 1000, 100, 0)
+    assert actual == pytest.approx([1.], abs=1e-4)
+
+    # Box crossing the antimeridian
+    center = Coordinate(179.99, 0.)
+    box = [Coordinate(179.9, 1.), Coordinate(179.9, -1.), Coordinate(-179.9, -1.), Coordinate(-179.9, 1.)]
+    actual = gaussian_probability_in_polygons([box], center, 1000, 300, 45)
+    assert actual == pytest.approx([1.], abs=1e-4)
 
 
 def test_is_point_in_line():

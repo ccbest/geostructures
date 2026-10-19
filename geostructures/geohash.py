@@ -1,3 +1,4 @@
+# pylint: disable=C0302
 """
 Module for geohash transformers
 """
@@ -11,11 +12,15 @@ __all__ = [
 
 import abc
 from collections import defaultdict
+import heapq
+import math
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, TypedDict, Union, cast
 
-from geostructures import Coordinate, GeoBox, GeoLineString, GeoPoint, GeoPolygon
-from geostructures._geometry import find_line_intersection
+from geostructures import (
+    Coordinate, GeoBox, GeoCircle, GeoEllipse, GeoLineString, GeoPoint, GeoPolygon
+)
+from geostructures._geometry import find_line_intersection, gaussian_probability_in_polygons
 from geostructures.collections import CollectionBase
 from geostructures.multistructures import MultiGeoPoint
 from geostructures.time import TimeInterval
@@ -278,11 +283,233 @@ def niemeyer_to_geobox(
     )
 
 
+def _most_probable_hashes(
+    hasher: 'HasherBase',
+    center: Coordinate,
+    sigma_major: float,
+    sigma_minor: float,
+    rotation: float,
+    grid_probability: float,
+    max_hashes: int,
+) -> Optional[Dict[str, float]]:
+    """
+    Finds the fewest geohashes, at a hasher's resolution, that together hold at least
+    `grid_probability` of a 2-D Gaussian's probability.
+
+    Geohashes are discovered by expanding outward from the one containing the center,
+    most probable first. Once the center geohash has been expanded, any geohash not yet
+    discovered is assumed to hold no more probability than the most probable discovered
+    geohash which hasn't been expanded, since probability falls off away from the center.
+
+    Args:
+        hasher:
+            A geohasher, from geostructures.geohash
+
+        center:
+            The center of the Gaussian
+
+        sigma_major:
+            The standard deviation along the major axis, in meters
+
+        sigma_minor:
+            The standard deviation along the minor axis, in meters
+
+        rotation:
+            The major axis's degree offset from North (expressed as East of North)
+
+        grid_probability:
+            The fraction of probability the geohashes must hold
+
+        max_hashes:
+            The maximum number of geohashes
+
+    Returns:
+        A dictionary of geohashes mapped to the probability within each geohash, or
+        None if more than `max_hashes` geohashes are required
+    """
+    def _probabilities(geohashes: List[str]) -> List[float]:
+        return gaussian_probability_in_polygons(
+            [hasher.get_cell_boundary(x) for x in geohashes],
+            center, sigma_major, sigma_minor, rotation
+        )
+
+    start = hasher.hash_shape(GeoPoint(center)).pop()
+    probs = {start: _probabilities([start])[0]}
+    max_prob = probs[start]
+    frontier = [(-probs[start], start)]  # discovered, but not yet expanded
+    expanded_count, expanded_total = 0, 0.
+
+    while True:
+        neg_prob, geohash = heapq.heappop(frontier)
+        expanded_count += 1
+        expanded_total -= neg_prob
+
+        neighbors = [x for x in hasher.get_neighbors(geohash) if x not in probs]
+        for neighbor, prob in zip(neighbors, _probabilities(neighbors)):
+            probs[neighbor] = prob
+            max_prob = max(max_prob, prob)
+            heapq.heappush(frontier, (-prob, neighbor))
+
+        # No geohash holds more than max_prob, so at least
+        # grid_probability / max_prob geohashes are required
+        if grid_probability > max_hashes * max_prob:
+            return None
+
+        if expanded_total < grid_probability and expanded_count < max_hashes and frontier:
+            continue
+
+        # The most probable geohash yet to be expanded bounds every undiscovered
+        # geohash, so the ranking is final down to that probability
+        bound = -frontier[0][0] if frontier else 0.
+        selected: Dict[str, float] = {}
+        total = 0.
+        for geohash, prob in sorted(probs.items(), key=lambda x: x[1], reverse=True):
+            if total >= grid_probability or prob < bound:
+                break
+
+            selected[geohash] = prob
+            total += prob
+
+        if total >= grid_probability:
+            return selected if len(selected) <= max_hashes else None
+
+        if len(selected) >= max_hashes or not frontier:
+            return None
+
+
 class HasherBase(abc.ABC):
 
     """
     Base class for all geohasher objects.
     """
+
+    def coarsen(self) -> Optional['HasherBase']:
+        """
+        Returns an equivalent hasher one resolution level coarser, or None if
+        the hasher is already at its coarsest resolution.
+
+        Returns:
+            A hasher, or None
+        """
+        raise NotImplementedError(f'{type(self).__name__} does not support coarsening')
+
+    def get_cell_boundary(self, geohash: str) -> List[Coordinate]:
+        """
+        Returns the boundary of a geohash cell, as a linear ring of Coordinates.
+
+        Args:
+            geohash:
+                A geohash
+
+        Returns:
+            A list of Coordinates
+        """
+        raise NotImplementedError(f'{type(self).__name__} does not support cell boundaries')
+
+    def get_neighbors(self, geohash: str) -> Set[str]:
+        """
+        Returns the geohashes (at the same resolution) adjacent to a geohash.
+
+        Args:
+            geohash:
+                A geohash
+
+        Returns:
+            A set of geohashes
+        """
+        raise NotImplementedError(f'{type(self).__name__} does not support neighbors')
+
+    def hash_gaussian(
+        self,
+        shape: Union[GeoCircle, GeoEllipse],
+        shape_probability: float,
+        grid_probability: float,
+        max_hashes: int,
+    ) -> Dict[str, float]:
+        """
+        Interprets a circle or ellipse as describing a 2-D Gaussian (normal)
+        distribution, and returns the most probable geohashes which together hold at
+        least `grid_probability` of the Gaussian's probability, along with the
+        probability held by each.
+
+        The Gaussian is centered on the shape's center with its major axis along the
+        ellipse's rotation, scaled such that the shape encloses `shape_probability` of
+        its probability. It is defined on an azimuthal equidistant projection about the
+        center. Holes are ignored.
+
+        For a location measured with Gaussian error, the probability within each
+        geohash is the probability that the true location lies within it, assuming
+        every location was equally likely before the measurement.
+
+        A Gaussian never falls to zero, so covering all of its probability would
+        require every geohash on the globe. `grid_probability` must therefore be
+        less than 1; it trades the tails of the distribution, which are spread thinly
+        across many geohashes, for a finer resolution within `max_hashes`.
+
+        Geohashes are returned at this hasher's resolution if possible. If more than
+        `max_hashes` geohashes would be required to reach `grid_probability`, the
+        resolution is coarsened as many times as necessary to require no more than
+        `max_hashes`. If even the coarsest resolution requires too many, returns
+        {'': 1.}; the empty geohash covers the entire globe.
+
+        Args:
+            shape:
+                A GeoCircle or GeoEllipse
+
+            shape_probability:
+                The fraction of the Gaussian's probability enclosed by the shape,
+                between 0 and 1 (exclusive). For example, 0.95 if the shape contains
+                95% of the probability.
+
+                Check how the shape was produced. An ellipse whose axes are 2.45
+                standard deviations encloses 95% of a 2-D Gaussian, but some sources
+                label an ellipse "95%" after scaling its axes by 1.96 (the 1-D
+                value), which encloses only about 85% in 2-D. A "1-sigma" ellipse
+                encloses about 39%.
+
+            grid_probability:
+                The fraction of the Gaussian's probability that the returned geohashes
+                must hold, between 0 and 1 (exclusive)
+
+            max_hashes:
+                The maximum number of geohashes to return
+
+        Returns:
+            A dictionary of geohashes mapped to the probability within each geohash
+        """
+        if not 0 < shape_probability < 1:
+            raise ValueError('shape_probability must be between 0 and 1, exclusive')
+
+        if not 0 < grid_probability < 1:
+            raise ValueError('grid_probability must be between 0 and 1, exclusive')
+
+        if max_hashes < 1:
+            raise ValueError('max_hashes must be at least 1')
+
+        if isinstance(shape, GeoCircle):
+            semi_major, semi_minor, rotation = shape.radius, shape.radius, 0.
+        elif isinstance(shape, GeoEllipse):
+            semi_major, semi_minor, rotation = shape.semi_major, shape.semi_minor, shape.rotation
+        else:
+            raise TypeError(f'Expected a GeoCircle or GeoEllipse, not {type(shape).__name__}')
+
+        # A 2-D Gaussian encloses 1 - exp(-k^2 / 2) of its probability within
+        # k standard deviations (Mahalanobis distance)
+        k = math.sqrt(-2 * math.log(1 - shape_probability))
+
+        hasher: Optional[HasherBase] = self
+        while hasher is not None:
+            result = _most_probable_hashes(
+                hasher, shape.centroid, semi_major / k, semi_minor / k, rotation,
+                grid_probability, max_hashes
+            )
+            if result is not None:
+                return result
+
+            hasher = hasher.coarsen()
+
+        # Coarsening the coarsest resolution leaves only the empty geohash
+        return {'': 1.}
 
     @abc.abstractmethod
     def hash_collection(
@@ -443,6 +670,24 @@ class H3Hasher(HasherBase):
             )
         }
 
+    def coarsen(self) -> Optional['H3Hasher']:
+        if self.resolution is None:
+            raise ValueError('You must pass a H3 resolution.')
+
+        if self.resolution == 0:
+            return None
+
+        return H3Hasher(self.resolution - 1)
+
+    def get_cell_boundary(self, geohash: str) -> List[Coordinate]:
+        return h3_to_geopolygon(geohash).bounding_coords()
+
+    def get_neighbors(self, geohash: str) -> Set[str]:
+        import_optional('h3')
+        import h3
+
+        return set(h3.grid_ring(geohash, 1))
+
     def hash_collection(
             self,
             collection: CollectionBase,
@@ -469,7 +714,7 @@ class H3Hasher(HasherBase):
             function
         """
         resolution = cast(Optional[int], kwargs.get('resolution', self.resolution))
-        if not resolution:
+        if resolution is None:
             raise ValueError('You must pass a H3 resolution.')
 
         agg_fn = kwargs.get('agg_fn', len)
@@ -500,7 +745,7 @@ class H3Hasher(HasherBase):
             function
         """
         resolution = cast(Optional[int], kwargs.get('resolution', self.resolution))
-        if not resolution:
+        if resolution is None:
             raise ValueError('You must pass a H3 resolution.')
 
         agg_fn = kwargs.get('agg_fn', len)
@@ -530,7 +775,7 @@ class H3Hasher(HasherBase):
             )
 
         resolution = kwargs.get('resolution', self.resolution)
-        if not resolution:
+        if resolution is None:
             raise ValueError('You must pass a H3 resolution.')
 
         if isinstance(shape, GeoPoint):
@@ -688,6 +933,18 @@ class NiemeyerHasher(HasherBase):
                     queue.add(near_gh)
 
         return valid
+
+    def coarsen(self) -> Optional['NiemeyerHasher']:
+        if self.length <= 1:
+            return None
+
+        return NiemeyerHasher(self.length - 1, self.base)
+
+    def get_cell_boundary(self, geohash: str) -> List[Coordinate]:
+        return niemeyer_to_geobox(geohash, self.base).bounding_coords()
+
+    def get_neighbors(self, geohash: str) -> Set[str]:
+        return set(self._get_surrounding(geohash, self.base))
 
     def hash_collection(
         self,

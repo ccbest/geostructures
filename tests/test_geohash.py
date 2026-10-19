@@ -1,11 +1,13 @@
 import pytest
 from datetime import datetime
+import math
 
 from geostructures import *
+from geostructures._geometry import gaussian_probability_in_polygons
 from geostructures.collections import FeatureCollection
 from geostructures.geohash import (
     _coord_to_niemeyer, _get_niemeyer_subhashes, h3_to_geopolygon, niemeyer_to_geobox,
-    H3Hasher, NiemeyerHasher
+    H3Hasher, HasherBase, NiemeyerHasher
 )
 from geostructures.time import TimeInterval
 from geostructures.utils.agg_functions import *
@@ -43,6 +45,50 @@ def test_niemeyer_to_geobox():
     with pytest.raises(ValueError):
         # Character not in base charset
         _ = niemeyer_to_geobox('95555659z', 16)
+
+
+def test_hasherbase_unsupported():
+    class _Hasher(HasherBase):
+        def hash_collection(self, collection, **kwargs):
+            return {}
+
+        def hash_shape(self, shape, **kwargs):
+            return set()
+
+    hasher = _Hasher()
+    with pytest.raises(NotImplementedError):
+        hasher.coarsen()
+
+    with pytest.raises(NotImplementedError):
+        hasher.get_cell_boundary('a')
+
+    with pytest.raises(NotImplementedError):
+        hasher.get_neighbors('a')
+
+
+def test_h3hasher_coarsen():
+    assert H3Hasher(5).coarsen().resolution == 4
+    assert H3Hasher(1).coarsen().resolution == 0
+    assert H3Hasher(0).coarsen() is None
+
+    with pytest.raises(ValueError):
+        H3Hasher().coarsen()
+
+    # Resolution 0 (the base cells) is valid
+    assert H3Hasher(0).hash_shape(GeoPoint(Coordinate(0., 0.))) == {'8075fffffffffff'}
+
+
+def test_h3hasher_get_cell_boundary():
+    assert H3Hasher(7).get_cell_boundary('87195da49ffffff') == h3_to_geopolygon('87195da49ffffff').bounding_coords()
+
+
+def test_h3hasher_get_neighbors():
+    import h3
+
+    actual = H3Hasher(7).get_neighbors('87195da49ffffff')
+    assert len(actual) == 6
+    assert '87195da49ffffff' not in actual
+    assert all(h3.are_neighbor_cells(x, '87195da49ffffff') for x in actual)
 
 
 def test_h3hasher_hash_coordinates():
@@ -180,6 +226,22 @@ def test_hash_collection_with_unique_entities():
         '89754a9325bffff': 1,
         '89754e6499bffff': 1
     }
+
+def test_niemeyer_coarsen():
+    actual = NiemeyerHasher(5, 32).coarsen()
+    assert actual.length == 4
+    assert actual.base == 32
+    assert NiemeyerHasher(1, 32).coarsen() is None
+
+
+def test_niemeyer_get_cell_boundary():
+    assert NiemeyerHasher(4, 32).get_cell_boundary('9q8y') == niemeyer_to_geobox('9q8y', 32).bounding_coords()
+
+
+def test_niemeyer_get_neighbors():
+    actual = NiemeyerHasher(4, 32).get_neighbors('9q8y')
+    assert len(actual) == 8
+    assert actual == set(NiemeyerHasher._get_surrounding('9q8y', 32))
 
 
 def test_niemeyer_hash_collection():
@@ -331,3 +393,103 @@ def test_h3_hash_shape_multishape_resolution():
 def test_h3_hasher_requires_resolution():
     with pytest.raises(ValueError):
         H3Hasher().hash_coordinates([Coordinate(0., 0.)])
+
+
+def test_hash_gaussian():
+    import h3
+
+    ellipse = GeoEllipse(Coordinate(-77.03, 38.90), 2000, 800, 30)
+
+    # Achievable at the hasher's resolution
+    hasher = NiemeyerHasher(6, 32)
+    expected = hasher.hash_gaussian(ellipse, 0.95, 0.9, 50)
+    assert 1 < len(expected) <= 50
+    assert all(len(x) == 6 for x in expected)
+    assert sum(expected.values()) >= 0.9
+    # The least probable hash was required to reach grid_probability
+    assert sum(expected.values()) - min(expected.values()) < 0.9
+
+    # Hashes are selected most probable first
+    k = math.sqrt(-2 * math.log(1 - 0.95))
+    neighbors = [y for x in expected for y in hasher.get_neighbors(x) if y not in expected]
+    neighbor_probs = gaussian_probability_in_polygons(
+        [hasher.get_cell_boundary(x) for x in neighbors],
+        ellipse.center, 2000 / k, 800 / k, 30
+    )
+    assert min(expected.values()) >= max(neighbor_probs)
+
+    # Requires coarsening
+    assert NiemeyerHasher(12, 32).hash_gaussian(ellipse, 0.95, 0.9, 50) == expected
+
+    actual = H3Hasher(15).hash_gaussian(ellipse, 0.95, 0.9, 50)
+    assert len(actual) <= 50
+    assert {h3.get_resolution(x) for x in actual} == {9}
+    assert sum(actual.values()) >= 0.9
+
+    actual = H3Hasher(15).hash_gaussian(ellipse, 0.95, 0.9, 1)
+    assert len(actual) == 1
+    assert sum(actual.values()) >= 0.9
+
+    # A larger shape_probability means a tighter distribution, so fewer hashes are required
+    actual = hasher.hash_gaussian(ellipse, 0.99, 0.9, 50)
+    assert len(actual) < len(expected)
+
+    # Centered on the corner of the four coarsest geohashes, so coarsens past them
+    assert NiemeyerHasher(3, 32).hash_gaussian(
+        GeoEllipse(Coordinate(0., 0.), 2000, 800, 30), 0.95, 0.9, 1
+    ) == {'': 1.}
+
+    # Centered on a corner of resolution 1 cells, but within a base cell
+    lat, lon = h3.vertex_to_latlng(h3.cell_to_vertexes(h3.latlng_to_cell(0., 0., 1))[0])
+    actual = H3Hasher(3).hash_gaussian(GeoEllipse(Coordinate(lon, lat), 2000, 800, 30), 0.95, 0.9, 1)
+    assert list(actual) == ['8083fffffffffff']
+    assert actual['8083fffffffffff'] == pytest.approx(1.)
+
+    # Centered on a corner of base cells
+    lat, lon = h3.vertex_to_latlng(h3.cell_to_vertexes(h3.latlng_to_cell(0., 0., 0))[0])
+    assert H3Hasher(3).hash_gaussian(
+        GeoEllipse(Coordinate(lon, lat), 2000, 800, 30), 0.95, 0.9, 1
+    ) == {'': 1.}
+
+    invalid = ((0., 0.9, 1), (1., 0.9, 1), (0.95, 0., 1), (0.95, 1., 1), (0.95, 0.9, 0))
+    for shape_probability, grid_probability, max_hashes in invalid:
+        with pytest.raises(ValueError):
+            hasher.hash_gaussian(ellipse, shape_probability, grid_probability, max_hashes)
+
+    # Keyword arguments
+    assert hasher.hash_gaussian(
+        ellipse, shape_probability=0.95, grid_probability=0.9, max_hashes=50
+    ) == expected
+
+    with pytest.raises(TypeError):
+        hasher.hash_gaussian(GeoBox(Coordinate(0., 1.), Coordinate(1., 0.)), 0.95, 0.9, 1)
+
+
+def test_hash_gaussian_off_center():
+    # A thin ellipse along the NW-SE diagonal through a corner shared by four geohashes,
+    # centered just inside the SW geohash. The NW and SE geohashes each hold nearly half
+    # the probability, while the SW geohash containing the center holds very little.
+    hasher = NiemeyerHasher(6, 32)
+    corner_lon, corner_lat = niemeyer_to_geobox('dqcjr1', 32).bounds[2:]
+    offset = 1 / 111_000  # about one meter
+    ellipse = GeoEllipse(Coordinate(corner_lon - offset, corner_lat - offset), 400, 15, 135)
+
+    # The two best geohashes suffice, without spending a slot on the center geohash
+    actual = hasher.hash_gaussian(ellipse, 0.95, 0.95, 2)
+    assert set(actual) == {'dqcjr3', 'dqcjr4'}
+    assert sum(actual.values()) == pytest.approx(0.9756, abs=1e-4)
+    assert hasher.hash_gaussian(ellipse, 0.95, 0.95, 10) == actual
+
+    # The center geohash is included only once its probability is needed
+    actual = hasher.hash_gaussian(ellipse, 0.95, 0.99, 10)
+    assert set(actual) == {'dqcjr1', 'dqcjr3', 'dqcjr4'}
+
+
+def test_hash_gaussian_circle():
+    # A circle is a Gaussian with equal axes, whatever the rotation
+    circle = GeoCircle(Coordinate(-77.03, 38.90), 2000)
+    for _hasher in (NiemeyerHasher(12, 32), H3Hasher(15)):
+        actual = _hasher.hash_gaussian(circle, 0.95, 0.9, 50)
+        expected = _hasher.hash_gaussian(GeoEllipse(Coordinate(-77.03, 38.90), 2000, 2000, 45), 0.95, 0.9, 50)
+        assert actual.keys() == expected.keys()
+        assert list(actual.values()) == pytest.approx(list(expected.values()))
