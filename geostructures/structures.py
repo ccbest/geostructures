@@ -53,7 +53,7 @@ class PolygonBase(SingleShapeBase, PolygonLikeMixin, ABC):
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt=dt, properties=properties)
-        self.holes = list(holes or [])
+        self.__dict__['holes'] = tuple(holes or ())
         if any(x.holes for x in self.holes):
             raise ValueError('Holes cannot themselves contain holes.')
 
@@ -258,6 +258,8 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
 
     """
 
+    outline: Tuple[Coordinate, ...]
+
     @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
@@ -283,7 +285,7 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
             )
             outline = outline[::-1]
 
-        self.outline = outline
+        self.__dict__['outline'] = tuple(outline)
 
     def __eq__(self, other):
         if not isinstance(other, GeoPolygon):
@@ -348,7 +350,7 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
     @staticmethod
     def _point_in_polygon(
             coord: Coordinate,
-            polygon: List[Coordinate],
+            polygon: Sequence[Coordinate],
             include_boundary: bool = False,
     ) -> bool:
         """
@@ -419,7 +421,7 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
         return _intersections % 2 != 0
 
     def bounding_coords(self, **kwargs) -> List[Coordinate]:
-        return self.outline
+        return list(self.outline)
 
     def circumscribing_circle(self) -> 'GeoCircle':
         return GeoCircle(*minimum_bounding_circle(self.outline[:-1]), dt=self.dt)
@@ -446,8 +448,8 @@ class GeoPolygon(PolygonBase, SimpleShapeMixin):
 
     def copy(self):
         return GeoPolygon(
-            self.outline.copy(),
-            holes=self.holes.copy(),
+            list(self.outline),
+            holes=self.holes,
             dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self._properties)
         )
@@ -657,12 +659,15 @@ class GeoBox(PolygonBase):
 
     """
 
+    nw_bound: Coordinate
+    se_bound: Coordinate
+
     @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
         nw_bound: Coordinate,
         se_bound: Coordinate,
-        holes: Optional[List[PolygonLikeMixin]] = None,
+        holes: Optional[Sequence[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
@@ -675,8 +680,8 @@ class GeoBox(PolygonBase):
         if nw_bound.latitude < se_bound.latitude:
             raise ValueError('The northwest corner must lie north of the southeast corner')
 
-        self.nw_bound = nw_bound
-        self.se_bound = se_bound
+        self.__dict__['nw_bound'] = nw_bound
+        self.__dict__['se_bound'] = se_bound
 
     def __eq__(self, other):
         if not isinstance(other, GeoBox):
@@ -749,7 +754,7 @@ class GeoBox(PolygonBase):
         return GeoBox(
             self.nw_bound,
             self.se_bound,
-            holes=self.holes.copy(),
+            holes=self.holes,
             dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self._properties)
         )
@@ -811,18 +816,21 @@ class GeoCircle(PolygonBase):
             The length of the circle's radius, in meters
     """
 
+    center: Coordinate
+    radius: float
+
     @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
         center: Coordinate,
         radius: float,
-        holes: Optional[List[PolygonLikeMixin]] = None,
+        holes: Optional[Sequence[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(holes=holes, dt=dt, properties=properties)
-        self.center = center
-        self.radius = float(radius)
+        self.__dict__['center'] = center
+        self.__dict__['radius'] = float(radius)
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, GeoCircle):
@@ -881,7 +889,7 @@ class GeoCircle(PolygonBase):
         return GeoCircle(
             self.center,
             self.radius,
-            holes=self.holes.copy(),
+            holes=self.holes,
             dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self._properties)
         )
@@ -919,6 +927,11 @@ class GeoEllipse(PolygonBase):
 
     """
 
+    center: Coordinate
+    semi_major: float
+    semi_minor: float
+    rotation: float
+
     @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
@@ -926,16 +939,16 @@ class GeoEllipse(PolygonBase):
         semi_major: float,
         semi_minor: float,
         rotation: float,
-        holes: Optional[List[PolygonLikeMixin]] = None,
+        holes: Optional[Sequence[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(holes=holes, dt=dt, properties=properties)
 
-        self.center = center
-        self.semi_major = float(semi_major)
-        self.semi_minor = float(semi_minor)
-        self.rotation = float(rotation)
+        self.__dict__['center'] = center
+        self.__dict__['semi_major'] = float(semi_major)
+        self.__dict__['semi_minor'] = float(semi_minor)
+        self.__dict__['rotation'] = float(rotation)
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, GeoEllipse):
@@ -1041,7 +1054,7 @@ class GeoEllipse(PolygonBase):
             self.semi_major,
             self.semi_minor,
             self.rotation,
-            holes=self.holes.copy(),
+            holes=self.holes,
             dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self._properties)
         )
@@ -1168,6 +1181,12 @@ class GeoRing(PolygonBase):
 
     """
 
+    center: Coordinate
+    inner_radius: float
+    outer_radius: float
+    angle_min: float
+    angle_max: float
+
     @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
@@ -1176,16 +1195,16 @@ class GeoRing(PolygonBase):
         outer_radius: float,
         angle_min: float = 0.0,
         angle_max: float = 360.0,
-        holes: Optional[List[PolygonLikeMixin]] = None,
+        holes: Optional[Sequence[PolygonLikeMixin]] = None,
         dt: Optional[GEOTIME_TYPE] = None,
         properties: Optional[Dict] = None,
     ):
         super().__init__(holes=holes, dt=dt, properties=properties)
-        self.center = center
-        self.inner_radius = float(inner_radius)
-        self.outer_radius = float(outer_radius)
-        self.angle_min = float(angle_min)
-        self.angle_max = float(angle_max)
+        self.__dict__['center'] = center
+        self.__dict__['inner_radius'] = float(inner_radius)
+        self.__dict__['outer_radius'] = float(outer_radius)
+        self.__dict__['angle_min'] = float(angle_min)
+        self.__dict__['angle_max'] = float(angle_max)
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, GeoRing):
@@ -1311,7 +1330,7 @@ class GeoRing(PolygonBase):
             self.outer_radius,
             self.angle_min,
             self.angle_max,
-            holes=self.holes.copy(),
+            holes=self.holes,
             dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self._properties)
         )
@@ -1370,6 +1389,8 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
     A LineString (or more colloquially, a path) consisting of a series of
     """
 
+    vertices: Tuple[Coordinate, ...]
+
     @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
@@ -1378,7 +1399,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt=dt, properties=properties)
-        self.vertices = vertices
+        self.__dict__['vertices'] = tuple(vertices)
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, GeoLineString):
@@ -1474,7 +1495,7 @@ class GeoLineString(SingleShapeBase, LineLikeMixin, SimpleShapeMixin):
 
     def copy(self) -> 'GeoLineString':
         return GeoLineString(
-            self.vertices,
+            list(self.vertices),
             dt=self.dt.copy() if self.dt else None,
             properties=copy.deepcopy(self._properties)
         )
@@ -1725,6 +1746,8 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
 
     """
 
+    coordinate: Coordinate
+
     @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
@@ -1733,7 +1756,7 @@ class GeoPoint(SingleShapeBase, PointLikeMixin, SimpleShapeMixin):
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt=dt, properties=properties)
-        self.coordinate = coordinate
+        self.__dict__['coordinate'] = coordinate
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, GeoPoint):

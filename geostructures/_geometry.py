@@ -844,7 +844,7 @@ def is_point_in_line(point: Coordinate, line: Tuple[Coordinate, Coordinate], **k
     return True
 
 
-def is_counter_clockwise(bounds: List[Coordinate]) -> bool:
+def is_counter_clockwise(bounds: Sequence[Coordinate]) -> bool:
     """
     Tests a polygon to determine whether it's defined in a counterclockwise
     (or mostly, for complex shapes) order.

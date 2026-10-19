@@ -136,7 +136,7 @@ def test_multigeolinestring_from_geojson():
         }
     }
     mls = MultiGeoLineString.from_geojson(gjson)
-    assert mls.geoshapes == [
+    assert list(mls.geoshapes) == [
         GeoLineString([Coordinate(0.0, 1.0), Coordinate(0.5, 0.5), Coordinate(1.0, 0.0)]),
         GeoLineString([Coordinate(1.0, 1.0), Coordinate(0.5, 0.5), Coordinate(0.0, 0.0)])
     ]
@@ -146,7 +146,7 @@ def test_multigeolinestring_from_geojson():
     # Only geo interface
     gjson = gjson['geometry']
     mls = MultiGeoLineString.from_geojson(gjson)
-    assert mls.geoshapes == [
+    assert list(mls.geoshapes) == [
         GeoLineString([Coordinate(0.0, 1.0), Coordinate(0.5, 0.5), Coordinate(1.0, 0.0)]),
         GeoLineString([Coordinate(1.0, 1.0), Coordinate(0.5, 0.5), Coordinate(0.0, 0.0)])
     ]
@@ -211,7 +211,7 @@ def test_multigeolinestring_serialization_round_trips():
 def test_multigeolinestring_from_wkt():
     wkt = "MULTILINESTRING((0.0 1.0,0.5 0.5,1.0 0.0), (1.0 1.0,0.5 0.5,0.0 0.0))"
     mls = MultiGeoLineString.from_wkt(wkt)
-    assert mls.geoshapes == [
+    assert list(mls.geoshapes) == [
         GeoLineString([Coordinate(0.0, 1.0), Coordinate(0.5, 0.5), Coordinate(1.0, 0.0)]),
         GeoLineString([Coordinate(1.0, 1.0), Coordinate(0.5, 0.5), Coordinate(0.0, 0.0)])
     ]

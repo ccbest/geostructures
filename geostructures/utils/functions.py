@@ -7,7 +7,7 @@ __all__ = [
 
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP, localcontext
-from typing import Dict, Any, Optional, Union, List
+from typing import Dict, Any, Optional, Sequence, Union, List
 
 from geostructures.utils.logging import warn_once
 from geostructures.time import TimeInterval
@@ -100,7 +100,7 @@ def sanitize_json(obj: Any):
     return obj
 
 
-def is_sub_list(list_a: List, list_b: List) -> bool:
+def is_sub_list(list_a: Sequence, list_b: Sequence) -> bool:
     """
     Test whether A is a sublist of B.
 

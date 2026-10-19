@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from abc import abstractmethod, ABC
 from datetime import datetime, timedelta
-from functools import cached_property
+from functools import cached_property, lru_cache
 import re
 from typing import (
-    Any, Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING,
+    Any, Dict, Iterable, List, Optional, Sequence, Tuple, TYPE_CHECKING,
     TypeVar, Union,  cast
 )
 from typing_extensions import Self
@@ -18,6 +18,7 @@ from geostructures.coordinates import Coordinate
 from geostructures.time import TimeInterval, GEOTIME_TYPE
 from geostructures.utils.functions import default_to_zulu, sanitize_json
 from geostructures.utils.conditional_imports import import_optional
+from geostructures.utils.logging import warn_once
 
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -78,7 +79,25 @@ _RE_MULTILINESTRING_WKT = re.compile(
 SHAPE_VAR = TypeVar('SHAPE_VAR', bound='BaseShape')
 
 
+@lru_cache(maxsize=None)
+def _cached_property_names(cls: type) -> Tuple[str, ...]:
+    """The names of every cached_property defined on cls or its parents"""
+    return tuple({
+        name
+        for klass in cls.__mro__
+        for name, attr in vars(klass).items()
+        if isinstance(attr, cached_property)
+    })
+
+
 class BaseShape(ABC):
+
+    """
+    Shapes are treated as immutable: constructors write their attributes
+    directly into __dict__, and any later assignment goes through __setattr__,
+    which flags it. Mutation is currently deprecated and will raise an error in
+    a future release.
+    """
 
     dt: Optional[TimeInterval]
     _properties: Dict
@@ -95,14 +114,22 @@ class BaseShape(ABC):
         if isinstance(dt, datetime):
             # Convert to a zero-second time interval
             dt = default_to_zulu(dt)
-            self.dt: Optional[TimeInterval] = TimeInterval(dt, dt)
-        else:
-            self.dt = dt
+            dt = TimeInterval(dt, dt)
 
-        self._properties = properties or {}
+        self.__dict__['dt'] = dt
+        self.__dict__['_properties'] = properties or {}
 
     def __contains__(self, other: Union['GeoShape', Coordinate]):
         return self.contains(other)  # pragma: no cover
+
+    def __setattr__(self, name, value):
+        warn_once(
+            f'Assigning to {type(self).__name__}.{name} is deprecated and will '
+            'raise an error in a future release, when shapes become immutable. '
+            'Create a new shape instead.'
+        )
+        self._clear_caches()
+        object.__setattr__(self, name, value)
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -110,7 +137,10 @@ class BaseShape(ABC):
         return state
 
     def __setstate__(self, state):
-        self.__dict__ = state
+        # Pickles from older versions carry a 'to_shapely' entry, which would
+        # shadow the method
+        state.pop('to_shapely', None)
+        self.__dict__.update(state)
 
     def __reduce_ex__(self, protocol):
         return (self.__class__._rebuild_from_state, (self.__getstate__(),))
@@ -205,7 +235,7 @@ class BaseShape(ABC):
         return self.dt.start
 
     @staticmethod
-    def _linear_ring_to_wkt(ring: List[Coordinate]) -> str:
+    def _linear_ring_to_wkt(ring: Sequence[Coordinate]) -> str:
         """
         Converts a list of coordinates (a linear ring, self-closing) into
         a wkt string.
@@ -218,6 +248,45 @@ class BaseShape(ABC):
             The wkt-formatted string,
         """
         return f'({",".join(" ".join(coord.to_str()) for coord in ring)})'
+
+    def _clear_caches(self):
+        """Discard cached derived values (shapely conversion and cached properties)"""
+        self.__dict__.pop('_shapely', None)
+        for name in _cached_property_names(type(self)):
+            self.__dict__.pop(name, None)
+
+    def _copy_with(self: SHAPE_VAR, **attrs) -> SHAPE_VAR:
+        """Create a copy of this shape with the given attributes replaced"""
+        shape = self.copy()
+        shape._set_attrs(**attrs)
+        return shape
+
+    @staticmethod
+    def _resolve_inplace(inplace: Optional[bool], method: str) -> bool:
+        """
+        Resolves the deprecated inplace argument of a modifying method, warning
+        unless the caller has opted into the copying behavior.
+        """
+        if inplace is False:
+            return False
+
+        warn_once(
+            f'Modifying shapes in place with {method}() is deprecated, and inplace=True '
+            'is currently the default. In a future release shapes will become immutable '
+            f'and {method}() will always return a new shape; pass inplace=False and '
+            'use the returned shape instead.'
+        )
+        return True
+
+    def _set_attrs(self, **attrs):
+        """
+        Assigns attributes without the mutation deprecation warning. Internal use
+        only: either on a shape that hasn't yet been handed back to the caller, or
+        on behalf of a deprecated inplace method that has already warned.
+        """
+        self._clear_caches()
+        for name, value in attrs.items():
+            object.__setattr__(self, name, value)
 
     @staticmethod
     def _parse_wkt_linear_ring(wkt_str: str, wkt_coords: str):
@@ -252,7 +321,7 @@ class BaseShape(ABC):
     def buffer_dt(
         self: SHAPE_VAR,
         buffer: timedelta,
-        inplace: bool = True
+        inplace: Optional[bool] = None
     ) -> SHAPE_VAR:
         """
         Adds a timedelta buffer to the beginning and end of dt.
@@ -261,19 +330,22 @@ class BaseShape(ABC):
             buffer:
                 A timedelta that will expand both sides of dt
 
-            inplace: (bool) (Default True)
-                If True, will mutate the current object. If False,
-                will return a copy of this object.
+            inplace: (bool) (Default None, currently treated as True)
+                If False, will return a copy of this object. If True, will
+                mutate the current object; this is deprecated and will be
+                removed when shapes become immutable.
         """
         if not self.dt:
             raise ValueError("GeoShape has no associated time information.")
 
         dt = cast(TimeInterval, self.dt)
-        shp = self if inplace else self.copy()
+        new_dt = TimeInterval(dt.start-buffer, dt.end+buffer)
 
-        shp.dt = TimeInterval(dt.start-buffer, dt.end+buffer)
+        if self._resolve_inplace(inplace, 'buffer_dt'):
+            self._set_attrs(dt=new_dt)
+            return self
 
-        return shp
+        return self._copy_with(dt=new_dt)
 
     def contains(self, shape: Union['GeoShape', Coordinate], **kwargs) -> bool:
         """Test whether a coordinate or GeoShape is contained within this geoshape"""
@@ -397,39 +469,42 @@ class BaseShape(ABC):
         return self.dt.intersects(dt)
 
     def set_dt(
-            self,
+            self: SHAPE_VAR,
             dt: Union[datetime, TimeInterval, None],
-            inplace: bool = True
-    ) -> 'BaseShape':
+            inplace: Optional[bool] = None
+    ) -> SHAPE_VAR:
         """
-        Sets time bounds on this geoshape. Will not mutate unless inplace is True
+        Sets time bounds on this geoshape.
 
         Args:
             dt: (Union[datetime, TimeInterval, None])
                 A datetime or TimeInterval
 
-            inplace: (bool) (Default True)
-                If True, will mutate this object. If False, will create a
-                copy instead.
+            inplace: (bool) (Default None, currently treated as True)
+                If False, will return a copy of this object. If True, will
+                mutate this object; this is deprecated and will be removed
+                when shapes become immutable.
 
         Returns:
             self type
         """
-        shape = self if inplace else self.copy()
-
+        new_dt: Optional[TimeInterval]
         if dt is None or isinstance(dt, TimeInterval):
-            shape.dt = dt
-            return shape
-
-        if isinstance(dt, datetime):
+            new_dt = dt
+        elif isinstance(dt, datetime):
             # Convert to a zero-second time interval
             dt = default_to_zulu(dt)
-            shape.dt = TimeInterval(dt, dt)
-            return shape
+            new_dt = TimeInterval(dt, dt)
+        else:
+            raise ValueError(f'Unexpected dt value {dt}')
 
-        raise ValueError(f'Unexpected dt value {dt}')
+        if self._resolve_inplace(inplace, 'set_dt'):
+            self._set_attrs(dt=new_dt)
+            return self
 
-    def set_property(self, key: str, value: Any, inplace: bool = True):
+        return self._copy_with(dt=new_dt)
+
+    def set_property(self: SHAPE_VAR, key: str, value: Any, inplace: Optional[bool] = None) -> SHAPE_VAR:
         """
         Sets the value of a property on this geoshape.
 
@@ -440,21 +515,36 @@ class BaseShape(ABC):
             value: (Any)
                 The property value
 
-            inplace: (bool) (Default True)
-                If True, will mutate this object. If False, will create a copy
-                instead.
+            inplace: (bool) (Default None, currently treated as True)
+                If False, will return a copy of this object. If True, will
+                mutate this object; this is deprecated and will be removed
+                when shapes become immutable.
 
         Returns:
             self type
         """
-        shape = self if inplace else self.copy()
+        shape = self if self._resolve_inplace(inplace, 'set_property') else self.copy()
         shape._properties[key] = value
         return shape
 
-    def strip_dt(self: SHAPE_VAR, inplace: bool = True) -> SHAPE_VAR:
-        shape = self if inplace else self.copy()
-        shape.dt = None
-        return shape
+    def strip_dt(self: SHAPE_VAR, inplace: Optional[bool] = None) -> SHAPE_VAR:
+        """
+        Removes time bounds from this geoshape.
+
+        Args:
+            inplace: (bool) (Default None, currently treated as True)
+                If False, will return a copy of this object. If True, will
+                mutate this object; this is deprecated and will be removed
+                when shapes become immutable.
+
+        Returns:
+            self type
+        """
+        if self._resolve_inplace(inplace, 'strip_dt'):
+            self._set_attrs(dt=None)
+            return self
+
+        return self._copy_with(dt=None)
 
     def to_fastkml_placemark(self, **kwargs):
         """
@@ -547,8 +637,9 @@ class BaseShape(ABC):
         first call and reused thereafter.
         """
         if self._shapely is None:
-            self._shapely = self._to_shapely()
-        return self._shapely
+            # Written to __dict__ directly; this is a cache, not a mutation
+            self.__dict__['_shapely'] = self._to_shapely()
+        return cast('shapely.geometry.base.BaseGeometry', self._shapely)
 
     @abstractmethod
     def _to_shapely(self):
@@ -645,9 +736,8 @@ class SimpleShapeMixin(BaseShape, ABC):
                 'coordinates': [geo_interface['coordinates']],
             }
         shape = cls.from_geojson(geo_interface)
-        shape.set_dt(dt, inplace=True)
-        for key, value in props.items():
-            shape.set_property(key, value, inplace=True)
+        shape._set_attrs(dt=dt)
+        shape._properties.update(props)
         return shape
 
     @classmethod
@@ -687,7 +777,7 @@ class PolygonLikeMixin(BaseShape, ABC):
     boxes, ellipses, etc.
     """
 
-    holes: List['PolygonLike']
+    holes: Tuple['PolygonLike', ...]
 
     @property
     @abstractmethod
@@ -829,7 +919,7 @@ class PolygonLikeMixin(BaseShape, ABC):
 
 class LineLikeMixin(BaseShape, ABC):
 
-    vertices: List[Coordinate]
+    vertices: Tuple[Coordinate, ...]
 
     @property
     @abstractmethod
@@ -880,7 +970,7 @@ class PointLikeMixin(BaseShape, ABC):
 
 class MultiShapeBase(SimpleShapeMixin, BaseShape, ABC):
 
-    geoshapes: List
+    geoshapes: Tuple
 
     def __eq__(self, other):
         if not isinstance(other, MultiShapeBase):
@@ -943,12 +1033,10 @@ class MultiShapeBase(SimpleShapeMixin, BaseShape, ABC):
         return False
 
     def split(self) -> List[BaseShape]:
-        shapes = [shape.copy() for shape in self.geoshapes]
-        for shape in shapes:
-            shape._properties = self._properties.copy()
-            shape.dt = self.dt
-
-        return shapes
+        return [
+            shape._copy_with(_properties=self._properties.copy(), dt=self.dt)
+            for shape in self.geoshapes
+        ]
 
 
 class SingleShapeBase(BaseShape, ABC):

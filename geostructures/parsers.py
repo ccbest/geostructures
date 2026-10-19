@@ -106,12 +106,13 @@ def _parse_fastkml(
             return _shapes
 
         shape = parser.from_fastkml_placemark(kml)  # type: ignore
-        for key, value in _props.items():
-            shape.set_property(key, value, inplace=True)
+        # The shape was just created here, so it's safe to fill in properties
+        # directly rather than copying it
+        shape._properties.update(_props)
         for prop in ('name', 'description', 'address', 'phone_number'):
             # Inject KML properties into shape properties
             if getattr(kml, prop) is not None:
-                shape.set_property(prop, getattr(kml, prop), inplace=True)
+                shape._properties[prop] = getattr(kml, prop)
         _shapes.append(shape)
         return _shapes
 
@@ -323,9 +324,10 @@ def _parse_kmz(source, encoding: str, filepath: Optional[str] = None) -> List[Ge
         for kml_f in kml_files:
             parsed = _parse_kml_bytes(z.read(kml_f), encoding)
             for shape in parsed:
+                # Freshly parsed, so safe to fill in properties directly
                 if filepath is not None:
-                    shape.set_property('filepath', filepath)
-                shape.set_property('filename', kml_f)
+                    shape._properties['filepath'] = filepath
+                shape._properties['filename'] = kml_f
             shapes.extend(parsed)
     return shapes
 
@@ -352,8 +354,9 @@ def _read_kml_file(fpath: Path, encoding: str) -> FeatureCollection:
         # Assume plain KML
         shapes = _parse_kml_bytes(fpath.read_bytes(), encoding)
         for shape in shapes:
-            # Store the path as a str so the property stays JSON-serializable
-            shape.set_property('filepath', str(fpath))
-            shape.set_property('filename', fpath.name)
+            # Freshly parsed, so safe to fill in properties directly. Store the
+            # path as a str so the property stays JSON-serializable
+            shape._properties['filepath'] = str(fpath)
+            shape._properties['filename'] = fpath.name
 
     return FeatureCollection(shapes)

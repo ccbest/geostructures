@@ -238,10 +238,10 @@ def test_georing_to_polygon():
 def test_georing_to_polygon_does_not_mutate():
     # to_polygon() used to alias and extend self.holes, compounding on each call
     ring = GeoRing(Coordinate(0., 0.), 1_000, 2_000)
-    assert ring.holes == []
+    assert ring.holes == ()
 
     poly1 = ring.to_polygon()
-    assert ring.holes == []
+    assert ring.holes == ()
     assert len(poly1.holes) == 1  # The inner ring
 
     poly2 = ring.to_polygon()

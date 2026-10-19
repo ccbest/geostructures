@@ -208,10 +208,12 @@ point = GeoPoint(
     }
 )
 
-# Or at any time afterwards (will mutate the shape)
-point.set_property(
+# Or at any time afterwards. Shapes are immutable, so this returns a new
+# shape (in-place modification is deprecated)
+point = point.set_property(
     'example',      # The property key
-    2               # The property value
+    2,              # The property value
+    inplace=False
 )
 
 ```
@@ -405,13 +407,16 @@ span_of_time = GeoPoint(
 
 # Time spans can also be set after instantiation
 another_point = GeoPoint(Coordinate(-0.154092, 51.539865))
-another_point.set_dt(TimeInterval(datetime(2020, 5, 1, 16), datetime(2020, 5, 1, 17)))
+another_point = another_point.set_dt(
+    TimeInterval(datetime(2020, 5, 1, 16), datetime(2020, 5, 1, 17)),
+    inplace=False
+)
 
 # You can buffer a time-bound shape with a timedelta
-another_point.buffer_dt(timedelta(hours=6))
+another_point = another_point.buffer_dt(timedelta(hours=6), inplace=False)
 
 # Or strip shape's time bounds
-another_point.strip_dt()
+another_point = another_point.strip_dt(inplace=False)
 
 # Collections where all underlying shapes are time-bound can be represented as a Track, which
 # supports additional features

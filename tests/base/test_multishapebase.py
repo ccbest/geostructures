@@ -101,9 +101,8 @@ def test_multishapebase_copy():
     )
     mls_2 = mls_1.copy()
     assert mls_1 == mls_2
-
-    mls_2.geoshapes.pop(0)
-    assert mls_1 != mls_2
+    assert mls_2 is not mls_1
+    assert all(x is not y for x, y in zip(mls_1.geoshapes, mls_2.geoshapes))
 
 
 def test_multishapebase_intersects_shape():

@@ -107,9 +107,8 @@ def test_multigeoshape_copy():
     mp = MultiGeoPolygon([box1, box2])
     mp2 = mp.copy()
     assert mp2 == mp
-
-    mp.geoshapes.pop()
-    assert mp2 != mp
+    assert mp2 is not mp
+    assert all(x is not y for x, y in zip(mp.geoshapes, mp2.geoshapes))
 
 
 def test_multigeoshape_convex_hull():
@@ -170,7 +169,7 @@ def test_multigeoshape_from_geojson():
         "test_kwarg": "test_kwarg"
     }
     mp = MultiGeoPolygon.from_geojson(gjson)
-    assert mp.geoshapes == [
+    assert list(mp.geoshapes) == [
         GeoPolygon(
             [
                 Coordinate(0.0, 1.0), Coordinate(0.0, 0.0),
@@ -201,7 +200,7 @@ def test_multigeoshape_from_geojson():
     # Only geo interface
     gjson = gjson['geometry']
     mp = MultiGeoPolygon.from_geojson(gjson)
-    assert mp.geoshapes == [
+    assert list(mp.geoshapes) == [
         GeoPolygon(
             [
                 Coordinate(0.0, 1.0), Coordinate(0.0, 0.0),
@@ -249,7 +248,7 @@ def test_multigeoshape_from_shapely():
         ]
     ])
     mp = MultiGeoPolygon.from_shapely(shapely_mp)
-    assert mp.geoshapes == [
+    assert list(mp.geoshapes) == [
         GeoPolygon(
             [
                 Coordinate(0.0, 1.0), Coordinate(0.0, 0.0),
@@ -279,7 +278,7 @@ def test_multigeoshape_from_shapely():
 def test_multigeoshape_from_wkt():
     wkt = "MULTIPOLYGON (((0 1, 0 0, 1 0, 1 1, 0 1), (0 1, 1 1, 1 0, 0 0, 0 1)), ((1 2, 1 1, 2 1, 2 2, 1 2)))"
     mp = MultiGeoPolygon.from_wkt(wkt)
-    assert mp.geoshapes == [
+    assert list(mp.geoshapes) == [
         GeoPolygon(
             [
                 Coordinate(0.0, 1.0), Coordinate(0.0, 0.0),
