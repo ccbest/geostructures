@@ -13,6 +13,7 @@ from geostructures.multistructures import *
 from geostructures import GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon, GeoRing, MultiGeoPoint
 from geostructures.time import TimeInterval
 from geostructures.collections import Track, FeatureCollection
+from geostructures.utils.logging import _WARNINGS
 
 from tests.functions import assert_geopolygons_equal
 
@@ -83,7 +84,7 @@ def test_collection_len():
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 3)),
     ])
     assert len(track1) == 3
-    track1.geoshapes.pop(0)
+    track1 = track1[1:]
     assert len(track1) == 2
 
 
@@ -605,7 +606,7 @@ def test_collection_to_from_shapefile(pyshp_round_trip, caplog):
             zip_path,
             read_layers=['nonexistent']
         )
-        assert new_shapecol_empty.geoshapes == []
+        assert new_shapecol_empty.geoshapes == ()
 
     # Test writing/reading properties
     pointcol = FeatureCollection([
@@ -679,8 +680,44 @@ def test_featurecollection_add():
         GeoBox(Coordinate(0.0, 2.0), Coordinate(2.0, 0.0)),
     ])
 
+    # A single shape can be added too
+    box = GeoBox(Coordinate(0.0, 3.0), Coordinate(3.0, 0.0))
+    assert fcol1 + box == FeatureCollection([
+        GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0)),
+        box,
+    ])
+    assert len(fcol1) == 1
+
     with pytest.raises(ValueError):
         _ = fcol1 + 2
+
+
+def test_collection_immutable(caplog):
+    _WARNINGS.clear()
+    fcol = FeatureCollection([
+        GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0)),
+        GeoBox(Coordinate(0.0, 2.0), Coordinate(2.0, 0.0)),
+    ])
+    assert isinstance(fcol.geoshapes, tuple)
+    assert fcol.bounds == (0.0, 0.0, 2.0, 2.0)
+
+    caplog.clear()
+    fcol.geoshapes = (GeoBox(Coordinate(0.0, 3.0), Coordinate(3.0, 0.0)),)
+    assert 'Assigning to FeatureCollection.geoshapes is deprecated' in caplog.text
+    # Cached values are discarded
+    assert fcol.bounds == (0.0, 0.0, 3.0, 3.0)
+
+
+def test_collection_filter():
+    shapes = [GeoPoint(Coordinate(float(i), 0.0), dt=datetime(2020, 1, i + 1)) for i in range(4)]
+    fcol = FeatureCollection(shapes)
+    assert fcol.filter(lambda x: x.centroid.longitude > 1) == FeatureCollection(shapes[2:])
+
+    track = Track(shapes)
+    filtered = track.filter(lambda x: x.centroid.longitude % 2 == 0)
+    assert isinstance(filtered, Track)
+    assert filtered == Track([shapes[0], shapes[2]])
+    assert track.filter(lambda x: False) == Track([])
 
 
 def test_featurecollection_eq():
@@ -705,10 +742,10 @@ def test_featurecollection_getitem():
         GeoBox(Coordinate(0.0, 3.0), Coordinate(3.0, 0.0)),
     ])
     assert fcol[0] == GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0))
-    assert fcol[0:2] == [
+    assert fcol[0:2] == FeatureCollection([
         GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0)),
         GeoBox(Coordinate(0.0, 2.0), Coordinate(2.0, 0.0)),
-    ]
+    ])
 
 
 def test_featurecollection_iter():
@@ -731,7 +768,7 @@ def test_featurecollection_len():
         GeoBox(Coordinate(0.0, 3.0), Coordinate(3.0, 0.0)),
     ])
     assert len(fcol) == 3
-    fcol.geoshapes.pop(0)
+    fcol = fcol[1:]
     assert len(fcol) == 2
 
 
@@ -759,9 +796,8 @@ def test_featurecollection_copy():
     assert fcol == fcol_copy
     assert all(x is y for x, y in zip(fcol, fcol_copy))
 
-    # Shallow mutation, should no longer be equal
-    fcol_copy.geoshapes.pop(0)
-    assert fcol != fcol_copy
+    # A subset should no longer be equal
+    assert fcol != fcol_copy[1:]
 
 
 def test_track_init():
@@ -793,6 +829,10 @@ def test_track_add():
     # Make sure nothing mutated
     assert all([x not in track2.geoshapes for x in track1])
     assert all([x not in track1.geoshapes for x in track2])
+
+    # A single shape is placed in time order
+    point = GeoPoint(Coordinate(3.0, 3.0), datetime(2019, 12, 31))
+    assert (track1 + point).first == point
 
     with pytest.raises(ValueError):
         _ = track1 + 2
@@ -853,8 +893,9 @@ def test_track_copy():
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 3)),
     ])
     new_track = track1.copy()
-    new_track.geoshapes.pop()
-    assert len(new_track) != len(track1)
+    assert new_track == track1
+    assert new_track is not track1
+    assert all(x is y for x, y in zip(new_track, track1))
 
 
 def test_track_first():
@@ -864,7 +905,7 @@ def test_track_first():
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 3)),
     ])
     assert track1.first == GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 1))
-    track1.geoshapes.pop(0)
+    track1 = track1[1:]
     assert track1.first == GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 2))
 
     with pytest.raises(ValueError):
@@ -878,7 +919,7 @@ def test_track_last():
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 3)),
     ])
     assert track1.last == GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 3))
-    track1.geoshapes.pop(-1)
+    track1 = track1[:-1]
     assert track1.last == GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 2))
 
     with pytest.raises(ValueError):
@@ -892,7 +933,7 @@ def test_track_start():
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 3)),
     ])
     assert track1.start == datetime(2020, 1, 1, tzinfo=timezone.utc)
-    track1.geoshapes.pop(0)
+    track1 = track1[1:]
     assert track1.start == datetime(2020, 1, 2, tzinfo=timezone.utc)
 
     with pytest.raises(ValueError):
@@ -906,7 +947,7 @@ def test_track_finish():
         GeoPoint(Coordinate(1.0, 1.0), datetime(2020, 1, 3)),
     ])
     assert track1.end == datetime(2020, 1, 3, tzinfo=timezone.utc)
-    track1.geoshapes.pop(-1)
+    track1 = track1[:-1]
     assert track1.end == datetime(2020, 1, 2, tzinfo=timezone.utc)
 
     with pytest.raises(ValueError):
