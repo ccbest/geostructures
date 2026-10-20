@@ -94,15 +94,17 @@ class TimeInterval:
     Each endpoint is stored as an integer count of microseconds since the
     Unix epoch (UTC), alongside the timezone it was provided in. The start and
     end properties return datetimes in that original timezone; naive
-    datetimes are treated as UTC.
+    datetimes are treated as UTC. Each is rebuilt on first access and cached.
     """
 
-    __slots__ = ('_start', '_end', '_start_tz', '_end_tz')
+    __slots__ = ('_start', '_end', '_start_tz', '_end_tz', '_start_dt', '_end_dt')
 
     _start: int
     _end: int
     _start_tz: tzinfo
     _end_tz: tzinfo
+    _start_dt: Optional[datetime]
+    _end_dt: Optional[datetime]
 
     def __init__(
         self,
@@ -133,6 +135,7 @@ class TimeInterval:
 
         self._start, self._start_tz = start_micros, start_tz
         self._end, self._end_tz = end_micros, end_tz
+        self._start_dt = self._end_dt = None
 
     @classmethod
     def _from_micros(
@@ -150,22 +153,30 @@ class TimeInterval:
         new = cls.__new__(cls)
         new._start, new._end = start, end
         new._start_tz, new._end_tz = start_tz, end_tz
+        new._start_dt = new._end_dt = None
         return new
 
     @property
     def start(self) -> datetime:
         """The (inclusive) start of the interval, in the timezone it was provided in"""
-        return _to_datetime(self._start, self._start_tz)
+        dt = self._start_dt
+        if dt is None:
+            dt = self._start_dt = _to_datetime(self._start, self._start_tz)
+        return dt
 
     @property
     def end(self) -> datetime:
         """The (exclusive) end of the interval, in the timezone it was provided in"""
-        return _to_datetime(self._end, self._end_tz)
+        dt = self._end_dt
+        if dt is None:
+            dt = self._end_dt = _to_datetime(self._end, self._end_tz)
+        return dt
 
     def __getstate__(self):
         return self._start, self._end, self._start_tz, self._end_tz
 
     def __setstate__(self, state):
+        self._start_dt = self._end_dt = None
         if isinstance(state, dict):
             # Pickled before intervals stored microseconds: {'start': ..., 'end': ...}
             (self._start, self._start_tz), (self._end, self._end_tz) = (

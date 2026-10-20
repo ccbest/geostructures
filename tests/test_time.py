@@ -379,3 +379,17 @@ def test_timeinterval_pickle():
     legacy = TimeInterval.__new__(TimeInterval)
     legacy.__setstate__({'start': interval.start, 'end': interval.end})
     assert legacy == interval and legacy.start.tzinfo == plus_one
+
+
+def test_timeinterval_caches_endpoints():
+    import pickle
+
+    plus_one = timezone(timedelta(hours=1))
+    interval = TimeInterval(datetime(2020, 1, 1, tzinfo=plus_one), datetime(2020, 1, 2))
+    assert interval.start is interval.start and interval.end is interval.end
+
+    # Cached datetimes aren't pickled, and are rebuilt on access
+    assert len(interval.__getstate__()) == 4
+    restored = pickle.loads(pickle.dumps(interval))
+    assert restored.start == interval.start and restored.start.tzinfo == plus_one
+    assert interval.copy().end == interval.end
