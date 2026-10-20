@@ -7,7 +7,7 @@ __all__ = [
 
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP, localcontext
-from typing import Dict, Any, Optional, Sequence, Union, List
+from typing import Dict, Any, Optional, Sequence, Union
 
 from geostructures.utils.logging import warn_once
 from geostructures.time import TimeInterval
