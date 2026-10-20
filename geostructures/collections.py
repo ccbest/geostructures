@@ -9,7 +9,10 @@ from datetime import date, datetime, time
 from functools import cached_property
 from pathlib import Path
 import tempfile
-from typing import Callable, cast, Any, List, Dict, Iterable, Optional, Union, Sequence, Tuple, TypedDict, TypeVar
+from typing import (
+    Callable, cast, Any, List, Dict, Iterable, Optional, Union, Sequence, Tuple, Type,
+    TypedDict, TypeVar
+)
 from zipfile import ZipFile
 
 import numpy as np
@@ -20,7 +23,8 @@ from geostructures._base import (
     PolygonLikeMixin, PointLikeMixin, LineLikeMixin, MultiShapeBase, BaseShape,
     _cached_property_names
 )
-from geostructures._columnar import ShapeColumns, _to_micros, points_in_shape, shape_envelope
+from geostructures._columnar import ShapeColumns, points_in_shape, shape_envelope
+from geostructures._shapely_io import LazyShapes, as_geometry_array, shapes_to_shapely
 from geostructures._geometry import convex_hull
 from geostructures.geodesic import distance_meters
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
@@ -49,14 +53,54 @@ class CollectionBase:
     Collections are treated as immutable, like shapes: build a new collection
     (e.g. with `+`, `filter`, or slicing) rather than modifying one, so that
     cached values - including the arrays used to filter quickly - stay correct.
+
+    Collections read from shapely geometries (from_shapely, from_geopandas,
+    from_ragged_array) create each shape only when it is first accessed.
+    Indexing, iterating, filtering and exporting create only the shapes they
+    need; accessing `geoshapes` creates them all.
     """
 
-    geoshapes: Tuple[BaseShape, ...]
+    _shapes: Union[Tuple[BaseShape, ...], LazyShapes]
 
     @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(self, geoshapes: List[BaseShape]):
         super().__init__()
-        self.__dict__['geoshapes'] = tuple(geoshapes)
+        self.__dict__['_shapes'] = tuple(geoshapes)
+
+    @classmethod
+    def _from_shapes(
+        cls: Type[_COL_TYPE],
+        shapes: Union[Tuple[BaseShape, ...], LazyShapes],
+        columns: Optional[ShapeColumns] = None,
+    ) -> _COL_TYPE:
+        """Creates a collection from shapes known to be valid for it, skipping __init__"""
+        new = cls.__new__(cls)
+        new.__dict__['_shapes'] = shapes
+        if columns is not None:
+            new.__dict__['_columns'] = columns
+        return new
+
+    @classmethod
+    def _from_lazy(cls: Type[_COL_TYPE], shapes: LazyShapes) -> _COL_TYPE:
+        """Creates a collection from shapes created on demand"""
+        return cls._from_shapes(shapes)
+
+    @property
+    def geoshapes(self) -> Tuple[BaseShape, ...]:
+        """
+        The collection's shapes. For a collection read from shapely geometries
+        this creates every shape not yet created.
+        """
+        shapes = self._shapes
+        if isinstance(shapes, LazyShapes):
+            shapes = tuple(shapes)
+            self.__dict__['_shapes'] = shapes
+        return shapes
+
+    @geoshapes.setter
+    def geoshapes(self, value):
+        # Only reachable through the deprecated attribute assignment
+        self.__dict__['_shapes'] = tuple(value)
 
     def __setattr__(self, name, value):
         warn_once(
@@ -69,18 +113,18 @@ class CollectionBase:
         object.__setattr__(self, name, value)
 
     def __bool__(self):
-        return bool(self.geoshapes)
+        return len(self._shapes) > 0
 
     def __contains__(self, item):
         return item in self.geoshapes
 
     def __iter__(self):
-        """Iterate through the track"""
-        return self.geoshapes.__iter__()
+        """Iterate through the shapes"""
+        return iter(self._shapes)
 
     def __len__(self):
-        """The track length"""
-        return self.geoshapes.__len__()
+        """The number of shapes"""
+        return len(self._shapes)
 
     @cached_property
     def bounds(self) -> Tuple[float, float, float, float]:
@@ -125,7 +169,7 @@ class CollectionBase:
     @cached_property
     def _columns(self) -> ShapeColumns:
         """Arrays derived from the shapes, used to filter the whole collection at once"""
-        return ShapeColumns(self.geoshapes)
+        return ShapeColumns(self._shapes)
 
     def _subset(self: _COL_TYPE, selection: Union[np.ndarray, Sequence[bool], Sequence[int]]) -> _COL_TYPE:
         """
@@ -138,14 +182,18 @@ class CollectionBase:
         else:
             idx = idx.astype(np.intp, copy=False)
 
-        shapes = tuple(self.geoshapes[i] for i in idx)
+        shapes: Union[Tuple[BaseShape, ...], LazyShapes]
+        if isinstance(self._shapes, LazyShapes):
+            shapes = self._shapes.take(idx)
+        else:
+            shapes = tuple(self._shapes[i] for i in idx)
+
         # A subset is valid for any collection type (Track ordering is
         # preserved), so skip re-validating it in __init__
-        new = type(self).__new__(type(self))
-        new.__dict__['geoshapes'] = shapes
+        columns = None
         if '_columns' in self.__dict__:
-            new.__dict__['_columns'] = self._columns.take(idx, shapes)
-        return new
+            columns = self._columns.take(idx, shapes)
+        return self._from_shapes(shapes, columns)
 
     def _spatial_mask(
         self,
@@ -204,7 +252,7 @@ class CollectionBase:
                         return mask
 
         for i in np.flatnonzero(mask & ~resolved):
-            mask[i] = predicate(self.geoshapes[i])
+            mask[i] = predicate(self._shapes[int(i)])
             if any_only and mask[i]:
                 break
 
@@ -221,7 +269,7 @@ class CollectionBase:
         Returns:
             A shape collection of the same type as the original
         """
-        return self._subset([bool(predicate(x)) for x in self.geoshapes])
+        return self._subset([bool(predicate(x)) for x in self])
 
     def filter_by_dt(self: _COL_TYPE, dt: Union[datetime, TimeInterval]) -> _COL_TYPE:
         """
@@ -390,6 +438,9 @@ class CollectionBase:
         Associates start and end times to the shape, if present, and
         stores the remaining columns as shape properties.
 
+        Shapes are created from the dataframe's geometries as they're accessed;
+        see CollectionBase.
+
         Args:
             df:
                 A GeoPandas dataframe
@@ -408,52 +459,36 @@ class CollectionBase:
         import_optional('pandas')
         import pandas as pd
 
-        conv_map = {
-            'Point': GeoPoint,
-            'LineString': GeoLineString,
-            'Polygon': GeoPolygon,
-            'MultiPoint': MultiGeoPoint,
-            'MultiLineString': MultiGeoLineString,
-            'MultiPolygon': MultiGeoPolygon,
-        }
+        def _as_datetime(value):
+            # Missing values arrive as None or NaT, and NaT is truthy
+            if isinstance(value, datetime) and not pd.isnull(value):
+                return value
+            return None
 
         def _get_dt(rec):
             """Grabs datetime data and returns appropriate struct"""
-            dt_start = rec.get(time_start_field)
-            dt_end = rec.get(time_end_field)
-            if not (
-                (not pd.isnull(dt_start) and isinstance(dt_start, datetime)) or
-                (not pd.isnull(dt_end) and isinstance(dt_end, datetime))
-            ):
+            dt_start = _as_datetime(rec.get(time_start_field))
+            dt_end = _as_datetime(rec.get(time_end_field))
+            if dt_start is None and dt_end is None:
                 return None
 
-            if not (dt_start and dt_end) or dt_start == dt_end:
+            if dt_start is None or dt_end is None or dt_start == dt_end:
                 return dt_start or dt_end
 
             return TimeInterval(dt_start, dt_end)
 
         df = cast(gpd.GeoDataFrame, df)
-        prop_fields = [
-            x for x in df.columns if x not in (time_start_field, time_end_field, 'geometry')
+        geometries = as_geometry_array(df.geometry.values)
+        records = pd.DataFrame(df.drop(columns=df.geometry.name)).to_dict('records')
+        if not records:
+            # to_dict returns no records at all for a frame without columns
+            records = [{} for _ in range(len(df))]
+        dts = [_get_dt(record) for record in records]
+        properties = [
+            {k: v for k, v in record.items() if k not in (time_start_field, time_end_field)}
+            for record in records
         ]
-        shapes: List[BaseShape] = []
-        for record in df.to_dict('records'):
-            geom_type = record['geometry'].geom_type
-            if geom_type not in conv_map:  # pragma: no cover
-                # ignored coverage because can't falsify geometry type
-                raise ValueError(f'Unrecognized geometry type: {geom_type}')
-
-            dt = _get_dt(record)
-            props = {k: v for k, v in record.items() if k in prop_fields}
-            shapes.append(
-                conv_map[geom_type].from_wkt(  # type: ignore
-                    record['geometry'].wkt,
-                    dt=dt,
-                    properties=props
-                )
-            )
-
-        return cls(shapes)
+        return cls._from_lazy(LazyShapes(geometries, dts, properties))
 
     @classmethod
     def from_shapefile(
@@ -532,38 +567,46 @@ class CollectionBase:
         return cls(shapes)
 
     @classmethod
-    def from_shapely(cls, geometry_collection):
+    def from_ragged_array(cls, geometry_type, coords, offsets=None):
         """
-        Creates a geostructures FeatureCollection from a shapely GeometryCollection
+        Creates a collection from geometries in the GeoArrow-compatible
+        ("ragged array") layout used by shapely.from_ragged_array: a single
+        geometry type, an array of coordinates, and offset arrays delimiting
+        the parts of each geometry.
 
         Args:
-            geometry_collection:
-                A shapely GeometryCollection
+            geometry_type:
+                A shapely.GeometryType
+
+            coords:
+                A (N, 2) or (N, 3) array of coordinates
+
+            offsets: (Optional)
+                The offset arrays; see shapely.from_ragged_array
 
         Returns:
-            FeatureCollection
+            An object of this class's type
         """
-        conv_map = {
-            'Point': GeoPoint,
-            'LineString': GeoLineString,
-            'Polygon': GeoPolygon,
-            'MultiPoint': MultiGeoPoint,
-            'MultiLineString': MultiGeoLineString,
-            'MultiPolygon': MultiGeoPolygon,
-        }
+        import_optional('shapely')
+        import shapely
 
-        shapes = []
-        for shape in geometry_collection.geoms:
-            geom_type = shape.geom_type
-            if geom_type not in conv_map:  # pragma: no cover
-                # ignored coverage because can't falsify geometry type
-                raise ValueError(f'Unrecognized geometry type: {geom_type}')
+        return cls.from_shapely(shapely.from_ragged_array(geometry_type, coords, offsets))
 
-            shapes.append(
-                conv_map[geom_type].from_shapely(shape)
-            )
+    @classmethod
+    def from_shapely(cls, geometries):
+        """
+        Creates a collection from shapely geometries. Shapes are created from
+        the geometries as they're accessed; see CollectionBase.
 
-        return cls(shapes)
+        Args:
+            geometries:
+                A shapely GeometryCollection, or any sequence (e.g. a numpy
+                array or GeoSeries) of shapely geometries
+
+        Returns:
+            An object of this class's type
+        """
+        return cls._from_lazy(LazyShapes(as_geometry_array(geometries)))
 
     @cached_property
     def geospan(self) -> float:
@@ -636,21 +679,85 @@ class CollectionBase:
         import_optional('geopandas')
         import geopandas as gpd
 
+        import_optional('shapely')
+        import shapely
+
+        all_properties = self._row_properties()
         keys = include_properties or set(
-            _key for x in self.geoshapes
-            for _key in x.properties.keys()
+            _key for props in all_properties
+            for _key in props.keys()
         )
+
+        geometries = self.to_shapely()
+        # Shapely geometries can't carry M values; keep them by going via WKT
+        for i in self._rows_with_m():
+            geometries[i] = shapely.from_wkt(self._shapes[i].to_wkt())
 
         return gpd.GeoDataFrame(
             data=pd.DataFrame(
                 [
                     {
-                       key: x.properties.get(key) for key in keys
-                    } for x in self.geoshapes
+                       key: props.get(key) for key in keys
+                    } for props in all_properties
                 ]
             ),
-            geometry=gpd.GeoSeries.from_wkt([x.to_wkt() for x in self.geoshapes])
+            geometry=gpd.GeoSeries(geometries)
         )
+
+    def _row_properties(self) -> List[Dict]:
+        """Each shape's properties, without creating shapes that don't exist yet"""
+        shapes = self._shapes
+        if not isinstance(shapes, LazyShapes):
+            return [x.properties for x in shapes]
+
+        created = shapes.created()
+        return [
+            shapes[i].properties if created[i] else shapes.properties_at(i)
+            for i in range(len(shapes))
+        ]
+
+    def _rows_with_m(self) -> List[int]:
+        """Rows whose shapes carry M values"""
+        shapes = self._shapes
+        if not isinstance(shapes, LazyShapes):
+            return [i for i, x in enumerate(shapes) if x.has_m]
+
+        import_optional('shapely')
+        import shapely
+
+        if not hasattr(shapely, 'has_m'):  # pragma: no cover
+            # M support arrived in shapely 2.1
+            return []
+        return np.flatnonzero(shapely.has_m(shapes.geometries)).tolist()
+
+    def to_ragged_array(self, include_z: Optional[bool] = None):
+        """
+        Converts the collection to the GeoArrow-compatible ("ragged array")
+        layout produced by shapely.to_ragged_array. Every shape must convert
+        to the same shapely geometry type.
+
+        Args:
+            include_z: (Optional)
+                Whether to include Z values; see shapely.to_ragged_array
+
+        Returns:
+            A tuple of (shapely.GeometryType, coordinates, offsets)
+        """
+        import_optional('shapely')
+        import shapely
+
+        return shapely.to_ragged_array(self.to_shapely(), include_z=include_z)
+
+    def to_shapely(self) -> np.ndarray:
+        """
+        Converts the collection to an array of shapely geometries, each the
+        equivalent of the shape's to_shapely(), building each geometry type in
+        a single vectorized call.
+
+        Returns:
+            A numpy object array of shapely geometries
+        """
+        return shapes_to_shapely(self._shapes)
 
     def to_shapefile(
         self,
@@ -827,27 +934,19 @@ class FeatureCollection(CollectionBase):
     def __getitem__(self, item):
         """Indexing returns a shape; slicing returns a FeatureCollection"""
         if isinstance(item, slice):
-            return self._subset(np.arange(len(self.geoshapes))[item])
-        return self.geoshapes.__getitem__(item)
-
-    def __iter__(self):
-        """Iterate through the track"""
-        return self.geoshapes.__iter__()
-
-    def __len__(self):
-        """The track length"""
-        return self.geoshapes.__len__()
+            return self._subset(np.arange(len(self))[item])
+        return self._shapes[item]
 
     def __repr__(self):
         """REPL representation"""
-        if not self.geoshapes:
+        if not self:
             return '<Empty FeatureCollection>'
 
-        return f'<FeatureCollection with {len(self.geoshapes)} shapes>'
+        return f'<FeatureCollection with {len(self)} shapes>'
 
     def copy(self):
         """Returns a shallow copy of self"""
-        return FeatureCollection(list(self.geoshapes))
+        return self._subset(np.arange(len(self)))
 
 
 class Track(CollectionBase):
@@ -862,6 +961,18 @@ class Track(CollectionBase):
             raise ValueError('All track geoshapes must have an associated time value.')
 
         super().__init__(sorted(geoshapes, key=lambda x: x.start))
+
+    @classmethod
+    def _from_lazy(cls, shapes: LazyShapes) -> 'Track':
+        # Validate and order by start time from the arrays, as __init__ does
+        # from the shapes
+        columns = ShapeColumns(shapes)
+        if not columns.has_dt.all():
+            raise ValueError('All track geoshapes must have an associated time value.')
+
+        order = columns.start_order()
+        ordered = shapes.take(order)
+        return cls._from_shapes(ordered, columns.take(order, ordered))
 
     def __add__(self, other):
         if isinstance(other, BaseShape):
@@ -908,7 +1019,7 @@ class Track(CollectionBase):
             Track, or a single geoshape when indexed by integer
         """
         if isinstance(val, int):
-            return self.geoshapes[val]
+            return self._shapes[val]
 
         if isinstance(val, datetime):
             instant = TimeInterval(default_to_zulu(val), default_to_zulu(val))
@@ -916,29 +1027,29 @@ class Track(CollectionBase):
 
         if isinstance(val, slice):
             if isinstance(val.start, int) or isinstance(val.stop, int):
-                return self._subset(np.arange(len(self.geoshapes))[val])
+                return self._subset(np.arange(len(self))[val])
 
-            if not self.geoshapes:
+            if not self:
                 return Track([])
 
             columns = self._columns
             mask = columns.has_dt.copy()
             if val.start:
-                mask &= columns.dt_start >= _to_micros(default_to_zulu(val.start))
+                mask &= columns.starts_at_or_after(default_to_zulu(val.start))
             if val.stop:
-                mask &= columns.dt_end < _to_micros(default_to_zulu(val.stop))
+                mask &= columns.ends_before(default_to_zulu(val.stop))
             return self._subset(mask)
 
         raise TypeError(f'Tracks cannot be indexed by {type(val)}')
 
     def __repr__(self):
         """REPL representation"""
-        if not self.geoshapes:
+        if not self:
             return '<Empty Track>'
 
-        return f'<Track with {len(self.geoshapes)} shapes ' \
-               f'from {self.geoshapes[0].start.isoformat()} - ' \
-               f'{self.geoshapes[-1].end.isoformat()}>'
+        return f'<Track with {len(self)} shapes ' \
+               f'from {self._shapes[0].start.isoformat()} - ' \
+               f'{self._shapes[-1].end.isoformat()}>'
 
     @cached_property
     def centroid_distances(self):
@@ -955,18 +1066,18 @@ class Track(CollectionBase):
     @property
     def end(self):
         """The timestamp of the final ping"""
-        if not self.geoshapes:
+        if not self:
             raise ValueError('Cannot compute finish time of an empty track.')
 
-        return self.geoshapes[-1].end
+        return self._shapes[-1].end
 
     @property
     def first(self):
         """The first ping"""
-        if not self.geoshapes:
+        if not self:
             raise ValueError('Track has no pings.')
 
-        return self.geoshapes[0]
+        return self._shapes[0]
 
     @cached_property
     def has_duplicate_timestamps(self):
@@ -981,10 +1092,10 @@ class Track(CollectionBase):
     @property
     def last(self):
         """The last ping"""
-        if not self.geoshapes:
+        if not self:
             raise ValueError('Track has no pings.')
 
-        return self.geoshapes[-1]
+        return self._shapes[-1]
 
     @property
     def speed_diffs(self):
@@ -999,10 +1110,10 @@ class Track(CollectionBase):
     @property
     def start(self):
         """The timestamp of the first ping"""
-        if not self.geoshapes:
+        if not self:
             raise ValueError('Cannot compute start time of an empty track.')
 
-        return self.geoshapes[0].start
+        return self._shapes[0].start
 
     @cached_property
     def time_start_diffs(self):
@@ -1018,7 +1129,7 @@ class Track(CollectionBase):
 
     def copy(self):
         """Returns a shallow copy of self"""
-        return Track(list(self.geoshapes))
+        return self._subset(np.arange(len(self)))
 
     def convolve_duplicate_timestamps(self):
         """Convolves pings with duplicate timestamps and returns a new track"""

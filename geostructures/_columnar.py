@@ -25,7 +25,9 @@ from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, Mul
 from geostructures.structures import (
     GeoBox, GeoCircle, GeoEllipse, GeoLineString, GeoPoint, GeoPolygon, GeoRing
 )
-from geostructures.time import TimeInterval
+from geostructures._shapely_io import LazyShapes
+from geostructures.time import GEOTIME_TYPE, TimeInterval
+from geostructures.utils.functions import default_to_zulu
 
 
 _ENVELOPE = Tuple[float, float, float, float]
@@ -46,9 +48,63 @@ _CAP_RADIUS_FACTOR = 1.01
 _ISCLOSE_REL_TOL = 1e-9
 
 
-def _to_micros(dt: datetime) -> int:
-    """Exact microseconds since the epoch; TimeInterval datetimes are always tz-aware"""
-    return (dt - _EPOCH) // _MICROSECOND
+_TIME_KEY = Tuple[int, int]
+
+
+def _time_key(dt: datetime) -> _TIME_KEY:
+    """
+    An exact, orderable key for a tz-aware datetime: microseconds since the
+    epoch, plus the sub-microsecond nanoseconds a pandas Timestamp may carry.
+    (Nanoseconds since the epoch alone would overflow int64 for datetime.max,
+    the default end of an open TimeInterval.)
+    """
+    nanos = getattr(dt, 'value', None)
+    if isinstance(nanos, int):
+        # A pandas Timestamp, which stores nanoseconds since the epoch; much
+        # faster than its datetime arithmetic
+        return nanos // 1000, nanos % 1000
+    return (dt - _EPOCH) // _MICROSECOND, 0
+
+
+def _dt_bounds(dt: Optional[GEOTIME_TYPE]) -> Optional[Tuple[datetime, datetime]]:
+    """The start and end a shape constructed with this dt would have (see BaseShape.__init__)"""
+    if dt is None:
+        return None
+    if isinstance(dt, datetime):
+        dt = default_to_zulu(dt)
+        return dt, dt
+    return dt.start, dt.end
+
+
+class _TimeColumn:
+    """An array of _time_key values, compared lexicographically against a single key"""
+
+    __slots__ = ('micros', 'nanos')
+
+    def __init__(self, micros: np.ndarray, nanos: np.ndarray):
+        self.micros, self.nanos = micros, nanos
+
+    def take(self, idx: np.ndarray) -> '_TimeColumn':
+        return _TimeColumn(self.micros[idx], self.nanos[idx])
+
+    def __eq__(self, other):  # type: ignore[override]
+        if isinstance(other, _TimeColumn):
+            return (self.micros == other.micros) & (self.nanos == other.nanos)
+        return (self.micros == other[0]) & (self.nanos == other[1])
+
+    def __lt__(self, key: _TIME_KEY) -> np.ndarray:
+        return (self.micros < key[0]) | ((self.micros == key[0]) & (self.nanos < key[1]))
+
+    def __le__(self, key: _TIME_KEY) -> np.ndarray:
+        return (self.micros < key[0]) | ((self.micros == key[0]) & (self.nanos <= key[1]))
+
+    def __gt__(self, key: _TIME_KEY) -> np.ndarray:
+        return ~(self <= key)
+
+    def __ge__(self, key: _TIME_KEY) -> np.ndarray:
+        return ~(self < key)
+
+    __hash__ = None  # type: ignore[assignment]
 
 
 def _union(*envelopes: _ENVELOPE) -> _ENVELOPE:
@@ -259,42 +315,54 @@ class ShapeColumns:
         return envelopes
 
     @cached_property
-    def _times(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _times(self) -> Tuple[_TimeColumn, _TimeColumn, np.ndarray]:
+        if isinstance(self._shapes, LazyShapes):
+            # Read from the source data, without creating shapes
+            bounds = [_dt_bounds(dt) for dt in self._shapes.source_dts]
+        else:
+            bounds = [None if x.dt is None else (x.dt.start, x.dt.end) for x in self._shapes]
+
         # Built as lists and converted once; per-element numpy writes are slow
         starts, ends, has_dt = [], [], []
-        for shape in self._shapes:
-            dt = shape.dt
-            if dt is None:
-                starts.append(0)
-                ends.append(0)
+        for bound in bounds:
+            if bound is None:
+                starts.append((0, 0))
+                ends.append((0, 0))
                 has_dt.append(False)
             else:
-                starts.append(_to_micros(dt.start))
-                ends.append(_to_micros(dt.end))
+                starts.append(_time_key(bound[0]))
+                ends.append(_time_key(bound[1]))
                 has_dt.append(True)
-        return (
-            np.array(starts, dtype=np.int64),
-            np.array(ends, dtype=np.int64),
-            np.array(has_dt, dtype=bool),
-        )
 
-    @property
-    def dt_start(self) -> np.ndarray:
-        """Shape start times, in microseconds since the epoch (0 where has_dt is False)"""
-        return self._times[0]
+        def _column(keys) -> _TimeColumn:
+            arr = np.array(keys, dtype=np.int64).reshape(len(keys), 2)
+            return _TimeColumn(arr[:, 0], arr[:, 1])
 
-    @property
-    def dt_end(self) -> np.ndarray:
-        """Shape end times, in microseconds since the epoch (0 where has_dt is False)"""
-        return self._times[1]
+        return _column(starts), _column(ends), np.array(has_dt, dtype=bool)
 
     @property
     def has_dt(self) -> np.ndarray:
         """Whether each shape carries time information"""
         return self._times[2]
 
+    def starts_at_or_after(self, dt: datetime) -> np.ndarray:
+        """Rows whose start time is at or after dt. False for rows without time."""
+        return (self._times[0] >= _time_key(dt)) & self.has_dt
+
+    def ends_before(self, dt: datetime) -> np.ndarray:
+        """Rows whose end time is before dt. False for rows without time."""
+        return (self._times[1] < _time_key(dt)) & self.has_dt
+
+    def start_order(self) -> np.ndarray:
+        """Row indices ordered by start time; stable, like sorted()"""
+        starts = self._times[0]
+        return np.lexsort((starts.nanos, starts.micros))
+
     @cached_property
     def _points(self) -> Tuple[np.ndarray, np.ndarray]:
+        if isinstance(self._shapes, LazyShapes):
+            return self._shapes.point_columns()
+
         is_point, coords = [], []
         for shape in self._shapes:
             if type(shape) is GeoPoint:  # pylint: disable=unidiomatic-typecheck
@@ -327,7 +395,8 @@ class ShapeColumns:
         if 'envelopes' in self.__dict__:
             new.__dict__['envelopes'] = self.envelopes[idx]
         if '_times' in self.__dict__:
-            new.__dict__['_times'] = tuple(arr[idx] for arr in self._times)
+            starts, ends, has_dt = self._times
+            new.__dict__['_times'] = starts.take(idx), ends.take(idx), has_dt[idx]
         if '_points' in self.__dict__:
             new.__dict__['_points'] = tuple(arr[idx] for arr in self._points)
         return new
@@ -346,27 +415,27 @@ class ShapeColumns:
         (right-open intervals, with instants special-cased). False for rows
         without time information.
         """
-        q_start, q_end = _to_micros(dt.start), _to_micros(dt.end)
+        q_start, q_end = _time_key(dt.start), _time_key(dt.end)
         starts, ends, has_dt = self._times
         row_instant = starts == ends
         if q_start == q_end:
-            hits = np.where(row_instant, starts == q_start, (starts <= q_start) & (q_start < ends))
+            hits = np.where(row_instant, starts == q_start, (starts <= q_start) & (ends > q_start))
         else:
             hits = np.where(
                 row_instant,
-                (q_start <= starts) & (starts < q_end),
-                (starts < q_end) & (q_start < ends)
+                (starts >= q_start) & (starts < q_end),
+                (starts < q_end) & (ends > q_start)
             )
         return hits & has_dt
 
     def time_within(self, dt: TimeInterval) -> np.ndarray:
         """Rows whose time lies within dt (TimeInterval.issubset). False for rows without time."""
-        q_start, q_end = _to_micros(dt.start), _to_micros(dt.end)
+        q_start, q_end = _time_key(dt.start), _time_key(dt.end)
         starts, ends, has_dt = self._times
-        return (q_start <= starts) & (ends <= q_end) & has_dt
+        return (starts >= q_start) & (ends <= q_end) & has_dt
 
     def time_contains(self, dt: TimeInterval) -> np.ndarray:
         """Rows whose time contains dt (TimeInterval.issuperset). False for rows without time."""
-        q_start, q_end = _to_micros(dt.start), _to_micros(dt.end)
+        q_start, q_end = _time_key(dt.start), _time_key(dt.end)
         starts, ends, has_dt = self._times
-        return (starts <= q_start) & (q_end <= ends) & has_dt
+        return (starts <= q_start) & (ends >= q_end) & has_dt

@@ -84,6 +84,11 @@ to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **`from_geopandas` treats a missing end time as missing.** pandas represents
+  missing times as `NaT`, which is truthy, so a row with a start time but no
+  end time became a `TimeInterval` ending at `NaT` rather than the documented
+  instant at the start time.
+
 - **Zero-area polygons no longer crash `centroid`.** `GeoPolygon.centroid` and
   `MultiGeoPolygon.centroid` raised `ZeroDivisionError` ("weights sum to zero")
   for degenerate rings — collinear or duplicate coordinates — because there was
@@ -165,6 +170,24 @@ to [Semantic Versioning](https://semver.org/).
 
 ### ⚠️ Behavior Changes
 
+- **Shapely and geopandas conversions no longer go through WKT text.**
+  `from_shapely`, `from_geopandas`, `to_geopandas` and the new collection
+  `to_shapely` read and write coordinates directly, so they are now exact.
+  Previously GEOS's WKT output lost the last bit of roughly 1 in 200
+  coordinates on the way in, and `to_geopandas` rounded every coordinate to 12
+  decimal places on the way out.
+- **`to_geopandas` geometries match each shape's `to_shapely()`.** The two
+  agreed for every shape except a full `GeoRing` (`angle_min=0, angle_max=360`),
+  whose `to_wkt()` - previously used by `to_geopandas` - draws its rings
+  differently and omits its holes. Shapes carrying M values, which shapely
+  geometries can't represent, are still exported via WKT.
+- **Collections read from shapely or geopandas create their shapes on
+  demand.** Indexing, iterating, filtering and exporting create only the
+  shapes they touch; accessing `geoshapes` creates them all. Unconvertible
+  input (missing, empty or unsupported geometries, NaN or infinite
+  coordinates) is rejected up front with a `ValueError`; a missing geometry
+  previously raised `AttributeError`.
+
 - **`circumscribing_circle()` returns the smallest enclosing circle for every
   shape that computes one numerically.** `GeoLineString`, `GeoRing` wedges,
   `GeoBox`, `MultiGeoPoint`, `MultiGeoLineString`, and `MultiGeoPolygon`
@@ -223,6 +246,15 @@ to [Semantic Versioning](https://semver.org/).
   zip rather than as an empty result.
 
 ### Features
+
+- **Array-based shapely, geopandas and GeoArrow interchange.** Collections
+  convert to and from shapely in vectorized calls: `collection.to_shapely()`
+  returns a numpy array of geometries, `from_shapely` accepts any sequence of
+  geometries (arrays and GeoSeries as well as a GeometryCollection), and
+  `to_ragged_array`/`from_ragged_array` exchange the GeoArrow-compatible
+  coordinate-and-offsets layout used by `shapely.to_ragged_array`. Reading 300k
+  timed points from geopandas is ~6x faster (2.7s to 0.4s), and a read, filter
+  and export of them ~5x faster (3.0s to 0.6s).
 
 - **Collections filter with numpy.** `filter_by_dt`, `filter_by_intersection`,
   `filter_contained_by`, `filter_contains`, `intersects`, and `Track` time
