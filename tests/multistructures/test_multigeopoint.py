@@ -105,9 +105,8 @@ def test_multigeopoint_copy():
     ])
     mp2 = mp.copy()
     assert mp == mp2
-
-    mp2.geoshapes.pop()
-    assert mp != mp2
+    assert mp2 is not mp
+    assert all(x is not y for x, y in zip(mp.geoshapes, mp2.geoshapes))
 
 
 def test_multigeopoint_from_geojson():
@@ -123,7 +122,7 @@ def test_multigeopoint_from_geojson():
         }
     }
     mp = MultiGeoPoint.from_geojson(gjson)
-    assert mp.geoshapes == [
+    assert list(mp.geoshapes) == [
         GeoPoint(Coordinate(0., 1.)),
         GeoPoint(Coordinate(1., 1.))
     ]
@@ -133,7 +132,7 @@ def test_multigeopoint_from_geojson():
     # Only geo interface
     gjson = gjson['geometry']
     mp = MultiGeoPoint.from_geojson(gjson)
-    assert mp.geoshapes == [
+    assert list(mp.geoshapes) == [
         GeoPoint(Coordinate(0., 1.)),
         GeoPoint(Coordinate(1., 1.))
     ]
@@ -161,21 +160,21 @@ def test_multigeopoint_serialization_round_trips():
 def test_multigeopoint_from_wkt():
     wkt = "MULTIPOINT (0 1, 1 1)"
     mp = MultiGeoPoint.from_wkt(wkt)
-    assert mp.geoshapes == [
+    assert list(mp.geoshapes) == [
         GeoPoint(Coordinate(0., 1.)),
         GeoPoint(Coordinate(1., 1.))
     ]
 
     wkt = "MULTIPOINT ((0 1), (1 1))"
     mp = MultiGeoPoint.from_wkt(wkt)
-    assert mp.geoshapes == [
+    assert list(mp.geoshapes) == [
         GeoPoint(Coordinate(0., 1.)),
         GeoPoint(Coordinate(1., 1.))
     ]
 
     wkt = "MULTIPOINT ((0 1 2 3), (1 1 2 3))"
     mp = MultiGeoPoint.from_wkt(wkt)
-    assert mp.geoshapes == [
+    assert list(mp.geoshapes) == [
         GeoPoint(Coordinate(0., 1., z=2., m=3.)),
         GeoPoint(Coordinate(1., 1., z=2., m=3.)),
     ]

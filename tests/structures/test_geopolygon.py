@@ -197,7 +197,7 @@ def test_geopolygon_bounding_coords():
         Coordinate(0.0, 0.0), Coordinate(0.0, 1.0), Coordinate(1.0, 1.0),
         Coordinate(1.0, 0.0), Coordinate(0.0, 0.0)
     ])
-    assert poly.outline == poly.bounding_coords()
+    assert list(poly.outline) == poly.bounding_coords()
 
     # assert self-closing
     assert poly.bounding_coords()[0] == poly.bounding_coords()[-1]

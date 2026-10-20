@@ -11,8 +11,12 @@ from pygeoif import MultiPolygon
 import pytest
 import shapely
 
-from geostructures import Coordinate, GeoBox, GeoCircle, GeoPoint, MultiGeoPolygon
+from geostructures import (
+    Coordinate, GeoBox, GeoCircle, GeoLineString, GeoPoint, GeoPolygon,
+    MultiGeoPoint, MultiGeoPolygon
+)
 from geostructures.time import TimeInterval
+from geostructures.utils.logging import _WARNINGS
 
 from tests.functions import default_test_datetime
 
@@ -219,6 +223,108 @@ def test_baseshape_pickle():
         # Make sure the original wasn't mutated and the new call works
         assert point.to_shapely() == shapely.Point((0.0, 0.0))
         assert new_point.to_shapely() == shapely.Point((0.0, 0.0))
+
+
+@pytest.fixture
+def fresh_warnings():
+    # warn_once dedupes for the life of the process
+    _WARNINGS.clear()
+
+
+def test_baseshape_inplace_deprecated(caplog, fresh_warnings):
+    point = GeoPoint(Coordinate(0.0, 0.0), dt=datetime(2020, 1, 1))
+    for method, args in (
+        ('set_dt', (datetime(2020, 1, 2),)),
+        ('set_property', ('key', 'value')),
+        ('buffer_dt', (timedelta(hours=1),)),
+        ('strip_dt', ()),
+    ):
+        # Opting into copies is silent and leaves the original untouched
+        caplog.clear()
+        before = (point.dt, point.properties)
+        result = getattr(point, method)(*args, inplace=False)
+        assert result is not point
+        assert (point.dt, point.properties) == before
+        assert caplog.text == ''
+
+        # The default (and explicit inplace=True) still mutates, but warns
+        caplog.clear()
+        assert getattr(point, method)(*args) is point
+        assert f'Modifying shapes in place with {method}() is deprecated' in caplog.text
+        assert (point.dt, point.properties) != before
+
+
+def test_baseshape_assignment_deprecated(caplog, fresh_warnings):
+    # Assignments made while constructing aren't mutation
+    caplog.clear()
+    poly = GeoPolygon([
+        Coordinate(0., 0.), Coordinate(1., 0.), Coordinate(1., 1.),
+        Coordinate(0., 1.), Coordinate(0., 0.)
+    ])
+    assert caplog.text == ''
+
+    assert poly.bounds == (0., 0., 1., 1.)
+    assert poly.to_shapely().bounds == (0., 0., 1., 1.)
+
+    poly.outline = (
+        Coordinate(0., 0.), Coordinate(2., 0.), Coordinate(2., 2.),
+        Coordinate(0., 2.), Coordinate(0., 0.)
+    )
+    assert 'Assigning to GeoPolygon.outline is deprecated' in caplog.text
+
+    # Values cached from the old outline are discarded
+    assert poly.bounds == (0., 0., 2., 2.)
+    assert poly.to_shapely().bounds == (0., 0., 2., 2.)
+
+
+def test_baseshape_internal_modification_silent(caplog, fresh_warnings):
+    # Library code builds shapes up without tripping the deprecation warnings
+    mp = MultiGeoPoint(
+        [GeoPoint(Coordinate(0., 0.)), GeoPoint(Coordinate(1., 1.))],
+        dt=datetime(2020, 1, 1),
+        properties={'test': 'prop'},
+    )
+    caplog.clear()
+    split = mp.split()
+    assert [x.dt for x in split] == [mp.dt, mp.dt]
+    assert all(x._properties == {'test': 'prop'} for x in split)
+
+    placemark = GeoPoint(Coordinate(1., 0.), dt=datetime(2020, 1, 1)).to_fastkml_placemark()
+    assert GeoPoint.from_fastkml_placemark(placemark).dt == mp.dt
+    assert caplog.text == ''
+
+
+def test_baseshape_containers_immutable():
+    hole = GeoCircle(Coordinate(0.5, 0.5), 100)
+    poly = GeoPolygon(
+        [
+            Coordinate(0., 0.), Coordinate(1., 0.), Coordinate(1., 1.),
+            Coordinate(0., 1.), Coordinate(0., 0.)
+        ],
+        holes=[hole]
+    )
+    assert isinstance(poly.outline, tuple)
+    assert poly.holes == (hole,)
+
+    line = GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.)])
+    assert isinstance(line.vertices, tuple)
+
+    assert isinstance(MultiGeoPolygon([poly]).geoshapes, tuple)
+
+    # bounding_coords hands back a list the caller is free to modify
+    coords = poly.bounding_coords()
+    coords.pop()
+    assert len(poly.outline) == 5
+
+
+def test_baseshape_unpickle_legacy_state():
+    # Pickles from earlier versions stored a placeholder 'to_shapely' entry
+    point = GeoPoint(Coordinate(0., 0.))
+    state = point.__getstate__()
+    state['to_shapely'] = None
+
+    restored = GeoPoint._rebuild_from_state(state)
+    assert restored.to_shapely() == shapely.Point(0., 0.)
 
 
 def test_baseshape_to_shapely_cache():

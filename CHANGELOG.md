@@ -39,6 +39,33 @@ to [Semantic Versioning](https://semver.org/).
   `haversine_distance_meters` matches `geodesic.haversine_distance` to within
   floating point noise, so neither of those swaps changes values.
 
+- **Shape coordinate containers are tuples.** `GeoPolygon.outline`,
+  `GeoLineString.vertices`, the `holes` of every polygon-like shape, and the
+  `geoshapes` of every multishape were lists, and editing them in place
+  (`shape.outline.append(...)`) silently desynchronized the shape from its
+  cached bounds, shapely conversion and hash. They are now tuples. Read access
+  is unchanged; build a new shape to change its geometry. Constructors still
+  accept lists, and `GeoPolygon.bounding_coords()` still returns a list (now
+  a copy, so modifying it no longer corrupts the polygon).
+
+### Deprecated
+
+- **Mutating shapes is deprecated; shapes will become immutable.** Immutable
+  shapes keep cached values (bounds, area, shapely conversion) and hashes
+  correct, and are a prerequisite for planned array-backed collections. During
+  the deprecation period both forms of mutation still work, log a warning, and
+  discard the shape's cached values:
+
+  - The `inplace` argument of `set_dt`, `set_property`, `buffer_dt` and
+    `strip_dt`. It currently defaults to `True`; in a future release it will
+    be removed and these methods will always return a new shape. Pass
+    `inplace=False` and use the returned shape:
+    `shape = shape.set_dt(dt, inplace=False)`. Code that calls these methods
+    and ignores the return value will stop having any effect once the
+    deprecation completes.
+  - Assigning to a shape's attributes after construction (`shape.dt = ...`,
+    `circle.radius = ...`). Create a new shape instead.
+
 ### Fixed
 
 - **Zero-area polygons no longer crash `centroid`.** `GeoPolygon.centroid` and

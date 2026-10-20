@@ -8,12 +8,16 @@ import pytest
 from geostructures import *
 from geostructures.parsers import *
 from geostructures.time import TimeInterval
+from geostructures.utils.logging import _WARNINGS
 from tests.functions import assert_geopolygons_equal, assert_geolinestrings_equal, \
     assert_geopoints_equal, assert_multishapes_equal
 
 
-def test_parse_kml_fastkml_object():
+def test_parse_kml_fastkml_object(caplog):
     import fastkml
+
+    # warn_once dedupes for the life of the process
+    _WARNINGS.clear()
 
     folder = fastkml.Folder(name='test folder')
     folder.append(
@@ -26,7 +30,9 @@ def test_parse_kml_fastkml_object():
             name='test name'
         )
     )
+    caplog.clear()
     parsed = parse_kml(folder)
+    assert 'deprecated' not in caplog.text
     assert isinstance(parsed, FeatureCollection)
     assert list(parsed) == [
         GeoPoint(
@@ -217,8 +223,13 @@ def test_parse_kml_folder_traceability():
     assert 'sub_folder_1' not in by_name['outside A'].properties
 
 
-def test_parse_kml_files():
+def test_parse_kml_files(caplog):
+    # warn_once dedupes for the life of the process
+    _WARNINGS.clear()
+    caplog.clear()
+
     mock_kml = parse_kml('./tests/test_files/test_kml.kml')
+    assert 'deprecated' not in caplog.text
     assert isinstance(mock_kml, FeatureCollection)
     assert len(mock_kml) == 19
     # Plain KML shapes are tagged with both filepath and filename

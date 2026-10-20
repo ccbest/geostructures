@@ -755,9 +755,9 @@ def test_featurecollection_copy():
     ])
     fcol_copy = fcol.copy()
 
-    # Non-shallow mutation, should still be equal
-    fcol_copy[0].dt = datetime(2020, 1, 1)
+    # Shallow copy; the shapes themselves are shared
     assert fcol == fcol_copy
+    assert all(x is y for x, y in zip(fcol, fcol_copy))
 
     # Shallow mutation, should no longer be equal
     fcol_copy.geoshapes.pop(0)

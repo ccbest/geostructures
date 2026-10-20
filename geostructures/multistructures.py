@@ -31,6 +31,8 @@ if TYPE_CHECKING:  # pragma: no cover
 
 class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
 
+    geoshapes: Tuple[GeoLineString, ...]
+
     @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
@@ -39,7 +41,7 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt, properties)
-        self.geoshapes: List[GeoLineString] = geoshapes
+        self.__dict__['geoshapes'] = tuple(geoshapes)
 
     @property
     def __geo_interface__(self):
@@ -245,6 +247,8 @@ class MultiGeoLineString(MultiShapeBase, LineLikeMixin, SimpleShapeMixin):
 
 class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
 
+    geoshapes: Tuple[GeoPoint, ...]
+
     @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
@@ -253,7 +257,7 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt, properties)
-        self.geoshapes: List[GeoPoint] = geoshapes
+        self.__dict__['geoshapes'] = tuple(geoshapes)
 
     @property
     def __geo_interface__(self):
@@ -435,6 +439,8 @@ class MultiGeoPoint(MultiShapeBase, PointLikeMixin, SimpleShapeMixin):
 
 class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
 
+    geoshapes: Tuple[PolygonBase, ...]
+
     @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(
         self,
@@ -443,7 +449,7 @@ class MultiGeoPolygon(MultiShapeBase, PolygonLikeMixin, SimpleShapeMixin):
         properties: Optional[Dict] = None,
     ):
         super().__init__(dt, properties)
-        self.geoshapes = list(geoshapes)
+        self.__dict__['geoshapes'] = tuple(geoshapes)
 
     @property
     def __geo_interface__(self):
