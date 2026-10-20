@@ -1,3 +1,4 @@
+# pylint: disable=C0302
 """
 Base class declarations for geostructures
 """
