@@ -65,6 +65,12 @@ to [Semantic Versioning](https://semver.org/).
     of an open interval are unaffected.
   - Equality and hashing are unchanged: both compare the instants, regardless
     of timezone.
+  - A `timedelta` end (`TimeInterval(start, timedelta(...))`) is added to the
+    start's instant, so `elapsed` always equals the `timedelta`. Previously a
+    `datetime` start with a DST-observing timezone (e.g. `ZoneInfo`) was
+    advanced by wall-clock time, so an interval spanning a DST change was an
+    hour longer or shorter than requested; pandas `Timestamp` starts already
+    behaved this way.
 
 ### Deprecated
 

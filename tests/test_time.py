@@ -271,12 +271,16 @@ def test_timeinterval_preserves_timezones():
         TimeInterval(start.astimezone(timezone.utc), start.astimezone(timezone.utc))
     )
 
-    # A timedelta end is added in the start's timezone, like datetime arithmetic.
-    # (Here the wall-clock result, 02:30, doesn't exist, and comes back as the
-    # same instant expressed after the DST change.)
-    end = TimeInterval(start, timedelta(hours=1)).end
-    assert end.timestamp() == (start + timedelta(hours=1)).timestamp()
-    assert end == datetime(2020, 3, 8, 3, 30, tzinfo=eastern)
+    # A timedelta end is added to the instant, in the start's timezone, so the
+    # interval lasts exactly that long across a DST change
+    interval = TimeInterval(start, timedelta(hours=1))
+    assert interval.elapsed == timedelta(hours=1)
+    assert interval.end == datetime(2020, 3, 8, 3, 30, tzinfo=eastern)
+    assert interval.end.tzinfo is eastern
+
+    # Including from a repeated hour, where wall-clock arithmetic ends before the start
+    repeated = datetime(2020, 11, 1, 1, 30, fold=1, tzinfo=eastern)
+    assert TimeInterval(repeated, timedelta(minutes=10)).elapsed == timedelta(minutes=10)
 
 
 def test_timeinterval_set_operations_keep_endpoint_timezones():
@@ -315,6 +319,26 @@ def test_timeinterval_pandas_timestamps():
     with pytest.raises(ValueError):
         TimeInterval(pd.NaT, datetime(2020, 1, 1))
 
+    # NaT isn't in any interval
+    assert pd.NaT not in interval
+    assert pd.NaT not in TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 1))
+
+    # Timestamps outside the nanosecond range (1677-2262), and in other units
+    old = pd.Timestamp(datetime(1500, 1, 1, 0, 0, 0, 5))
+    assert TimeInterval(old, old).start == datetime(1500, 1, 1, 0, 0, 0, 5, tzinfo=timezone.utc)
+    future = pd.Timestamp(datetime(3000, 1, 1)).as_unit('s')
+    assert TimeInterval(future).start == datetime(3000, 1, 1, tzinfo=timezone.utc)
+
+    # Sub-microsecond digits are floored before the epoch too
+    before_epoch = pd.Timestamp('1969-12-31 23:59:59.9999995', tz='UTC')
+    assert TimeInterval(before_epoch).start == datetime(1969, 12, 31, 23, 59, 59, 999999, tzinfo=timezone.utc)
+
+    # A timedelta end is added to the instant, as pandas does, across a DST change
+    fall_back = pd.Timestamp('2020-11-01 00:30', tz='America/New_York')
+    interval = TimeInterval(fall_back, timedelta(hours=2))
+    assert interval.elapsed == timedelta(hours=2)
+    assert interval.end == fall_back + timedelta(hours=2)
+
 
 def test_timeinterval_coerces_like_pydantic():
     assert TimeInterval('2020-01-01T00:00:00Z', '2020-01-02T00:00:00Z') == TimeInterval(
@@ -334,6 +358,13 @@ def test_timeinterval_limits():
         TimeInterval(datetime.min.replace(tzinfo=timezone(timedelta(hours=1))))
     with pytest.raises(ValueError):
         TimeInterval(end=datetime.max.replace(tzinfo=timezone(timedelta(hours=-1))))
+    with pytest.raises(ValueError):
+        TimeInterval(datetime(9999, 12, 31), timedelta(days=2))
+
+
+def test_timeinterval_timedelta_end_error_message():
+    with pytest.raises(ValueError, match=r'end date 2019-12-31 00:00:00\+00:00 must not be less than start date'):
+        TimeInterval(datetime(2020, 1, 1), timedelta(days=-1))
 
 
 def test_timeinterval_pickle():

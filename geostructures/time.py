@@ -5,7 +5,7 @@ from __future__ import annotations
 __all__ = ['TimeInterval', 'GEOTIME_TYPE']
 
 from datetime import datetime, timedelta, timezone, tzinfo
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, cast
 
 from pydantic import TypeAdapter
 from geostructures.utils.conditional_imports import import_optional
@@ -36,19 +36,25 @@ _START_ADAPTER = TypeAdapter(datetime)
 _END_ADAPTER = TypeAdapter(Union[datetime, timedelta])  # type: ignore
 
 
+def _as_aware(dt: datetime) -> datetime:
+    """Treat a naive datetime as UTC"""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=_UTC)
+
+
 def _to_micros(dt: datetime) -> int:
     """
-    Microseconds since the Unix epoch, for a timezone-aware datetime or a
-    pandas Timestamp (naive Timestamps are treated as UTC). Digits below a
-    microsecond are dropped (floored).
+    Microseconds since the Unix epoch, for a timezone-aware datetime or
+    pandas Timestamp. Digits below a microsecond are dropped (floored).
     """
-    if type(dt) is not datetime:
-        nanos = getattr(dt, 'value', None)
-        if isinstance(nanos, int):
-            # pandas Timestamp, which stores nanoseconds since the epoch
+    if type(dt) is not datetime:  # pylint: disable=unidiomatic-typecheck
+        asm8 = getattr(dt, 'asm8', None)
+        if asm8 is not None:
+            # pandas Timestamp, as a numpy datetime64 (UTC) in its own unit;
+            # converting the unit floors, and avoids .value, which overflows
+            # outside the nanosecond range
             if dt != dt:  # pylint: disable=comparison-with-itself
                 raise ValueError('TimeInterval endpoints may not be NaT')
-            return nanos // 1000
+            return int(asm8.astype('datetime64[us]').astype('int64'))
 
     delta = dt - _EPOCH
     return (delta.days * 86_400 + delta.seconds) * 1_000_000 + delta.microseconds
@@ -59,19 +65,25 @@ def _to_datetime(micros: int, tz: tzinfo) -> datetime:
     return (_EPOCH + timedelta(microseconds=micros)).astimezone(tz)
 
 
+def _representable(micros: int, tz: tzinfo) -> bool:
+    """Whether an instant can be expressed as a datetime in the given timezone"""
+    if _SAFE_MIN < micros < _SAFE_MAX:
+        return True
+    try:
+        _to_datetime(micros, tz)
+    except OverflowError:
+        return False
+    return True
+
+
 def _endpoint(dt: datetime) -> Tuple[int, tzinfo]:
     """The (microseconds, timezone) a datetime is stored as; naive datetimes are treated as UTC"""
-    tz = dt.tzinfo
-    if tz is None:
-        dt, tz = dt.replace(tzinfo=_UTC), _UTC
+    dt = _as_aware(dt)
+    tz = cast(tzinfo, dt.tzinfo)
     micros = _to_micros(dt)
-    if not _SAFE_MIN < micros < _SAFE_MAX:
-        try:
-            _to_datetime(micros, tz)
-        except OverflowError as exc:
-            raise ValueError(
-                f'{dt} lies outside the range of datetimes representable in UTC'
-            ) from exc
+    # Any datetime in UTC can be converted back, so only other timezones need checking
+    if tz is not _UTC and not _representable(micros, tz):
+        raise ValueError(f'{dt} lies outside the range of datetimes representable in UTC')
     return micros, tz
 
 
@@ -105,12 +117,19 @@ class TimeInterval:
 
         start_micros, start_tz = _endpoint(start)
         if isinstance(end, timedelta):
-            end_micros, end_tz = _endpoint(_to_datetime(start_micros, start_tz) + end)
+            # Added to the instant, so the interval lasts exactly that long even
+            # across a daylight saving change
+            end_micros, end_tz = start_micros + end // timedelta(microseconds=1), start_tz
+            if not _representable(end_micros, end_tz):
+                raise ValueError(f'{start} + {end} lies outside the range of representable datetimes')
         else:
             end_micros, end_tz = _endpoint(end)
 
         if end_micros < start_micros:
-            raise ValueError(f'end date {end} must not be less than start date {start}')
+            raise ValueError(
+                f'end date {_to_datetime(end_micros, end_tz)} must not be less than '
+                f'start date {_to_datetime(start_micros, start_tz)}'
+            )
 
         self._start, self._start_tz = start_micros, start_tz
         self._end, self._end_tz = end_micros, end_tz
@@ -169,7 +188,10 @@ class TimeInterval:
     def __contains__(self, time: Union[datetime, TimeInterval]) -> bool:
         """Returns true if datetime is within range"""
         if isinstance(time, datetime):
-            micros = _to_micros(time if time.tzinfo else time.replace(tzinfo=_UTC))
+            if time != time:  # pylint: disable=comparison-with-itself
+                # pandas NaT, which isn't in any interval
+                return False
+            micros = _to_micros(_as_aware(time))
             if self.is_instant:
                 return self._start == micros
             return self._start <= micros < self._end
