@@ -5,8 +5,9 @@ from __future__ import annotations
 __all__ = ['TimeInterval', 'GEOTIME_TYPE']
 
 from datetime import datetime, timedelta, timezone, tzinfo
-from typing import List, Optional, Tuple, Union, cast
+from typing import List, Optional, Sequence, Tuple, Union, cast
 
+import numpy as np
 from pydantic import TypeAdapter
 from geostructures.utils.conditional_imports import import_optional
 
@@ -367,3 +368,43 @@ class TimeInterval:
 
 
 GEOTIME_TYPE = Union[datetime, TimeInterval]
+
+
+class _TimeColumns:
+    """
+    Row-aligned arrays of the TimeInterval each of a sequence of shapes carries:
+    start and end microseconds, whether the row has a time at all, and each
+    endpoint's timezone.
+    """
+
+    __slots__ = ('starts', 'ends', 'has_dt', 'start_tz', 'end_tz')
+
+    def __init__(
+        self,
+        starts: np.ndarray,
+        ends: np.ndarray,
+        has_dt: np.ndarray,
+        start_tz: np.ndarray,
+        end_tz: np.ndarray,
+    ):
+        self.starts, self.ends, self.has_dt = starts, ends, has_dt
+        self.start_tz, self.end_tz = start_tz, end_tz
+
+    def __len__(self) -> int:
+        return len(self.starts)
+
+    @classmethod
+    def from_intervals(cls, dts: Sequence[Optional[TimeInterval]]) -> _TimeColumns:
+        """Gather the columns from intervals (None for rows without time)"""
+        n = len(dts)
+        starts, ends = np.zeros(n, dtype=np.int64), np.zeros(n, dtype=np.int64)
+        start_tz, end_tz = np.full(n, None, dtype=object), np.full(n, None, dtype=object)
+        idx = [i for i, dt in enumerate(dts) if dt is not None]
+        timed = [dts[i] for i in idx]
+        starts[idx] = [dt._start for dt in timed]  # type: ignore[union-attr]
+        ends[idx] = [dt._end for dt in timed]  # type: ignore[union-attr]
+        start_tz[idx] = [dt._start_tz for dt in timed]  # type: ignore[union-attr]
+        end_tz[idx] = [dt._end_tz for dt in timed]  # type: ignore[union-attr]
+        has_dt = np.zeros(n, dtype=bool)
+        has_dt[idx] = True
+        return cls(starts, ends, has_dt, start_tz, end_tz)

@@ -9,14 +9,21 @@ from datetime import date, datetime, time
 from functools import cached_property
 from pathlib import Path
 import tempfile
-from typing import Callable, cast, Any, List, Dict, Iterable, Optional, Union, Sequence, Tuple, TypedDict, TypeVar
+from typing import (
+    Callable, cast, Any, List, Dict, Iterable, Optional, Union, Sequence, Tuple, Type,
+    TypedDict, TypeVar
+)
 from zipfile import ZipFile
 
 import numpy as np
 from pydantic import validate_call
 
 from geostructures import Coordinate, LOGGER
-from geostructures._base import PolygonLikeMixin, PointLikeMixin, LineLikeMixin, MultiShapeBase, BaseShape
+from geostructures._base import (
+    PolygonLikeMixin, PointLikeMixin, LineLikeMixin, MultiShapeBase, BaseShape,
+    _cached_property_names
+)
+from geostructures._columnar import ShapeColumns, points_in_shape, shape_envelope
 from geostructures._geometry import convex_hull
 from geostructures.geodesic import distance_meters
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
@@ -30,26 +37,126 @@ from geostructures.utils.conditional_imports import import_optional
 _COL_TYPE = TypeVar('_COL_TYPE', bound='CollectionBase')
 
 
+def _intersects_time_rule(columns: ShapeColumns, dt: TimeInterval) -> np.ndarray:
+    """
+    The time condition x.intersects(shape) applies when both carry time: the
+    times must overlap, and a GeoPoint's must lie within shape's (it is tested
+    via shape.contains, or for a GeoPoint query, equality - which compares dt)
+    """
+    return columns.time_intersects(dt) & (~columns.is_point | columns.time_within(dt))
+
+
+def _check_shapes(shapes: Sequence[Any]) -> None:
+    for shape in shapes:
+        if not isinstance(shape, BaseShape):
+            raise TypeError(f'Collections may only contain shapes, not {type(shape).__name__}')
+
+
 class CollectionBase:
+
+    """
+    Collections are mutable sequences of (immutable) shapes. Values derived
+    from the shapes - bounds, the convex hull, and the arrays used to filter
+    quickly - are cached, and discarded whenever the collection is modified;
+    the filtering arrays are rebuilt from values cached on each shape.
+    """
+
+    _shapes: List[BaseShape]
 
     @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(self, geoshapes: List[BaseShape]):
         super().__init__()
-        self.geoshapes = geoshapes
+        self._shapes = list(geoshapes)
+
+    @classmethod
+    def _from_shapes(
+        cls: Type[_COL_TYPE],
+        shapes: List[BaseShape],
+        columns: Optional[ShapeColumns] = None,
+    ) -> _COL_TYPE:
+        """Creates a collection from shapes known to be valid for it, skipping __init__"""
+        new = cls.__new__(cls)
+        new._shapes = shapes
+        if columns is not None:
+            new.__dict__['_columns'] = columns
+        return new
+
+    @cached_property
+    def _shape_tuple(self) -> Tuple[BaseShape, ...]:
+        return tuple(self._shapes)
+
+    @property
+    def geoshapes(self) -> Tuple[BaseShape, ...]:
+        """
+        The collection's shapes, as a tuple; modify the collection itself to
+        change them.
+        """
+        return self._shape_tuple
+
+    @geoshapes.setter
+    def geoshapes(self, value: Sequence[BaseShape]):
+        self[:] = value
+
+    def _modify(self) -> List[BaseShape]:
+        """
+        The shapes as a list to modify in place, discarding values cached from
+        the current contents.
+        """
+        shapes = self._shapes
+        for name in _cached_property_names(type(self)):  # type: ignore[arg-type]
+            self.__dict__.pop(name, None)
+        return shapes
+
+    def _concat_columns(self, shapes: Sequence[BaseShape], other: Sequence[BaseShape]) -> Optional[ShapeColumns]:
+        """Arrays for self's shapes followed by other's, reusing self's if already derived"""
+        if '_columns' not in self.__dict__:
+            return None
+        other_columns = other._columns if isinstance(other, CollectionBase) else ShapeColumns(other)
+        return self._columns.concat(other_columns, shapes)
+
+    def __setitem__(self, index: Union[int, slice], value):
+        raise NotImplementedError  # pragma: no cover
+
+    def __delitem__(self, index: Union[int, slice]):
+        del self._modify()[index]
+
+    def pop(self, index: int = -1) -> BaseShape:
+        """Remove and return the shape at index (default last)"""
+        return self._modify().pop(index)
+
+    def remove(self, shape: BaseShape):
+        """Remove the first occurrence of shape; raises ValueError if absent"""
+        del self[self._shapes.index(shape)]
+
+    def clear(self):
+        """Remove every shape"""
+        self._modify().clear()
+
+    def index(self, shape: BaseShape) -> int:
+        """The position of the first occurrence of shape; raises ValueError if absent"""
+        return self.geoshapes.index(shape)
+
+    def count(self, shape: BaseShape) -> int:
+        """The number of occurrences of shape"""
+        return self.geoshapes.count(shape)
+
+    def __iadd__(self, other):
+        self.extend([other] if isinstance(other, BaseShape) else other)
+        return self
 
     def __bool__(self):
-        return bool(self.geoshapes)
+        return len(self._shapes) > 0
 
     def __contains__(self, item):
-        return item in self.geoshapes
+        return item in self._shapes
 
     def __iter__(self):
-        """Iterate through the track"""
-        return self.geoshapes.__iter__()
+        """Iterate through the shapes"""
+        return iter(self._shapes)
 
     def __len__(self):
-        """The track length"""
-        return self.geoshapes.__len__()
+        """The number of shapes"""
+        return len(self._shapes)
 
     @cached_property
     def bounds(self) -> Tuple[float, float, float, float]:
@@ -91,6 +198,107 @@ class CollectionBase:
 
         return GeoPolygon(convex_hull(_get_vertices(self.geoshapes)))
 
+    @cached_property
+    def _columns(self) -> ShapeColumns:
+        """Arrays derived from the shapes, used to filter the whole collection at once"""
+        return ShapeColumns(self._shapes)
+
+    def _subset(self: _COL_TYPE, selection: Union[np.ndarray, Sequence[bool], Sequence[int]]) -> _COL_TYPE:
+        """
+        Creates a collection of the same type from a boolean mask or ascending
+        row indices, carrying over any arrays already derived for this one.
+        """
+        idx = np.asarray(selection)
+        if idx.dtype == bool:
+            idx = np.flatnonzero(idx)
+        else:
+            idx = idx.astype(np.intp, copy=False)
+
+        shapes = [self._shapes[i] for i in idx.tolist()]
+
+        # A subset is valid for any collection type (Track ordering is
+        # preserved), so skip re-validating it in __init__
+        columns = None
+        if '_columns' in self.__dict__:
+            columns = self._columns.take(idx, shapes)
+        return self._from_shapes(shapes, columns)
+
+    def _spatial_mask(
+        self,
+        shape: BaseShape,
+        time_rule: Callable[[ShapeColumns, TimeInterval], np.ndarray],
+        predicate: Callable[[BaseShape], bool],
+        points_resolvable: bool,
+        any_only: bool = False,
+    ) -> np.ndarray:
+        """
+        Evaluates a spatial predicate against every shape in the collection.
+
+        Candidates are first narrowed on arrays: their envelopes must overlap the
+        query shape's, and when both carry time, time_rule must hold (a condition
+        the predicate itself applies). GeoPoints are then resolved with a
+        vectorized point-in-shape test where the query shape supports one, and
+        everything else with predicate, one shape at a time.
+
+        Args:
+            shape:
+                The query shape
+
+            time_rule:
+                The time condition the predicate applies to shapes that carry
+                time, when the query shape does too
+
+            predicate:
+                The exact per-shape test
+
+            points_resolvable:
+                Whether, for a GeoPoint, the predicate is equivalent to
+                `shape.contains_coordinate(point)` plus time_rule
+
+            any_only:
+                Stop at the first match; only whether the mask is all False is
+                meaningful
+
+        Returns:
+            A boolean mask, aligned with self.geoshapes
+        """
+        columns = self._columns
+        mask = columns.envelope_overlaps(shape_envelope(shape))
+        if shape.dt is not None:
+            mask &= ~columns.has_dt | time_rule(columns, shape.dt)
+
+        resolved = np.zeros(len(mask), dtype=bool)
+        if points_resolvable:
+            point_idx = np.flatnonzero(mask & columns.is_point)
+            if len(point_idx):
+                coords = columns.point_coords[point_idx]
+                inside = points_in_shape(shape, coords[:, 0], coords[:, 1])
+                if inside is not None:
+                    mask[point_idx] = inside
+                    resolved[point_idx] = True
+                    if any_only and inside.any():
+                        return mask
+
+        for i in np.flatnonzero(mask & ~resolved):
+            mask[i] = predicate(self._shapes[int(i)])
+            if any_only and mask[i]:
+                break
+
+        return mask
+
+    def filter(self: _COL_TYPE, predicate: Callable[[BaseShape], bool]) -> _COL_TYPE:
+        """
+        Filter the collection to the shapes for which predicate returns True.
+
+        Args:
+            predicate:
+                A function accepting a shape and returning a bool
+
+        Returns:
+            A shape collection of the same type as the original
+        """
+        return self._subset([bool(predicate(x)) for x in self])
+
     def filter_by_dt(self: _COL_TYPE, dt: Union[datetime, TimeInterval]) -> _COL_TYPE:
         """
         Subsets the tracks pings according to the date object provided.
@@ -110,9 +318,7 @@ class CollectionBase:
             dt = TimeInterval(dt, dt)
 
         if isinstance(dt, TimeInterval):
-            return type(self)(
-                [x for x in self.geoshapes if x.dt is not None and dt.intersects(x.dt)]
-            )
+            return self._subset(self._columns.time_intersects(dt))
 
         raise ValueError(f"Unexpected dt object: {dt}")
 
@@ -128,7 +334,12 @@ class CollectionBase:
         Returns:
             A shape collection of the same type as the original
         """
-        return type(self)([x for x in self.geoshapes if x.intersects(shape)])
+        return self._subset(self._spatial_mask(
+            shape,
+            _intersects_time_rule,
+            lambda x: x.intersects(shape),
+            points_resolvable=True,
+        ))
 
     def filter_contained_by(self: _COL_TYPE, shape: BaseShape) -> _COL_TYPE:
         """
@@ -142,7 +353,12 @@ class CollectionBase:
         Returns:
             A shape collection of the same type as the original
         """
-        return type(self)([x for x in self.geoshapes if shape.contains(x)])
+        return self._subset(self._spatial_mask(
+            shape,
+            ShapeColumns.time_within,
+            shape.contains,
+            points_resolvable=True,
+        ))
 
     def filter_contains(self: _COL_TYPE, shape: BaseShape) -> _COL_TYPE:
         """
@@ -156,7 +372,12 @@ class CollectionBase:
         Returns:
             A shape collection of the same type as the original
         """
-        return type(self)([x for x in self.geoshapes if x.contains(shape)])
+        return self._subset(self._spatial_mask(
+            shape,
+            ShapeColumns.time_contains,
+            lambda x: x.contains(shape),
+            points_resolvable=False,
+        ))
 
     def filter_by_property(  # pylint: disable=redefined-builtin
         self: _COL_TYPE, property: str, func: Callable[[Any], bool]
@@ -440,20 +661,15 @@ class CollectionBase:
         Returns:
             bool
         """
-        shapes = self.geoshapes
-        if shape.dt:
-            # Time only constrains shapes that carry time information; un-timed
-            # shapes are tested spatially, matching single-shape semantics
-            shapes = [
-                x for x in self.geoshapes
-                if x.dt is None or shape.dt.intersects(x.dt)
-            ]
-
-        for col_shape in shapes:
-            if col_shape.intersects(shape):
-                return True
-
-        return False
+        # Time only constrains shapes that carry time information; un-timed
+        # shapes are tested spatially, matching single-shape semantics
+        return bool(self._spatial_mask(
+            shape,
+            _intersects_time_rule,
+            lambda x: x.intersects(shape),
+            points_resolvable=True,
+            any_only=True,
+        ).any())
 
     def to_fastkml_folder(self, folder_name: str):
         import_optional('fastkml')
@@ -661,12 +877,40 @@ class FeatureCollection(CollectionBase):
     """
 
     def __add__(self, other):
-        if not isinstance(other, FeatureCollection):
+        if isinstance(other, BaseShape):
+            other = [other]
+        elif not isinstance(other, FeatureCollection):
             raise ValueError(
-                'You can only combine a FeatureCollection with another FeatureCollection'
+                'You can only combine a FeatureCollection with another FeatureCollection '
+                'or a shape'
             )
 
-        return FeatureCollection(self.geoshapes + other.geoshapes)
+        shapes = [*self.geoshapes, *other]
+        return self._from_shapes(shapes, self._concat_columns(shapes, other))
+
+    def __setitem__(self, index: Union[int, slice], value):
+        if isinstance(index, slice):
+            value = list(value)
+            _check_shapes(value)
+        else:
+            _check_shapes([value])
+        self._modify()[index] = value
+
+    def append(self, shape: BaseShape):
+        """Add a shape to the end of the collection"""
+        _check_shapes([shape])
+        self._modify().append(shape)
+
+    def extend(self, shapes: Iterable[BaseShape]):
+        """Add shapes to the end of the collection"""
+        shapes = list(shapes)
+        _check_shapes(shapes)
+        self._modify().extend(shapes)
+
+    def insert(self, index: int, shape: BaseShape):
+        """Insert a shape before index"""
+        _check_shapes([shape])
+        self._modify().insert(index, shape)
 
     def __eq__(self, other):
         """Test equality"""
@@ -679,27 +923,38 @@ class FeatureCollection(CollectionBase):
         return True
 
     def __getitem__(self, item):
-        """Slicing by index"""
-        return self.geoshapes.__getitem__(item)
-
-    def __iter__(self):
-        """Iterate through the track"""
-        return self.geoshapes.__iter__()
-
-    def __len__(self):
-        """The track length"""
-        return self.geoshapes.__len__()
+        """Indexing returns a shape; slicing returns a FeatureCollection"""
+        if isinstance(item, slice):
+            return self._subset(np.arange(len(self))[item])
+        return self._shapes[item]
 
     def __repr__(self):
         """REPL representation"""
-        if not self.geoshapes:
+        if not self:
             return '<Empty FeatureCollection>'
 
-        return f'<FeatureCollection with {len(self.geoshapes)} shapes>'
+        return f'<FeatureCollection with {len(self)} shapes>'
 
     def copy(self):
         """Returns a shallow copy of self"""
-        return FeatureCollection(self.geoshapes.copy())
+        return self._subset(np.arange(len(self)))
+
+
+def _start_micros(shape: BaseShape) -> int:
+    return shape.dt._start  # type: ignore[union-attr]  # pylint: disable=protected-access
+
+
+def _insertion_point(shapes: List[BaseShape], shape: BaseShape) -> int:
+    """Index after every shape starting at or before shape (bisect_right by start time)"""
+    key = _start_micros(shape)
+    lo, hi = 0, len(shapes)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if key < _start_micros(shapes[mid]):
+            hi = mid
+        else:
+            lo = mid + 1
+    return lo
 
 
 class Track(CollectionBase):
@@ -710,16 +965,57 @@ class Track(CollectionBase):
 
     @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(self, geoshapes: List[BaseShape]):
-        if not all(x.dt for x in geoshapes):
+        self._check_timed(geoshapes)
+        super().__init__(sorted(geoshapes, key=_start_micros))
+
+    @staticmethod
+    def _check_timed(shapes: Sequence[Any]) -> None:
+        if not all(x.dt for x in shapes):
             raise ValueError('All track geoshapes must have an associated time value.')
 
-        super().__init__(sorted(geoshapes, key=lambda x: x.start))
-
     def __add__(self, other):
-        if not isinstance(other, Track):
-            raise ValueError('You can only combine a Track with another Track')
+        if isinstance(other, BaseShape):
+            self._check_timed([other])
+            other = [other]
+        elif not isinstance(other, Track):
+            raise ValueError('You can only combine a Track with another Track or a shape')
 
-        return Track(self.geoshapes + other.geoshapes)
+        shapes = [*self.geoshapes, *other]
+        columns = self._concat_columns(shapes, other) or ShapeColumns(shapes)
+        # Stable, so shapes starting at the same time keep self's first
+        order = columns.start_order()
+        ordered = [shapes[i] for i in order.tolist()]
+        return self._from_shapes(ordered, columns.take(order, ordered))
+
+    def __setitem__(self, index: Union[int, slice], value):
+        """Replace shapes; the track is then re-ordered by start time"""
+        value = list(value) if isinstance(index, slice) else [value]
+        _check_shapes(value)
+        self._check_timed(value)
+        shapes = self._modify()
+        if isinstance(index, slice):
+            shapes[index] = value
+            shapes.sort(key=_start_micros)
+        else:
+            del shapes[index]
+            shapes.insert(_insertion_point(shapes, value[0]), value[0])
+
+    def append(self, shape: BaseShape):
+        """Add a shape, placed after any shapes starting at or before it"""
+        _check_shapes([shape])
+        self._check_timed([shape])
+        shapes = self._modify()
+        shapes.insert(_insertion_point(shapes, shape), shape)
+
+    def extend(self, shapes: Iterable[BaseShape]):
+        """Add shapes, keeping the track ordered by start time"""
+        shapes = list(shapes)
+        _check_shapes(shapes)
+        self._check_timed(shapes)
+        current = self._modify()
+        current.extend(shapes)
+        # Stable, as Track(old + new) would order them
+        current.sort(key=_start_micros)
 
     def __eq__(self, other):
         """Test equality"""
@@ -757,38 +1053,37 @@ class Track(CollectionBase):
             Track, or a single geoshape when indexed by integer
         """
         if isinstance(val, int):
-            return self.geoshapes[val]
+            return self._shapes[val]
 
         if isinstance(val, datetime):
             instant = TimeInterval(default_to_zulu(val), default_to_zulu(val))
-            return Track(
-                [x for x in self.geoshapes if x.dt is not None and instant.intersects(x.dt)]
-            )
+            return self._subset(self._columns.time_intersects(instant))
 
         if isinstance(val, slice):
             if isinstance(val.start, int) or isinstance(val.stop, int):
-                return Track(self.geoshapes[val])
+                return self._subset(np.arange(len(self))[val])
 
-            if not self.geoshapes:
+            if not self:
                 return Track([])
 
-            _start = default_to_zulu(val.start) if val.start else self.geoshapes[0].start
-            _stop = default_to_zulu(val.stop) if val.stop else None
-            return Track([
-                x for x in self.geoshapes
-                if _start <= x.start and (_stop is None or x.end < _stop)
-            ])
+            columns = self._columns
+            mask = columns.has_dt.copy()
+            if val.start:
+                mask &= columns.starts_at_or_after(default_to_zulu(val.start))
+            if val.stop:
+                mask &= columns.ends_before(default_to_zulu(val.stop))
+            return self._subset(mask)
 
         raise TypeError(f'Tracks cannot be indexed by {type(val)}')
 
     def __repr__(self):
         """REPL representation"""
-        if not self.geoshapes:
+        if not self:
             return '<Empty Track>'
 
-        return f'<Track with {len(self.geoshapes)} shapes ' \
-               f'from {self.geoshapes[0].start.isoformat()} - ' \
-               f'{self.geoshapes[-1].end.isoformat()}>'
+        return f'<Track with {len(self)} shapes ' \
+               f'from {self._shapes[0].start.isoformat()} - ' \
+               f'{self._shapes[-1].end.isoformat()}>'
 
     @cached_property
     def centroid_distances(self):
@@ -805,18 +1100,18 @@ class Track(CollectionBase):
     @property
     def end(self):
         """The timestamp of the final ping"""
-        if not self.geoshapes:
+        if not self:
             raise ValueError('Cannot compute finish time of an empty track.')
 
-        return self.geoshapes[-1].end
+        return self._shapes[-1].end
 
     @property
     def first(self):
         """The first ping"""
-        if not self.geoshapes:
+        if not self:
             raise ValueError('Track has no pings.')
 
-        return self.geoshapes[0]
+        return self._shapes[0]
 
     @cached_property
     def has_duplicate_timestamps(self):
@@ -831,10 +1126,10 @@ class Track(CollectionBase):
     @property
     def last(self):
         """The last ping"""
-        if not self.geoshapes:
+        if not self:
             raise ValueError('Track has no pings.')
 
-        return self.geoshapes[-1]
+        return self._shapes[-1]
 
     @property
     def speed_diffs(self):
@@ -849,10 +1144,10 @@ class Track(CollectionBase):
     @property
     def start(self):
         """The timestamp of the first ping"""
-        if not self.geoshapes:
+        if not self:
             raise ValueError('Cannot compute start time of an empty track.')
 
-        return self.geoshapes[0].start
+        return self._shapes[0].start
 
     @cached_property
     def time_start_diffs(self):
@@ -868,7 +1163,7 @@ class Track(CollectionBase):
 
     def copy(self):
         """Returns a shallow copy of self"""
-        return Track(self.geoshapes.copy())
+        return self._subset(np.arange(len(self)))
 
     def convolve_duplicate_timestamps(self):
         """Convolves pings with duplicate timestamps and returns a new track"""

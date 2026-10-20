@@ -48,6 +48,15 @@ to [Semantic Versioning](https://semver.org/).
   accept lists, and `GeoPolygon.bounding_coords()` still returns a list (now
   a copy, so modifying it no longer corrupts the polygon).
 
+- **Collection `geoshapes` are tuples.** `FeatureCollection.geoshapes` and
+  `Track.geoshapes` were lists, and editing them in place left cached values
+  (bounds, convex hull, and the new filtering arrays) describing the old
+  contents. Modify the collection itself instead (`collection.append(shape)`,
+  `del collection[i]`, ...; see Features), which keeps those values correct.
+  Assigning `collection.geoshapes = [...]` still replaces the contents.
+- **Slicing a `FeatureCollection` returns a `FeatureCollection`**, as slicing a
+  `Track` already returned a `Track`, rather than a list of shapes. Indexing a
+  single position still returns the shape.
 - **`TimeInterval.start` and `TimeInterval.end` are read-only.** Intervals now
   store each endpoint as integer microseconds since the epoch (UTC) alongside
   the timezone it was given in, and `start`/`end` rebuild a `datetime` in that
@@ -89,6 +98,10 @@ to [Semantic Versioning](https://semver.org/).
     deprecation completes.
   - Assigning to a shape's attributes after construction (`shape.dt = ...`,
     `circle.radius = ...`). Create a new shape instead.
+
+  Collections cache arrays derived from their shapes, so a shape mutated in
+  place (via either deprecated route) after being added to a collection may
+  not be reflected in that collection's filters.
 
 ### Fixed
 
@@ -232,6 +245,28 @@ to [Semantic Versioning](https://semver.org/).
 
 ### Features
 
+- **Collections filter with numpy.** `filter_by_dt`, `filter_by_intersection`,
+  `filter_contained_by`, `filter_contains`, `intersects`, and `Track` time
+  slicing now work from arrays derived from the collection's shapes (computed
+  on first use, and carried over to filtered results) rather than testing every
+  shape. Candidates are first narrowed by bounding envelope and time; GeoPoints
+  tested against a `GeoPolygon` or `GeoBox` are then resolved with a vectorized
+  point-in-polygon test, and anything else with the existing per-shape methods,
+  so results are unchanged. On 300k timed points, repeated filters run 30-145x
+  faster than before.
+- **`collection + shape`** adds a single shape to a copy of a `FeatureCollection`
+  or `Track`, and **`collection.filter(predicate)`** subsets by an arbitrary
+  function, returning the same collection type. `+` reuses the filtering
+  arrays of the collections it combines.
+- **Collections can be modified in place.** `FeatureCollection` supports
+  `append`, `extend`, `insert`, `remove`, `pop`, `clear`, `+=`, and item and
+  slice assignment and deletion. `Track` supports the same except `insert`,
+  and keeps itself ordered by start time: added shapes take their place in
+  time (after any shapes starting at the same time), and replaced shapes are
+  re-ordered. Both also gain `index` and `count`. Modifying a collection
+  discards its cached values, and the filtering arrays are rebuilt on next use
+  from values cached on each shape (bounding envelopes), so they stay cheap to
+  rebuild.
 - **`HasherBase.hash_gaussian(shape, shape_probability, grid_probability, max_hashes)`**
   — treats a `GeoCircle` or `GeoEllipse` as enclosing `shape_probability` of a
   2-D Gaussian (e.g. `0.95` for an ellipse containing 95% of the probability)
