@@ -48,6 +48,24 @@ to [Semantic Versioning](https://semver.org/).
   accept lists, and `GeoPolygon.bounding_coords()` still returns a list (now
   a copy, so modifying it no longer corrupts the polygon).
 
+- **`TimeInterval.start` and `TimeInterval.end` are read-only.** Intervals now
+  store each endpoint as integer microseconds since the epoch (UTC) alongside
+  the timezone it was given in, and `start`/`end` rebuild a `datetime` in that
+  timezone on access. Assigning to them raises `AttributeError`; create a new
+  interval instead. This makes intervals ~5x cheaper to construct. As a
+  consequence:
+
+  - Times have microsecond resolution. pandas `Timestamp`s are accepted, but
+    digits below a microsecond are dropped (floored), and `start`/`end`
+    return plain `datetime`s rather than `Timestamp`s. Two intervals whose
+    times differ only in nanoseconds are now equal.
+  - An endpoint must be representable as a `datetime` in UTC: values within
+    a timezone offset of `datetime.min`/`datetime.max` (e.g.
+    `datetime.min.replace(tzinfo=<UTC+1>)`) raise `ValueError`. The defaults
+    of an open interval are unaffected.
+  - Equality and hashing are unchanged: both compare the instants, regardless
+    of timezone.
+
 ### Deprecated
 
 - **Mutating shapes is deprecated; shapes will become immutable.** Immutable
