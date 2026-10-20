@@ -292,3 +292,19 @@ def test_filtered_collections_reuse_columns():
     assert [x.centroid.longitude for x in filtered] == [1., 2., 3.]
     assert '_columns' in filtered.__dict__
     assert filtered.filter_by_dt(datetime(2020, 1, 1)) == filtered
+
+
+def test_envelope_cached_on_shape():
+    import pickle
+
+    box = GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0))
+    envelope = shape_envelope(box)
+    assert box.__dict__['_envelope'] == envelope
+    assert '_envelope' not in pickle.loads(pickle.dumps(box)).__dict__
+
+    # Discarded with the shape's other cached values (deprecated mutation)
+    box.set_dt(datetime(2020, 1, 1), inplace=True)
+    assert '_envelope' not in box.__dict__
+    box.nw_bound = Coordinate(5.0, 6.0)
+    box.se_bound = Coordinate(6.0, 5.0)
+    assert shape_envelope(box)[0] > 4.0

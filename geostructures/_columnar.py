@@ -10,7 +10,7 @@ the tests compare the two directly.
 
 __all__ = ['ShapeColumns', 'shape_envelope', 'points_in_shape']
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from functools import cached_property
 import math
 from typing import Callable, Dict, Optional, Sequence, Tuple, Type
@@ -26,14 +26,10 @@ from geostructures.structures import (
     GeoBox, GeoCircle, GeoEllipse, GeoLineString, GeoPoint, GeoPolygon, GeoRing
 )
 from geostructures._shapely_io import LazyShapes
-from geostructures.time import GEOTIME_TYPE, TimeInterval
-from geostructures.utils.functions import default_to_zulu
+from geostructures.time import TimeInterval, _endpoint, _TimeColumns
 
 
 _ENVELOPE = Tuple[float, float, float, float]
-
-_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
-_MICROSECOND = timedelta(microseconds=1)
 
 # Envelopes are padded well beyond the tolerance the exact predicates allow
 # when deciding whether edges touch
@@ -48,63 +44,9 @@ _CAP_RADIUS_FACTOR = 1.01
 _ISCLOSE_REL_TOL = 1e-9
 
 
-_TIME_KEY = Tuple[int, int]
-
-
-def _time_key(dt: datetime) -> _TIME_KEY:
-    """
-    An exact, orderable key for a tz-aware datetime: microseconds since the
-    epoch, plus the sub-microsecond nanoseconds a pandas Timestamp may carry.
-    (Nanoseconds since the epoch alone would overflow int64 for datetime.max,
-    the default end of an open TimeInterval.)
-    """
-    nanos = getattr(dt, 'value', None)
-    if isinstance(nanos, int):
-        # A pandas Timestamp, which stores nanoseconds since the epoch; much
-        # faster than its datetime arithmetic
-        return nanos // 1000, nanos % 1000
-    return (dt - _EPOCH) // _MICROSECOND, 0
-
-
-def _dt_bounds(dt: Optional[GEOTIME_TYPE]) -> Optional[Tuple[datetime, datetime]]:
-    """The start and end a shape constructed with this dt would have (see BaseShape.__init__)"""
-    if dt is None:
-        return None
-    if isinstance(dt, datetime):
-        dt = default_to_zulu(dt)
-        return dt, dt
-    return dt.start, dt.end
-
-
-class _TimeColumn:
-    """An array of _time_key values, compared lexicographically against a single key"""
-
-    __slots__ = ('micros', 'nanos')
-
-    def __init__(self, micros: np.ndarray, nanos: np.ndarray):
-        self.micros, self.nanos = micros, nanos
-
-    def take(self, idx: np.ndarray) -> '_TimeColumn':
-        return _TimeColumn(self.micros[idx], self.nanos[idx])
-
-    def __eq__(self, other):  # type: ignore[override]
-        if isinstance(other, _TimeColumn):
-            return (self.micros == other.micros) & (self.nanos == other.nanos)
-        return (self.micros == other[0]) & (self.nanos == other[1])
-
-    def __lt__(self, key: _TIME_KEY) -> np.ndarray:
-        return (self.micros < key[0]) | ((self.micros == key[0]) & (self.nanos < key[1]))
-
-    def __le__(self, key: _TIME_KEY) -> np.ndarray:
-        return (self.micros < key[0]) | ((self.micros == key[0]) & (self.nanos <= key[1]))
-
-    def __gt__(self, key: _TIME_KEY) -> np.ndarray:
-        return ~(self <= key)
-
-    def __ge__(self, key: _TIME_KEY) -> np.ndarray:
-        return ~(self < key)
-
-    __hash__ = None  # type: ignore[assignment]
+def _micros(dt: datetime) -> int:
+    """Microseconds since the epoch, as TimeInterval stores them (naive datetimes are UTC)"""
+    return _endpoint(dt)[0]
 
 
 def _union(*envelopes: _ENVELOPE) -> _ENVELOPE:
@@ -177,7 +119,15 @@ def shape_envelope(shape: BaseShape, pad: bool = True) -> _ENVELOPE:
     don't overlap can't intersect. Unlike shape.bounds (which for curved shapes
     is drawn through the cardinal points) this never undercuts the shape, so it
     is safe for discarding candidates. Unrecognized shape types span the globe.
+
+    The padded envelope is cached on the shape (and discarded with its other
+    cached values), so collections can gather it rather than recompute it.
     """
+    if pad:
+        cached = shape.__dict__.get('_envelope')
+        if cached is not None:
+            return cached
+
     func = _ENVELOPE_FUNCS.get(type(shape))
     if func is None:
         return -math.inf, -math.inf, math.inf, math.inf
@@ -185,10 +135,12 @@ def shape_envelope(shape: BaseShape, pad: bool = True) -> _ENVELOPE:
     min_lon, min_lat, max_lon, max_lat = func(shape)
     if not pad:
         return min_lon, min_lat, max_lon, max_lat
-    return (
+    envelope = (
         min_lon - _ENVELOPE_PAD, min_lat - _ENVELOPE_PAD,
         max_lon + _ENVELOPE_PAD, max_lat + _ENVELOPE_PAD
     )
+    shape.__dict__['_envelope'] = envelope
+    return envelope
 
 
 def _points_in_ring(
@@ -315,30 +267,14 @@ class ShapeColumns:
         return envelopes
 
     @cached_property
-    def _times(self) -> Tuple[_TimeColumn, _TimeColumn, np.ndarray]:
+    def _times(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Start and end microseconds (zero for rows without time), and whether each row has time"""
         if isinstance(self._shapes, LazyShapes):
             # Read from the source data, without creating shapes
-            bounds = [_dt_bounds(dt) for dt in self._shapes.source_dts]
+            times = self._shapes.time_columns()
         else:
-            bounds = [None if x.dt is None else (x.dt.start, x.dt.end) for x in self._shapes]
-
-        # Built as lists and converted once; per-element numpy writes are slow
-        starts, ends, has_dt = [], [], []
-        for bound in bounds:
-            if bound is None:
-                starts.append((0, 0))
-                ends.append((0, 0))
-                has_dt.append(False)
-            else:
-                starts.append(_time_key(bound[0]))
-                ends.append(_time_key(bound[1]))
-                has_dt.append(True)
-
-        def _column(keys) -> _TimeColumn:
-            arr = np.array(keys, dtype=np.int64).reshape(len(keys), 2)
-            return _TimeColumn(arr[:, 0], arr[:, 1])
-
-        return _column(starts), _column(ends), np.array(has_dt, dtype=bool)
+            times = _TimeColumns.from_intervals([x.dt for x in self._shapes])
+        return times.starts, times.ends, times.has_dt
 
     @property
     def has_dt(self) -> np.ndarray:
@@ -347,16 +283,15 @@ class ShapeColumns:
 
     def starts_at_or_after(self, dt: datetime) -> np.ndarray:
         """Rows whose start time is at or after dt. False for rows without time."""
-        return (self._times[0] >= _time_key(dt)) & self.has_dt
+        return (self._times[0] >= _micros(dt)) & self.has_dt
 
     def ends_before(self, dt: datetime) -> np.ndarray:
         """Rows whose end time is before dt. False for rows without time."""
-        return (self._times[1] < _time_key(dt)) & self.has_dt
+        return (self._times[1] < _micros(dt)) & self.has_dt
 
     def start_order(self) -> np.ndarray:
         """Row indices ordered by start time; stable, like sorted()"""
-        starts = self._times[0]
-        return np.lexsort((starts.nanos, starts.micros))
+        return np.argsort(self._times[0], kind='stable')
 
     @cached_property
     def _points(self) -> Tuple[np.ndarray, np.ndarray]:
@@ -396,9 +331,26 @@ class ShapeColumns:
             new.__dict__['envelopes'] = self.envelopes[idx]
         if '_times' in self.__dict__:
             starts, ends, has_dt = self._times
-            new.__dict__['_times'] = starts.take(idx), ends.take(idx), has_dt[idx]
+            new.__dict__['_times'] = starts[idx], ends[idx], has_dt[idx]
         if '_points' in self.__dict__:
             new.__dict__['_points'] = tuple(arr[idx] for arr in self._points)
+        return new
+
+    def concat(self, other: 'ShapeColumns', shapes: Sequence[BaseShape]) -> 'ShapeColumns':
+        """
+        The columns for self's rows followed by other's. shapes must be the
+        corresponding concatenation of the two objects' shapes. Groups already
+        computed for self are carried over (computing them for other).
+        """
+        new = ShapeColumns(shapes)
+        for name in ('envelopes', '_times', '_points'):
+            if name not in self.__dict__:
+                continue
+            mine, theirs = getattr(self, name), getattr(other, name)
+            if isinstance(mine, np.ndarray):
+                new.__dict__[name] = np.concatenate([mine, theirs])
+            else:
+                new.__dict__[name] = tuple(np.concatenate([a, b]) for a, b in zip(mine, theirs))
         return new
 
     def envelope_overlaps(self, envelope: _ENVELOPE) -> np.ndarray:
@@ -415,7 +367,7 @@ class ShapeColumns:
         (right-open intervals, with instants special-cased). False for rows
         without time information.
         """
-        q_start, q_end = _time_key(dt.start), _time_key(dt.end)
+        q_start, q_end = dt._start, dt._end  # pylint: disable=protected-access
         starts, ends, has_dt = self._times
         row_instant = starts == ends
         if q_start == q_end:
@@ -430,12 +382,12 @@ class ShapeColumns:
 
     def time_within(self, dt: TimeInterval) -> np.ndarray:
         """Rows whose time lies within dt (TimeInterval.issubset). False for rows without time."""
-        q_start, q_end = _time_key(dt.start), _time_key(dt.end)
+        q_start, q_end = dt._start, dt._end  # pylint: disable=protected-access
         starts, ends, has_dt = self._times
         return (starts >= q_start) & (ends <= q_end) & has_dt
 
     def time_contains(self, dt: TimeInterval) -> np.ndarray:
         """Rows whose time contains dt (TimeInterval.issuperset). False for rows without time."""
-        q_start, q_end = _time_key(dt.start), _time_key(dt.end)
+        q_start, q_end = dt._start, dt._end  # pylint: disable=protected-access
         starts, ends, has_dt = self._times
         return (starts <= q_start) & (ends >= q_end) & has_dt

@@ -51,12 +51,29 @@ to [Semantic Versioning](https://semver.org/).
 - **Collection `geoshapes` are tuples.** `FeatureCollection.geoshapes` and
   `Track.geoshapes` were lists, and editing them in place left cached values
   (bounds, convex hull, and the new filtering arrays) describing the old
-  contents. Build a new collection instead: `collection + shape` and
-  `collection + other` combine, `collection.filter(predicate)` and the
-  `filter_by_*` methods subset, and slicing (below) trims.
+  contents. Modify the collection itself instead (`collection.append(shape)`,
+  `del collection[i]`, ...; see Features), which keeps those values correct.
+  Assigning `collection.geoshapes = [...]` still replaces the contents.
 - **Slicing a `FeatureCollection` returns a `FeatureCollection`**, as slicing a
   `Track` already returned a `Track`, rather than a list of shapes. Indexing a
   single position still returns the shape.
+- **`TimeInterval.start` and `TimeInterval.end` are read-only.** Intervals now
+  store each endpoint as integer microseconds since the epoch (UTC) alongside
+  the timezone it was given in, and `start`/`end` rebuild a `datetime` in that
+  timezone on access. Assigning to them raises `AttributeError`; create a new
+  interval instead. This makes intervals ~5x cheaper to construct and lets
+  collections ingest time columns as arrays. As a consequence:
+
+  - Times have microsecond resolution. pandas `Timestamp`s are accepted, but
+    digits below a microsecond are dropped (floored), and `start`/`end`
+    return plain `datetime`s rather than `Timestamp`s. Two intervals whose
+    times differ only in nanoseconds are now equal.
+  - An endpoint must be representable as a `datetime` in UTC: values within
+    a timezone offset of `datetime.min`/`datetime.max` (e.g.
+    `datetime.min.replace(tzinfo=<UTC+1>)`) raise `ValueError`. The defaults
+    of an open interval are unaffected.
+  - Equality and hashing are unchanged: both compare the instants, regardless
+    of timezone.
 
 ### Deprecated
 
@@ -75,8 +92,6 @@ to [Semantic Versioning](https://semver.org/).
     deprecation completes.
   - Assigning to a shape's attributes after construction (`shape.dt = ...`,
     `circle.radius = ...`). Create a new shape instead.
-  - Assigning to a collection's attributes after construction
-    (`collection.geoshapes = ...`). Create a new collection instead.
 
   Collections cache arrays derived from their shapes, so a shape mutated in
   place (via either deprecated route) after being added to a collection may
@@ -183,10 +198,14 @@ to [Semantic Versioning](https://semver.org/).
   geometries can't represent, are still exported via WKT.
 - **Collections read from shapely or geopandas create their shapes on
   demand.** Indexing, iterating, filtering and exporting create only the
-  shapes they touch; accessing `geoshapes` creates them all. Unconvertible
+  shapes they touch; accessing `geoshapes`, or modifying the collection,
+  creates them all. Unconvertible
   input (missing, empty or unsupported geometries, NaN or infinite
   coordinates) is rejected up front with a `ValueError`; a missing geometry
   previously raised `AttributeError`.
+- **`from_geopandas` warns once when a time column is timezone-naive**, and
+  treats it as UTC as before. Previously only rows whose start and end were
+  equal produced the warning.
 
 - **`circumscribing_circle()` returns the smallest enclosing circle for every
   shape that computes one numerically.** `GeoLineString`, `GeoRing` wedges,
@@ -253,8 +272,9 @@ to [Semantic Versioning](https://semver.org/).
   geometries (arrays and GeoSeries as well as a GeometryCollection), and
   `to_ragged_array`/`from_ragged_array` exchange the GeoArrow-compatible
   coordinate-and-offsets layout used by `shapely.to_ragged_array`. Reading 300k
-  timed points from geopandas is ~6x faster (2.7s to 0.4s), and a read, filter
-  and export of them ~5x faster (3.0s to 0.6s).
+  timed points from geopandas is ~16x faster (2.6s to 0.16s), and a read,
+  filter and export of them ~15x faster (2.9s to 0.19s); `datetime64` time
+  columns are converted as whole arrays.
 
 - **Collections filter with numpy.** `filter_by_dt`, `filter_by_intersection`,
   `filter_contained_by`, `filter_contains`, `intersects`, and `Track` time
@@ -267,7 +287,18 @@ to [Semantic Versioning](https://semver.org/).
   faster than before.
 - **`collection + shape`** adds a single shape to a copy of a `FeatureCollection`
   or `Track`, and **`collection.filter(predicate)`** subsets by an arbitrary
-  function, returning the same collection type.
+  function, returning the same collection type. `+` reuses the filtering
+  arrays of the collections it combines.
+- **Collections can be modified in place.** `FeatureCollection` supports
+  `append`, `extend`, `insert`, `remove`, `pop`, `clear`, `+=`, and item and
+  slice assignment and deletion. `Track` supports the same except `insert`,
+  and keeps itself ordered by start time: added shapes take their place in
+  time (after any shapes starting at the same time), and replaced shapes are
+  re-ordered. Both also gain `index` and `count`. Modifying a collection
+  discards its cached values, and the filtering arrays are rebuilt on next use
+  from values cached on each shape (bounding envelopes), so they stay cheap to
+  rebuild. Modifying a collection read from shapely or geopandas creates all
+  of its shapes first.
 - **`HasherBase.hash_gaussian(shape, shape_probability, grid_probability, max_hashes)`**
   — treats a `GeoCircle` or `GeoEllipse` as enclosing `shape_probability` of a
   2-D Gaussian (e.g. `0.95` for an ellipse containing 95% of the probability)

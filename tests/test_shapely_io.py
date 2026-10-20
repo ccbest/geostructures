@@ -216,8 +216,7 @@ def test_lazy_columns_match_shape_columns(seed):
     np.testing.assert_array_equal(lazy.envelopes, eager.envelopes)
     np.testing.assert_array_equal(lazy.has_dt, eager.has_dt)
     for lazy_times, eager_times in zip(lazy._times[:2], eager._times[:2]):
-        np.testing.assert_array_equal(lazy_times.micros, eager_times.micros)
-        np.testing.assert_array_equal(lazy_times.nanos, eager_times.nanos)
+        np.testing.assert_array_equal(lazy_times, eager_times)
 
 
 @pytest.mark.parametrize('seed', range(3))
@@ -377,8 +376,8 @@ def test_ragged_array_round_trip():
         FeatureCollection([GeoPoint(Coordinate(0., 0.)), GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.)])]).to_ragged_array()
 
 
-def test_time_filters_respect_nanoseconds():
-    # pandas Timestamps carry nanoseconds, which TimeInterval compares exactly
+def test_time_filters_floor_nanoseconds():
+    # pandas Timestamps carry nanoseconds, which TimeInterval floors to microseconds
     base = pd.Timestamp('2020-01-01', tz='UTC')
     times = [base + pd.Timedelta(nanoseconds=n) for n in (0, 1, 500, 999, 1_000, 1_001)]
     shapes = [GeoPoint(Coordinate(0., 0.), dt=t) for t in times]
@@ -393,10 +392,14 @@ def test_time_filters_respect_nanoseconds():
             assert [id(x) for x in fcol.filter_by_dt(query)] == \
                 [id(x) for x in shapes if query.intersects(x.dt)]
 
+    assert GeoPoint(Coordinate(0., 0.), dt=times[3]).dt == GeoPoint(Coordinate(0., 0.), dt=base).dt
+    assert GeoPoint(Coordinate(0., 0.), dt=times[3]).dt != GeoPoint(Coordinate(0., 0.), dt=times[4]).dt
+
     track = Track(shapes)
     for t in times:
-        assert [id(x) for x in track[t:]] == [id(x) for x in track if t <= x.start]
-        assert [id(x) for x in track[:t]] == [id(x) for x in track if x.end < t]
+        t_floor = t.floor('us')
+        assert [id(x) for x in track[t:]] == [id(x) for x in track if t_floor <= x.start]
+        assert [id(x) for x in track[:t]] == [id(x) for x in track if x.end < t_floor]
 
 
 def test_lazy_shapes_take_shares_created_shapes():
@@ -411,3 +414,67 @@ def test_lazy_shapes_take_shares_created_shapes():
 def test_shapes_to_shapely_empty():
     assert len(shapes_to_shapely([])) == 0
     assert len(FeatureCollection([]).to_geopandas()) == 0
+
+
+def test_from_geopandas_time_columns():
+    from zoneinfo import ZoneInfo
+
+    paris = ZoneInfo('Europe/Paris')
+    points = [shapely.Point(0, 0)] * 4
+    starts = pd.Series(pd.to_datetime(['2020-01-01', '2020-01-02', None, None])).dt.tz_localize(paris)
+    ends = pd.Series(pd.to_datetime(['2020-01-03', None, '2020-01-04', None]))   # naive: UTC
+    df = gpd.GeoDataFrame({'datetime_start': starts, 'datetime_end': ends, 'x': range(4)}, geometry=points)
+    fcol = FeatureCollection.from_geopandas(df)
+
+    assert fcol[0].dt == TimeInterval(datetime(2020, 1, 1, tzinfo=paris), datetime(2020, 1, 3))
+    assert fcol[0].start.tzinfo is paris and fcol[0].end.tzinfo is timezone.utc
+    # A single endpoint becomes an instant, in that endpoint's timezone
+    assert fcol[1].dt == TimeInterval(datetime(2020, 1, 2, tzinfo=paris), datetime(2020, 1, 2, tzinfo=paris))
+    assert fcol[1].end.tzinfo is paris
+    assert fcol[2].dt == TimeInterval(datetime(2020, 1, 4), datetime(2020, 1, 4))
+    assert fcol[3].dt is None
+    assert [x.properties.get('x') for x in fcol] == [0, 1, 2, 3]
+
+    # Object columns of python datetimes (and non-datetimes, which are ignored)
+    df = gpd.GeoDataFrame(
+        {'datetime_start': [datetime(2020, 1, 1, tzinfo=paris), datetime(2020, 1, 1), 'n/a', None]},
+        geometry=points
+    )
+    fcol = FeatureCollection.from_geopandas(df)
+    assert fcol[0].start == datetime(2020, 1, 1, tzinfo=paris) and fcol[0].start.tzinfo is paris
+    assert fcol[1].start == datetime(2020, 1, 1, tzinfo=timezone.utc)
+    assert fcol[2].dt is None and fcol[3].dt is None
+    assert FeatureCollection.from_geopandas(df).filter_by_dt(datetime(2020, 1, 1)).geoshapes == (fcol[1],)
+
+    df = gpd.GeoDataFrame(
+        {'datetime_start': pd.to_datetime(['2020-01-02']), 'datetime_end': pd.to_datetime(['2020-01-01'])},
+        geometry=points[:1]
+    )
+    with pytest.raises(ValueError):
+        FeatureCollection.from_geopandas(df)
+
+
+def test_lazy_collection_mutation():
+    full = _random_dataframe(random.Random(3), 200)
+    extra = GeoPoint(Coordinate(1., 1.), dt=_T0)
+    window = TimeInterval(_T0, _T0 + timedelta(hours=3))
+    area = GeoBox(Coordinate(-20., 20.), Coordinate(20., -20.))
+
+    for cls in (FeatureCollection, Track):
+        df = full
+        if cls is Track:
+            df = full[full['datetime_start'].notna() | full['datetime_end'].notna()]
+        expected = list(_old_from_geopandas(df))
+        col = cls.from_geopandas(df)
+        _ = col._columns.envelopes, col._columns.has_dt
+        reference = cls(expected)
+        col.append(extra)
+        reference.append(extra)
+        del col[5]
+        del reference[5]
+        assert len(col) == len(reference)
+        assert [x.to_wkt() for x in col] == [x.to_wkt() for x in reference]
+        assert [x.dt for x in col] == [x.dt for x in reference]
+        assert [x.to_wkt() for x in col.filter_by_intersection(area)] == \
+            [x.to_wkt() for x in reference.filter_by_intersection(area)]
+        assert [x.dt for x in col.filter_by_dt(window)] == [x.dt for x in reference.filter_by_dt(window)]

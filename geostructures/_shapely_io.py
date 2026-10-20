@@ -21,7 +21,7 @@ from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, Mul
 from geostructures.structures import (
     GeoBox, GeoCircle, GeoEllipse, GeoLineString, GeoPoint, GeoPolygon, GeoRing, PolygonBase
 )
-from geostructures.time import GEOTIME_TYPE
+from geostructures.time import GEOTIME_TYPE, _TimeColumns
 from geostructures.utils.conditional_imports import import_optional
 
 # shapely.get_type_id values for the geometry types geostructures represents
@@ -156,11 +156,13 @@ def _in_coordinate_range(coords: np.ndarray) -> np.ndarray:
 class _Source:
     """The data a LazyShapes (and every subset taken from it) creates its shapes from"""
 
-    __slots__ = ('geometries', 'dts', 'properties', 'shapes')
+    __slots__ = ('geometries', 'times', 'properties', 'shapes')
 
-    def __init__(self, geometries: np.ndarray, dts: List, properties: List, shapes: List):
+    def __init__(
+        self, geometries: np.ndarray, times: _TimeColumns, properties: List, shapes: List
+    ):
         self.geometries = geometries
-        self.dts = dts
+        self.times = times
         self.properties = properties
         self.shapes = shapes
 
@@ -176,8 +178,8 @@ class LazyShapes(Sequence[BaseShape]):
             An object array of supported, non-empty shapely geometries (see
             as_geometry_array)
 
-        dts: (Optional)
-            The dt to construct each shape with
+        times: (Optional)
+            The time each shape is constructed with
 
         properties: (Optional)
             The properties to construct each shape with
@@ -186,13 +188,13 @@ class LazyShapes(Sequence[BaseShape]):
     def __init__(
         self,
         geometries: np.ndarray,
-        dts: Optional[Sequence[Optional[GEOTIME_TYPE]]] = None,
+        times: Optional[_TimeColumns] = None,
         properties: Optional[Sequence[Optional[Dict]]] = None,
     ):
         n = len(geometries)
         self._source = _Source(
             geometries,
-            list(dts) if dts is not None else [None] * n,
+            times if times is not None else _TimeColumns.from_intervals([None] * n),
             list(properties) if properties is not None else [None] * n,
             [None] * n,
         )
@@ -215,7 +217,7 @@ class LazyShapes(Sequence[BaseShape]):
         shape = source.shapes[row]
         if shape is None:
             shape = shape_from_shapely(
-                source.geometries[row], source.dts[row], source.properties[row]
+                source.geometries[row], source.times.interval(row), source.properties[row]
             )
             source.shapes[row] = shape
         return shape
@@ -232,11 +234,9 @@ class LazyShapes(Sequence[BaseShape]):
         """The source geometries"""
         return self._source.geometries[self._rows]
 
-    @property
-    def source_dts(self) -> List[Optional[GEOTIME_TYPE]]:
-        """The dt each shape is (or will be) constructed with"""
-        dts = self._source.dts
-        return [dts[row] for row in self._rows.tolist()]
+    def time_columns(self) -> _TimeColumns:
+        """The time each shape is (or will be) constructed with"""
+        return self._source.times.take(self._rows)
 
     def created(self) -> np.ndarray:
         """Whether each shape has been created yet"""
@@ -248,13 +248,11 @@ class LazyShapes(Sequence[BaseShape]):
         What shape.properties would return for row i, without creating the
         shape (see BaseShape.properties)
         """
-        from geostructures._columnar import _dt_bounds  # pylint: disable=import-outside-toplevel
-
         row = int(self._rows[i])
         props = dict(self._source.properties[row] or {})
-        bounds = _dt_bounds(self._source.dts[row])
-        if bounds is not None:
-            props['datetime_start'], props['datetime_end'] = bounds
+        dt = self._source.times.interval(row)
+        if dt is not None:
+            props['datetime_start'], props['datetime_end'] = dt.start, dt.end
         return props
 
     def point_columns(self) -> Tuple[np.ndarray, np.ndarray]:

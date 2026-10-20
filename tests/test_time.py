@@ -246,3 +246,105 @@ def test_parse_timestamp_does_not_mutate_formats():
     custom = ['%Y-%m-%dT%H:%M:%S', '%Y']
     TimeInterval._parse_timestamp('2020', custom)
     assert custom == ['%Y-%m-%dT%H:%M:%S', '%Y']
+
+
+def test_timeinterval_preserves_timezones():
+    from zoneinfo import ZoneInfo
+
+    eastern = ZoneInfo('America/New_York')
+    start = datetime(2020, 3, 8, 1, 30, tzinfo=eastern)   # before the DST change
+    end = datetime(2020, 3, 8, 12, tzinfo=timezone(timedelta(hours=5)))
+    interval = TimeInterval(start, end)
+
+    assert interval.start == start and interval.start.tzinfo is eastern
+    assert interval.start.utcoffset() == timedelta(hours=-5)
+    assert interval.end == end and interval.end.utcoffset() == timedelta(hours=5)
+
+    # Naive datetimes are treated as UTC
+    assert TimeInterval(datetime(2020, 1, 1)).start == datetime(2020, 1, 1, tzinfo=timezone.utc)
+
+    # Equality is by instant, regardless of the timezone used to express it
+    assert TimeInterval(start, start) == TimeInterval(
+        start.astimezone(timezone.utc), start.astimezone(timezone.utc)
+    )
+    assert hash(TimeInterval(start, start)) == hash(
+        TimeInterval(start.astimezone(timezone.utc), start.astimezone(timezone.utc))
+    )
+
+    # A timedelta end is added in the start's timezone, like datetime arithmetic.
+    # (Here the wall-clock result, 02:30, doesn't exist, and comes back as the
+    # same instant expressed after the DST change.)
+    end = TimeInterval(start, timedelta(hours=1)).end
+    assert end.timestamp() == (start + timedelta(hours=1)).timestamp()
+    assert end == datetime(2020, 3, 8, 3, 30, tzinfo=eastern)
+
+
+def test_timeinterval_set_operations_keep_endpoint_timezones():
+    plus_one = timezone(timedelta(hours=1))
+    a = TimeInterval(datetime(2020, 1, 1, tzinfo=plus_one), datetime(2020, 1, 3, tzinfo=plus_one))
+    b = TimeInterval(datetime(2020, 1, 2), datetime(2020, 1, 4))
+
+    assert a.intersection(b).start.tzinfo is timezone.utc
+    assert a.intersection(b).end.tzinfo is plus_one
+    assert a.union(b).start.tzinfo is plus_one
+    assert a.union(b).end.tzinfo is timezone.utc
+    assert a.copy() == a and a.copy().start.tzinfo is plus_one
+    assert a.elapsed == timedelta(days=2)
+
+
+def test_timeinterval_is_read_only():
+    interval = TimeInterval(datetime(2020, 1, 1), datetime(2020, 1, 2))
+    with pytest.raises(AttributeError):
+        interval.start = datetime(2019, 1, 1)
+    with pytest.raises(AttributeError):
+        interval.end = datetime(2021, 1, 1)
+
+
+def test_timeinterval_pandas_timestamps():
+    import pandas as pd
+
+    start = pd.Timestamp('2020-01-01 00:00:00.000001999', tz='Europe/Paris')
+    interval = TimeInterval(start, pd.Timestamp('2020-01-02'))
+
+    # Returned as plain datetimes, in the original timezone, to the microsecond
+    assert type(interval.start) is datetime
+    assert interval.start == datetime(2019, 12, 31, 23, 0, 0, 1, tzinfo=timezone.utc)
+    assert interval.start.utcoffset() == timedelta(hours=1)
+    assert interval.end == datetime(2020, 1, 2, tzinfo=timezone.utc)
+
+    with pytest.raises(ValueError):
+        TimeInterval(pd.NaT, datetime(2020, 1, 1))
+
+
+def test_timeinterval_coerces_like_pydantic():
+    assert TimeInterval('2020-01-01T00:00:00Z', '2020-01-02T00:00:00Z') == TimeInterval(
+        datetime(2020, 1, 1), datetime(2020, 1, 2)
+    )
+    with pytest.raises(ValueError):
+        TimeInterval('not a date')
+
+
+def test_timeinterval_limits():
+    interval = TimeInterval()
+    assert interval.start == datetime.min.replace(tzinfo=timezone.utc)
+    assert interval.end == datetime.max.replace(tzinfo=timezone.utc)
+
+    # Instants that can't be expressed as a datetime in UTC are rejected up front
+    with pytest.raises(ValueError):
+        TimeInterval(datetime.min.replace(tzinfo=timezone(timedelta(hours=1))))
+    with pytest.raises(ValueError):
+        TimeInterval(end=datetime.max.replace(tzinfo=timezone(timedelta(hours=-1))))
+
+
+def test_timeinterval_pickle():
+    import pickle
+
+    plus_one = timezone(timedelta(hours=1))
+    interval = TimeInterval(datetime(2020, 1, 1, tzinfo=plus_one), datetime(2020, 1, 2))
+    restored = pickle.loads(pickle.dumps(interval))
+    assert restored == interval and restored.start.tzinfo == plus_one
+
+    # Intervals pickled before the integer representation stored datetimes
+    legacy = TimeInterval.__new__(TimeInterval)
+    legacy.__setstate__({'start': interval.start, 'end': interval.end})
+    assert legacy == interval and legacy.start.tzinfo == plus_one

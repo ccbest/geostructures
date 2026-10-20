@@ -692,8 +692,7 @@ def test_featurecollection_add():
         _ = fcol1 + 2
 
 
-def test_collection_immutable(caplog):
-    _WARNINGS.clear()
+def test_collection_geoshapes_assignment():
     fcol = FeatureCollection([
         GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0)),
         GeoBox(Coordinate(0.0, 2.0), Coordinate(2.0, 0.0)),
@@ -701,11 +700,139 @@ def test_collection_immutable(caplog):
     assert isinstance(fcol.geoshapes, tuple)
     assert fcol.bounds == (0.0, 0.0, 2.0, 2.0)
 
-    caplog.clear()
     fcol.geoshapes = (GeoBox(Coordinate(0.0, 3.0), Coordinate(3.0, 0.0)),)
-    assert 'Assigning to FeatureCollection.geoshapes is deprecated' in caplog.text
     # Cached values are discarded
     assert fcol.bounds == (0.0, 0.0, 3.0, 3.0)
+    assert len(fcol) == 1
+
+    with pytest.raises(TypeError):
+        fcol.geoshapes = [1]
+
+
+def _assert_columns_fresh(col):
+    """A collection's cached arrays match those built from scratch"""
+    from geostructures._columnar import ShapeColumns
+    fresh = ShapeColumns(list(col))
+    np.testing.assert_array_equal(col._columns.envelopes, fresh.envelopes)
+    for a, b in zip(col._columns._times, fresh._times):
+        np.testing.assert_array_equal(a, b)
+    for a, b in zip(col._columns._points, fresh._points):
+        np.testing.assert_array_equal(a, b)
+
+
+def _warm(col):
+    """Compute every cached array, so modifications must discard or extend them"""
+    _ = col._columns.envelopes, col._columns.has_dt, col._columns.is_point, col.geoshapes
+    return col
+
+
+def test_featurecollection_mutation():
+    points = [GeoPoint(Coordinate(float(i), 0.0)) for i in range(5)]
+    box = GeoBox(Coordinate(0.0, 1.0), Coordinate(1.0, 0.0))
+    query = GeoBox(Coordinate(-0.5, 0.5), Coordinate(2.5, -0.5))
+
+    fcol = _warm(FeatureCollection(points[:3]))
+    fcol.append(points[3])
+    assert fcol.geoshapes == tuple(points[:4])
+    assert fcol.filter_by_intersection(query).geoshapes == tuple(points[:3])
+
+    _warm(fcol).extend([points[4], box])
+    assert fcol.geoshapes == (*points, box)
+    _assert_columns_fresh(fcol)
+
+    _warm(fcol).insert(0, box)
+    assert fcol[0] == box and len(fcol) == 7
+    del _warm(fcol)[0]
+    assert fcol.geoshapes == (*points, box)
+
+    _warm(fcol)[1] = box
+    assert fcol.filter_by_intersection(query).geoshapes == (points[0], box, points[2], box)
+    _warm(fcol)[1:3] = [points[1]]
+    assert fcol.geoshapes == (points[0], points[1], points[3], points[4], box)
+    _assert_columns_fresh(fcol)
+
+    assert _warm(fcol).pop() == box
+    _warm(fcol).remove(points[3])
+    assert fcol.geoshapes == (points[0], points[1], points[4])
+    assert fcol.index(points[4]) == 2 and fcol.count(points[0]) == 1
+    with pytest.raises(ValueError):
+        fcol.remove(box)
+
+    fcol += box
+    fcol += FeatureCollection([points[2]])
+    assert fcol.geoshapes == (points[0], points[1], points[4], box, points[2])
+    _assert_columns_fresh(fcol)
+
+    with pytest.raises(TypeError):
+        fcol.append(1)
+    with pytest.raises(TypeError):
+        fcol[0] = 1
+    assert len(fcol) == 5
+
+    fcol.clear()
+    assert not fcol and fcol.geoshapes == ()
+
+    # Subsets and copies are independent of the collection they came from
+    fcol = FeatureCollection(points)
+    sub, copy = fcol[:2], fcol.copy()
+    fcol.append(box)
+    assert len(sub) == 2 and len(copy) == 5
+
+
+def test_collection_concatenation_reuses_columns():
+    points = [GeoPoint(Coordinate(float(i), 0.0), dt=datetime(2020, 1, 5 - i)) for i in range(5)]
+    a, b = _warm(FeatureCollection(points[:3])), FeatureCollection(points[3:])
+    combined = a + b
+    assert '_columns' in combined.__dict__
+    assert combined.geoshapes == tuple(points)
+    _assert_columns_fresh(combined)
+    _assert_columns_fresh(a + points[4])
+
+    track = _warm(Track(points[:3])) + Track(points[3:])
+    assert track.geoshapes == tuple(reversed(points))
+    _assert_columns_fresh(track)
+
+
+def test_track_mutation():
+    shapes = [GeoPoint(Coordinate(float(i), 0.0), dt=datetime(2020, 1, i + 1)) for i in range(5)]
+    track = _warm(Track([shapes[0], shapes[2]]))
+
+    # Appended shapes take their place in time
+    track.append(shapes[1])
+    assert track.geoshapes == (shapes[0], shapes[1], shapes[2])
+    _assert_columns_fresh(track)
+
+    # Shapes starting at the same time go after those already present
+    same = GeoPoint(Coordinate(9.0, 9.0), dt=datetime(2020, 1, 2))
+    _warm(track).append(same)
+    assert track.geoshapes == (shapes[0], shapes[1], same, shapes[2])
+    _warm(track).extend([shapes[4], shapes[3]])
+    assert track.geoshapes == (shapes[0], shapes[1], same, shapes[2], shapes[3], shapes[4])
+    assert track.start == shapes[0].start and track.end == shapes[4].end
+
+    # Replacing a shape re-orders the track
+    late = GeoPoint(Coordinate(9.0, 9.0), dt=datetime(2021, 1, 1))
+    _warm(track)[0] = late
+    assert track.geoshapes == (shapes[1], same, shapes[2], shapes[3], shapes[4], late)
+    _warm(track)[:2] = [shapes[0]]
+    assert track.geoshapes == (shapes[0], shapes[2], shapes[3], shapes[4], late)
+    _assert_columns_fresh(track)
+
+    del _warm(track)[-1]
+    track.remove(shapes[2])
+    assert track.pop(0) == shapes[0]
+    track += shapes[1]
+    assert track.geoshapes == (shapes[1], shapes[3], shapes[4])
+    assert track[datetime(2020, 1, 4)].geoshapes == (shapes[3],)
+
+    with pytest.raises(ValueError):
+        track.append(GeoPoint(Coordinate(0.0, 0.0)))
+    with pytest.raises(ValueError):
+        track[0] = GeoPoint(Coordinate(0.0, 0.0))
+    with pytest.raises(TypeError):
+        track.extend([1])
+    assert len(track) == 3
+    assert not hasattr(track, 'insert')
 
 
 def test_collection_filter():
