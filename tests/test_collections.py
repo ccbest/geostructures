@@ -308,6 +308,27 @@ def test_collection_from_geopandas():
     assert col == new_col
 
 
+def test_collection_from_geopandas_missing_times():
+    import geopandas as gpd
+    import pandas as pd
+
+    start, end = pd.Timestamp('2020-01-01', tz='UTC'), pd.Timestamp('2020-01-02', tz='UTC')
+    df = gpd.GeoDataFrame(
+        {
+            'datetime_start': [start, start, pd.NaT, pd.NaT],
+            'datetime_end': [end, pd.NaT, end, pd.NaT],
+        },
+        geometry=[shapely.Point(0, 0)] * 4,
+    )
+    col = FeatureCollection.from_geopandas(df)
+
+    # A missing (NaT) endpoint leaves an instant at the other
+    assert col[0].dt == TimeInterval(start, end)
+    assert col[1].dt == TimeInterval(start, start)
+    assert col[2].dt == TimeInterval(end, end)
+    assert col[3].dt is None
+
+
 def test_collection_from_geojson():
     gjson = {
         'type': 'FeatureCollection',

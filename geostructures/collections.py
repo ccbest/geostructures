@@ -274,15 +274,13 @@ class CollectionBase:
 
         def _get_dt(rec):
             """Grabs datetime data and returns appropriate struct"""
-            dt_start = rec.get(time_start_field)
-            dt_end = rec.get(time_end_field)
-            if not (
-                (not pd.isnull(dt_start) and isinstance(dt_start, datetime)) or
-                (not pd.isnull(dt_end) and isinstance(dt_end, datetime))
-            ):
-                return None
-
-            if not (dt_start and dt_end) or dt_start == dt_end:
+            # Anything other than a datetime is missing, including pandas' NaT
+            # (which is truthy, so must be removed before the checks below)
+            dt_start, dt_end = (
+                value if isinstance(value, datetime) and not pd.isnull(value) else None
+                for value in (rec.get(time_start_field), rec.get(time_end_field))
+            )
+            if dt_start is None or dt_end is None or dt_start == dt_end:
                 return dt_start or dt_end
 
             return TimeInterval(dt_start, dt_end)
