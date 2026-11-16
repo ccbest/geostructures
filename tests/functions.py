@@ -14,18 +14,13 @@ Two comparison styles exist here, for different purposes:
 """
 
 from datetime import datetime, timezone
-import math
-from typing import List
 
-import numpy as np
 from pytest import approx
 
 from geostructures import (
-    Coordinate, GeoEllipse, GeoLineString, GeoPoint, GeoPolygon, GeoRing,
+    Coordinate, GeoLineString, GeoPoint, GeoPolygon,
     MultiGeoPolygon, MultiGeoLineString, MultiGeoPoint,
 )
-from geostructures._const import EARTH_RADIUS_METERS
-from geostructures.geodesic import destination_point
 from geostructures.typing import GeoShape, LineLike, MultiShape, PointLike, PolygonLike
 from geostructures.utils.functions import round_half_up
 
@@ -226,81 +221,3 @@ def shapely_round_trip(shape: GeoShape):
     parsed = conv_map[geom.geom_type].from_shapely(geom)
     _assert_parsed_equivalent(shape, parsed)
     return parsed
-
-
-def _points_inside(shape, n: int = 2000, seed: int = 0) -> List[Coordinate]:
-    """
-    Random points inside a GeoCircle, GeoEllipse or GeoRing, placed with
-    destination_point at a random bearing and a distance within the shape's
-    own limits. A tenth of the ring points sit exactly on a wedge's straight
-    edges, which an outline does not sample.
-    """
-    rng = np.random.default_rng(seed)
-    if isinstance(shape, GeoRing):
-        bearings = rng.uniform(shape.angle_min, shape.angle_max, n)
-        bearings[: n // 20] = shape.angle_min
-        bearings[n // 20: n // 10] = shape.angle_max
-        distances = rng.uniform(shape.inner_radius, shape.outer_radius, n)
-    elif isinstance(shape, GeoEllipse):
-        bearings = rng.uniform(0., 360., n)
-        limits = [shape._radius_at_angle(math.radians(b - shape.rotation)) for b in bearings]
-        distances = rng.uniform(0., 1., n) * np.array(limits)
-    else:
-        bearings = rng.uniform(0., 360., n)
-        distances = rng.uniform(0., shape.radius, n)
-
-    return [
-        destination_point(shape.center, float(b), float(d))
-        for b, d in zip(bearings, distances)
-    ]
-
-
-def assert_bounds_contain_shape(shape, largest_radius: float):
-    """
-    Asserts that a curved shape's bounds contain the shape, tightly:
-
-    * every point of a dense outline lies inside bounds (1e-9 degrees)
-    * no side of bounds is looser than the outline's extent by more than
-      0.01% of the shape's largest radius
-    * 2,000 random points inside the shape lie inside bounds
-
-    Longitudes are compared relative to the shape's center so that shapes
-    crossing the antimeridian are measured correctly.
-    """
-    tol = 1e-9
-    center_lon = shape.center.longitude
-
-    def rel(lon: float) -> float:
-        return (lon - center_lon + 180.) % 360. - 180.
-
-    min_lon, min_lat, max_lon, max_lat = shape.bounds
-    min_lon, max_lon = rel(min_lon), rel(max_lon)
-
-    def assert_inside(points: List[Coordinate]):
-        for point in points:
-            lon = rel(point.longitude)
-            assert min_lon - tol <= lon <= max_lon + tol, (shape.bounds, point)
-            assert min_lat - tol <= point.latitude <= max_lat + tol, (shape.bounds, point)
-
-    outline = shape.bounding_coords(k=7200)
-    if isinstance(shape, GeoRing) and shape.angle_max - shape.angle_min < 360:
-        # A wedge's straight edges can reach past its arcs at high latitude
-        outline += [
-            destination_point(shape.center, angle, float(d))
-            for angle in (shape.angle_min, shape.angle_max)
-            for d in np.linspace(shape.inner_radius, shape.outer_radius, 400)
-        ]
-    assert_inside(outline)
-    assert_inside(_points_inside(shape))
-
-    # Looseness of each side, in meters
-    deg_to_m = math.pi / 180 * EARTH_RADIUS_METERS
-    west = min(outline, key=lambda c: rel(c.longitude))
-    east = max(outline, key=lambda c: rel(c.longitude))
-    slack = (
-        (rel(west.longitude) - min_lon) * deg_to_m * math.cos(math.radians(west.latitude)),
-        (max_lon - rel(east.longitude)) * deg_to_m * math.cos(math.radians(east.latitude)),
-        (min(c.latitude for c in outline) - min_lat) * deg_to_m,
-        (max_lat - max(c.latitude for c in outline)) * deg_to_m,
-    )
-    assert max(slack) <= 1e-4 * largest_radius, (shape.bounds, slack)
