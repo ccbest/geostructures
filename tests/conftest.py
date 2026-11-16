@@ -7,6 +7,21 @@ import pytest
 from geostructures import FeatureCollection
 
 
+@pytest.fixture(params=['haversine', 'vincenty', 'karney'])
+def geodesic_algorithm(request):
+    """
+    Runs a test once under each geodesic algorithm, restoring Haversine
+    afterwards. Karney is skipped when geographiclib is not installed.
+    """
+    from geostructures.geodesic import set_geodesic_algorithm
+
+    if request.param == 'karney':
+        pytest.importorskip('geographiclib')
+    set_geodesic_algorithm(request.param)
+    yield request.param
+    set_geodesic_algorithm('haversine')
+
+
 @pytest.fixture
 def pyshp_round_trip(tmp_path):
     """

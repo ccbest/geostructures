@@ -28,6 +28,7 @@ from geostructures._base import (
     _RE_LINESTRING_WKT, BaseShape, LineLikeMixin, PointLikeMixin, PolygonLikeMixin,
     SingleShapeBase, SimpleShapeMixin
 )
+from geostructures._bounds import circle_bounds, sampled_bounds
 from geostructures.time import GEOTIME_TYPE
 from geostructures.coordinates import Coordinate
 from geostructures.geodesic import bearing_degrees, destination_point, distance_meters
@@ -850,12 +851,7 @@ class GeoCircle(PolygonBase):
 
     @cached_property
     def bounds(self) -> tuple[float, float, float, float]:
-        # cardinal directions – no √2 expansion
-        north = destination_point(self.center, 0, self.radius)
-        east = destination_point(self.center, 90, self.radius)
-        south = destination_point(self.center, 180, self.radius)
-        west = destination_point(self.center, 270, self.radius)
-        return west.longitude, south.latitude, east.longitude, north.latitude
+        return circle_bounds(self.center, self.radius)
 
     @property
     def centroid(self) -> Coordinate:
@@ -976,21 +972,19 @@ class GeoEllipse(PolygonBase):
 
     @cached_property
     def bounds(self) -> Tuple[float, float, float, float]:
-        rot_rad = math.radians(self.rotation)
-        cos_rot_sq = math.cos(rot_rad)**2
-        sin_rot_sq = math.sin(rot_rad)**2
-        semi_major_sq = self.semi_major**2
-        semi_minor_sq = self.semi_minor**2
-
-        dx = math.sqrt(semi_major_sq * sin_rot_sq + semi_minor_sq * cos_rot_sq)
-        dy = math.sqrt(semi_major_sq * cos_rot_sq + semi_minor_sq * sin_rot_sq)
-
-        max_lat = destination_point(self.centroid, 0, dy).latitude
-        max_lon = destination_point(self.centroid, 90, dx).longitude
-        min_lat = destination_point(self.centroid, 180, dy).latitude
-        min_lon = destination_point(self.centroid, 270, dx).longitude
-
-        return min_lon, min_lat, max_lon, max_lat
+        # No closed form; sample the outline and pad. Samples are evenly spaced
+        # in the parametric angle t (point a*cos(t), b*sin(t)), not in bearing:
+        # evenly spaced bearings leave gaps near the tips that bulge further
+        # than the padding allows
+        params = np.linspace(0., 2. * math.pi, 256, endpoint=False)
+        along_major = self.semi_major * np.cos(params)
+        along_minor = self.semi_minor * np.sin(params)
+        return sampled_bounds(
+            self.center,
+            np.degrees(np.arctan2(along_minor, along_major)) + self.rotation,
+            np.hypot(along_major, along_minor),
+            self.semi_major,
+        )
 
     @property
     def centroid(self) -> Coordinate:
@@ -1242,19 +1236,19 @@ class GeoRing(PolygonBase):
     @cached_property
     def bounds(self) -> Tuple[float, float, float, float]:
         if self.angle_max - self.angle_min >= 360:
-            nw_bound = destination_point(
-                self.center, 315, self.outer_radius * math.sqrt(2)
-            )
-            se_bound = destination_point(
-                self.center, 135, self.outer_radius * math.sqrt(2)
-            )
-            return nw_bound.longitude, se_bound.latitude, se_bound.longitude, nw_bound.latitude
+            return circle_bounds(self.center, self.outer_radius)
 
-        lons, lats = cast(
-            Tuple[List[float], List[float]],
-            zip(*[y.to_float() for y in self.bounding_coords()])
+        # A wedge: sample both arcs (which include the four corners) and both
+        # straight edges, which at high latitude can reach past the arcs
+        arc = np.linspace(self.angle_min, self.angle_max, 257)
+        edge = np.linspace(self.inner_radius, self.outer_radius, 64)
+        bearings = np.concatenate(
+            (arc, arc, np.full(64, self.angle_min), np.full(64, self.angle_max))
         )
-        return min(lons), min(lats), max(lons), max(lats)
+        distances = np.concatenate(
+            (np.full(257, self.outer_radius), np.full(257, self.inner_radius), edge, edge)
+        )
+        return sampled_bounds(self.center, bearings, distances, self.outer_radius)
 
     @property
     def centroid(self) -> Coordinate:

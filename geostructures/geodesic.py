@@ -13,7 +13,9 @@ __all__ = [
 ]
 
 import math
-from typing import Literal
+from typing import Literal, Tuple
+
+import numpy as np
 
 from geostructures._const import WGS84_A, WGS84_B, WGS84_F, EARTH_RADIUS_METERS
 from geostructures.coordinates import Coordinate
@@ -59,6 +61,34 @@ def haversine_destination(
                              math.cos(ang_dist) - math.sin(lat1) * math.sin(lat2))
 
     return Coordinate(math.degrees(lon2), math.degrees(lat2))
+
+
+def _haversine_destination_array(
+        start: Coordinate,
+        bearings: np.ndarray,
+        distances: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Array form of haversine_destination: one start, arrays of bearings (degrees)
+    and distances (meters). Mirrors the scalar expression order.
+
+    Returns:
+        Longitudes and latitudes in degrees. Longitudes are not wrapped to
+        [-180, 180), so they stay continuous across the antimeridian.
+    """
+    lon1 = math.radians(start.longitude)
+    lat1 = math.radians(start.latitude)
+    bearing_rad = np.radians(bearings)
+
+    ang_dist = distances / EARTH_RADIUS_METERS
+
+    lat2 = np.arcsin(math.sin(lat1) * np.cos(ang_dist) +
+                     math.cos(lat1) * np.sin(ang_dist) * np.cos(bearing_rad))
+
+    lon2 = lon1 + np.arctan2(np.sin(bearing_rad) * np.sin(ang_dist) * math.cos(lat1),
+                             np.cos(ang_dist) - math.sin(lat1) * np.sin(lat2))
+
+    return np.degrees(lon2), np.degrees(lat2)
 
 
 def haversine_bearing(start: Coordinate, end: Coordinate) -> float:
@@ -364,6 +394,11 @@ def destination_point(start: Coordinate, bearing_degrees: float, distance: float
 def bearing_degrees(start: Coordinate, end: Coordinate) -> float:
     """Calculates bearing using the currently active algorithm."""
     return _active_bearing(start, end)
+
+
+def _active_is_haversine() -> bool:
+    """True when the active geodesic algorithm is Haversine."""
+    return _active_destination is haversine_destination
 
 
 # These declare the algos in use (default haversine)

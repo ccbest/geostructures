@@ -1,13 +1,14 @@
 
 from datetime import datetime
 
+import pytest
 from pytest import approx
 
 from geostructures import GeoBox, GeoCircle, GeoPolygon
 from geostructures.coordinates import Coordinate
 
 from tests.functions import (
-    assert_coordinates_equal, default_test_datetime,
+    assert_bounds_contain_shape, assert_coordinates_equal, default_test_datetime,
     geojson_round_trip, shapely_round_trip, wkt_round_trip,
 )
 
@@ -46,6 +47,30 @@ def test_geocircle_bounds():
     expected = (-0.0089932, -0.0089932, 0.0089932, 0.0089932)
     for b1, b2 in zip(actual, expected):
         assert b1 == approx(b2, abs=1e-6)
+
+
+@pytest.mark.parametrize('lat', [0., 45., -45., 75., -75., 85.])
+@pytest.mark.parametrize('radius', [1_000., 100_000.])
+def test_geocircle_bounds_contain_shape(geodesic_algorithm, lat, radius):
+    assert_bounds_contain_shape(GeoCircle(Coordinate(10., lat), radius), radius)
+
+
+def test_geocircle_bounds_reaching_pole(geodesic_algorithm):
+    assert GeoCircle(Coordinate(10., 89.5), 100_000).bounds[0] == -180.
+    bounds = GeoCircle(Coordinate(10., 89.5), 100_000).bounds
+    assert (bounds[0], bounds[2], bounds[3]) == (-180., 180., 90.)
+
+    bounds = GeoCircle(Coordinate(10., -89.5), 100_000).bounds
+    assert (bounds[0], bounds[1], bounds[2]) == (-180., -90., 180.)
+
+
+def test_geocircle_bounds_across_antimeridian(geodesic_algorithm):
+    # West edge first, east edge second, each wrapped to [-180, 180)
+    circle = GeoCircle(Coordinate(179.8, 20.), 100_000)
+    min_lon, _, max_lon, _ = circle.bounds
+    assert 178. < min_lon < 179.8
+    assert -180. < max_lon < -179.
+    assert_bounds_contain_shape(circle, 100_000)
 
 
 def test_geocircle_bounding_coords():
