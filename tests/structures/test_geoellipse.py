@@ -3,13 +3,14 @@ from datetime import datetime
 
 import numpy as np
 from numpy.testing import assert_allclose
+import pytest
 from pytest import approx
 
 from geostructures import GeoBox, GeoCircle, GeoEllipse, GeoPolygon
 from geostructures.coordinates import Coordinate
 
 from tests.functions import (
-    assert_coordinates_equal, default_test_datetime,
+    assert_bounds_contain_shape, assert_coordinates_equal, default_test_datetime,
     geojson_round_trip, shapely_round_trip, wkt_round_trip,
 )
 
@@ -54,6 +55,13 @@ def test_geoellipse_bounds():
     expected = (-0.0071098, -0.0071098, 0.0071098, 0.0071098)
     for b1, b2 in zip(actual, expected):
         approx(b1, b2, abs=1e-6)
+
+
+@pytest.mark.parametrize('lat', [0., 45., -45., 75., -75., 85.])
+@pytest.mark.parametrize('rotation', [0., 30., 90., 135.])
+def test_geoellipse_bounds_contain_shape(geodesic_algorithm, lat, rotation):
+    ellipse = GeoEllipse(Coordinate(10., lat), 100_000, 40_000, rotation)
+    assert_bounds_contain_shape(ellipse, 100_000)
 
 
 def test_geoellipse_bounding_coords():
@@ -142,8 +150,8 @@ def test_geoellipse_circumscribing_rectangle():
 
     actual = ellipse.circumscribing_rectangle()
     expected = GeoBox(
-        Coordinate(-0.0089932, 0.0044966),
-        Coordinate(0.0089932, -0.0044966),
+        Coordinate(-0.0089939, 0.0044973),
+        Coordinate(0.0089939, -0.0044973),
         dt=default_test_datetime
     )
     assert_coordinates_equal(actual.nw_bound, expected.nw_bound)

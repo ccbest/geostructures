@@ -92,6 +92,17 @@ to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **`bounds` of `GeoCircle`, `GeoEllipse` and `GeoRing` now contains the
+  shape.** The boxes were drawn through the shape's due north, east, south and
+  west points (or, for a wedge, a coarse outline), but away from the equator a
+  curved shape's widest point is not due east or west of its center, so parts
+  of the shape stuck out: by up to 1.6 km for a 100 km circle at 85° latitude,
+  and 16 km for a 100 km ring. Circles and full rings are now exact (a circle
+  reaching a pole spans every longitude); ellipses and wedges are sampled and
+  padded by the most the outline can bulge between samples, which also covers
+  a wedge's straight edges. The values change slightly, and more at high
+  latitudes. `circumscribing_rectangle()`, the GeoJSON `bbox` and
+  `collection.bounds` change with them.
 - **Zero-area polygons no longer crash `centroid`.** `GeoPolygon.centroid` and
   `MultiGeoPolygon.centroid` raised `ZeroDivisionError` ("weights sum to zero")
   for degenerate rings — collinear or duplicate coordinates — because there was

@@ -1,6 +1,7 @@
 
 from datetime import datetime
 
+import pytest
 from pytest import approx
 
 from geostructures import GeoBox, GeoCircle, GeoPolygon, GeoRing
@@ -9,7 +10,7 @@ from geostructures.geodesic import destination_point, distance_meters
 from geostructures.utils.functions import round_half_up
 
 from tests.functions import (
-    assert_coordinates_equal, assert_geopolygons_equal, default_test_datetime,
+    assert_bounds_contain_shape, assert_coordinates_equal, assert_geopolygons_equal, default_test_datetime,
     geojson_round_trip, shapely_round_trip,
 )
 
@@ -62,9 +63,16 @@ def test_georing_bounds():
         assert b1 == approx(b2, abs=1e-6)
 
     wedge = GeoRing(Coordinate(0., 0.), 1000, 5000, 90, 180)
-    expected = (0., -0.0449661, 0.0449661, 0.)
+    expected = (-0.0000034, -0.0449695, 0.0449695, 0.0000034)
     for b1, b2 in zip(wedge.bounds, expected):
         assert b1 == approx(b2, abs=1e-6)
+
+
+@pytest.mark.parametrize('lat', [0., 45., -45., 75., -75., 85.])
+@pytest.mark.parametrize('angles', [(0., 360.), (10., 95.), (40., 140.), (300., 420.)])
+def test_georing_bounds_contain_shape(geodesic_algorithm, lat, angles):
+    ring = GeoRing(Coordinate(10., lat), 20_000, 100_000, *angles)
+    assert_bounds_contain_shape(ring, 100_000)
 
 
 def test_georing_bounding_coords():
@@ -277,8 +285,8 @@ def test_georing_circumscribing_rectangle():
 
     actual = wedge.circumscribing_rectangle()
     expected = GeoBox(
-        wedge.center,
-        Coordinate(max_lon, min_lat),
+        Coordinate(-0.0000007, 0.0000007),
+        Coordinate(0.0089939, -0.0089939),
         dt=default_test_datetime
     )
     assert_coordinates_equal(actual.nw_bound, expected.nw_bound)
