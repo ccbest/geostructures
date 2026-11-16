@@ -16,7 +16,7 @@ from geostructures import (
     GeoPoint, GeoPolygon, GeoRing, MultiGeoPoint, MultiGeoPolygon, Track
 )
 from geostructures._columnar import ShapeColumns, points_in_shape, shape_envelope
-from geostructures.geodesic import set_geodesic_algorithm
+from geostructures.geodesic import destination_point, set_geodesic_algorithm
 from geostructures.time import TimeInterval
 
 
@@ -225,11 +225,70 @@ def test_points_in_shape_matches_contains_coordinate(seed):
             [shape.contains_coordinate(c) for c in coords]
 
 
-def test_points_in_shape_unsupported():
+def _curved_shapes(lon, lat):
+    center = Coordinate(lon, lat)
+    hole = GeoCircle(Coordinate(lon, lat), 20_000)
+    return [
+        GeoCircle(center, 150_000),
+        GeoCircle(center, 150_000, holes=[hole]),
+        GeoEllipse(center, 200_000, 50_000, 30),
+        GeoEllipse(center, 50_000, 200_000, 300, holes=[hole]),
+        GeoRing(center, 50_000, 150_000),
+        GeoRing(center, 0, 150_000, 45, 135),
+        # A wedge spanning due north
+        GeoRing(center, 30_000, 150_000, 315, 405, holes=[hole]),
+    ]
+
+
+@pytest.mark.parametrize('center', [(0., 0.), (179.5, 10.), (-179.9, -30.), (40., 88.5), (0., -89.9)])
+def test_curved_points_in_shape_matches_contains_coordinate(center):
+    rnd = random.Random(str(center))
+    lon, lat = center
+    for shape in _curved_shapes(lon, lat):
+        # Random points, the shape's own outline (on the boundary), its
+        # center, and points along each wedge edge
+        coords = [
+            Coordinate(lon + rnd.uniform(-5, 5), max(-90., min(90., lat + rnd.uniform(-3, 3))))
+            for _ in range(500)
+        ]
+        coords += shape.bounding_coords(k=360)
+        coords.append(shape.center)
+        for hole in shape.holes:
+            coords += hole.bounding_coords(k=90)
+        if isinstance(shape, GeoRing):
+            for angle in (shape.angle_min, shape.angle_max):
+                coords += [destination_point(shape.center, angle, d) for d in (1., 40_000., 100_000.)]
+
+        lons = np.array([c.longitude for c in coords])
+        lats = np.array([c.latitude for c in coords])
+        expected = [shape.contains_coordinate(c) for c in coords]
+        assert any(expected) and not all(expected)
+        assert points_in_shape(shape, lons, lats).tolist() == expected, shape
+
+
+class _UnsupportedPolygon(GeoPolygon):
+    """Kernels are looked up by exact type, so a subclass has none"""
+
+
+def test_points_in_shape_unsupported(geodesic_algorithm):
     lons, lats = np.zeros(1), np.zeros(1)
-    assert points_in_shape(GeoCircle(Coordinate(0., 0.), 1_000), lons, lats) is None
-    box = GeoBox(Coordinate(-1., 1.), Coordinate(1., -1.), holes=[GeoCircle(Coordinate(0., 0.), 1_000)])
-    assert points_in_shape(box, lons, lats) is None
+    line = GeoLineString([Coordinate(0., 0.), Coordinate(1., 1.)])
+    assert points_in_shape(line, lons, lats) is None
+    hole = _UnsupportedPolygon(GeoBox(Coordinate(-0.1, 0.1), Coordinate(0.1, -0.1)).bounding_coords())
+    for shape in (
+        GeoBox(Coordinate(-1., 1.), Coordinate(1., -1.), holes=[hole]),
+        GeoCircle(Coordinate(0., 0.), 100_000, holes=[hole]),
+        GeoEllipse(Coordinate(0., 0.), 1_000, 0, 0),
+    ):
+        assert points_in_shape(shape, lons, lats) is None
+
+    # The curved kernels mirror the Haversine functions only
+    curved = _curved_shapes(0., 0.)
+    box = GeoBox(Coordinate(-1., 1.), Coordinate(1., -1.), holes=[curved[0]])
+    if geodesic_algorithm == 'haversine':
+        assert all(points_in_shape(x, lons, lats) is not None for x in [*curved, box])
+    else:
+        assert all(points_in_shape(x, lons, lats) is None for x in [*curved, box])
 
 
 @pytest.mark.parametrize('center', [(0., 0.), (0., 60.), (179.5, 0.), (10., 89.)])
@@ -260,6 +319,26 @@ def test_shape_envelope_unknown_shape_spans_globe():
 
     assert shape_envelope(CustomPoint(Coordinate(0., 0.))) == \
         (-math.inf, -math.inf, math.inf, math.inf)
+
+
+@pytest.mark.parametrize('seed', range(3))
+def test_collection_bounds_match_shape_bounds(seed):
+    rnd = random.Random(seed)
+    shapes, _ = _random_shapes(rnd, 200)
+    points = [x for x in shapes if isinstance(x, GeoPoint)]
+    others = [x for x in shapes if not isinstance(x, GeoPoint)]
+    for subset in (shapes, points, others, points[:1], others[:1]):
+        all_bounds = [x.bounds for x in subset]
+        expected = (
+            min(x[0] for x in all_bounds), min(x[1] for x in all_bounds),
+            max(x[2] for x in all_bounds), max(x[3] for x in all_bounds),
+        )
+        bounds = FeatureCollection(subset).bounds
+        assert bounds == expected
+        assert [type(x) for x in bounds] == [float] * 4
+
+    with pytest.raises(ValueError):
+        _ = FeatureCollection([]).bounds
 
 
 def test_shape_columns_take_carries_computed_arrays():

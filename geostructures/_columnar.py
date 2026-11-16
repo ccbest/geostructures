@@ -17,6 +17,7 @@ from typing import Callable, Dict, Optional, Sequence, Tuple, Type
 
 import numpy as np
 
+from geostructures import geodesic
 from geostructures._base import BaseShape
 from geostructures._const import COORDINATE_TOLERANCE, EARTH_RADIUS_METERS
 from geostructures._geometry import ensure_edge_bounds
@@ -41,6 +42,18 @@ _CAP_RADIUS_FACTOR = 1.01
 
 # Mirrors math.isclose's default, used by GeoPolygon._point_in_polygon
 _ISCLOSE_REL_TOL = 1e-9
+
+# The curved-shape kernels use numpy trigonometry, which can differ from
+# math's in the last bit. Points this close to a threshold are re-tested with
+# the shape's own contains_coordinate, so the results match it exactly
+_DISTANCE_MARGIN = 1e-3  # meters
+_RELATIVE_MARGIN = 1e-9
+_BEARING_MARGIN = 1e-6  # degrees
+
+# Bearings are ill-conditioned close to the center, and distances and bearings
+# both close to the antipode; points there are always re-tested
+_BEARING_MIN_DISTANCE = 10.  # meters
+_ANTIPODE_DISTANCE = math.pi * EARTH_RADIUS_METERS - 1_000.  # meters
 
 
 def _micros(dt: datetime) -> int:
@@ -115,9 +128,10 @@ def shape_envelope(shape: BaseShape, pad: bool = True) -> _ENVELOPE:
     """
     A (min_lon, min_lat, max_lon, max_lat) box guaranteed to contain everything
     the exact predicates consider part of the shape; two shapes whose envelopes
-    don't overlap can't intersect. Unlike shape.bounds (which for curved shapes
-    is drawn through the cardinal points) this never undercuts the shape, so it
-    is safe for discarding candidates. Unrecognized shape types span the globe.
+    don't overlap can't intersect. It is kept apart from shape.bounds because it
+    is padded beyond the predicates' tolerance, and because a shape covering a
+    pole or crossing the antimeridian spans every longitude here, so it is safe
+    for discarding candidates. Unrecognized shape types span the globe.
 
     The padded envelope is cached on the shape (and discarded with its other
     cached values), so collections can gather it rather than recompute it.
@@ -191,7 +205,7 @@ def _points_in_ring(
 def _exclude_holes(shape, result: np.ndarray, lons: np.ndarray, lats: np.ndarray):
     for hole in shape.holes:
         idx = np.flatnonzero(result)
-        if not len(idx):
+        if idx.size == 0:
             break
 
         in_hole = points_in_shape(hole, lons[idx], lats[idx])
@@ -222,9 +236,146 @@ def _box_contains(box: GeoBox, lons: np.ndarray, lats: np.ndarray):
     return _exclude_holes(box, result, lons, lats)
 
 
+def _haversine_is_active() -> bool:
+    """The curved kernels mirror the Haversine functions, so apply only while they are in use"""
+    return (
+        geodesic._active_distance is geodesic.haversine_distance  # pylint: disable=protected-access
+        and geodesic._active_bearing is geodesic.haversine_bearing  # pylint: disable=protected-access
+    )
+
+
+def _haversine_distances(start_lon, start_lat, end_lon, end_lat) -> np.ndarray:
+    """Vectorized geodesic.haversine_distance, operation for operation"""
+    lon1, lat1 = np.radians(start_lon), np.radians(start_lat)
+    lon2, lat2 = np.radians(end_lon), np.radians(end_lat)
+
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+
+    return EARTH_RADIUS_METERS * c
+
+
+def _haversine_bearings(start_lon, start_lat, end_lon, end_lat) -> np.ndarray:
+    """Vectorized geodesic.haversine_bearing, operation for operation"""
+    lon1, lat1 = np.radians(start_lon), np.radians(start_lat)
+    lon2, lat2 = np.radians(end_lon), np.radians(end_lat)
+
+    dlon = lon2 - lon1
+
+    y = np.sin(dlon) * np.cos(lat2)
+    x = np.cos(lat1) * np.sin(lat2) - np.sin(lat1) * np.cos(lat2) * np.cos(dlon)
+
+    return (np.degrees(np.arctan2(y, x)) + 360) % 360
+
+
+def _distance_margin(radius: float) -> float:
+    return _DISTANCE_MARGIN + _RELATIVE_MARGIN * radius
+
+
+def _near_bearing(bearings: np.ndarray, angle: float) -> np.ndarray:
+    """Bearings within _BEARING_MARGIN of angle, either way around the circle"""
+    diff = (bearings - angle) % 360
+    return (diff <= _BEARING_MARGIN) | (diff >= 360 - _BEARING_MARGIN)
+
+
+def _unreliable(distances: np.ndarray) -> np.ndarray:
+    """Points whose distance or bearing from the center is ill-conditioned"""
+    return (distances < _BEARING_MIN_DISTANCE) | (distances > _ANTIPODE_DISTANCE)
+
+
+def _resolve_curved(shape, inside: np.ndarray, unsure: np.ndarray, lons: np.ndarray, lats: np.ndarray):
+    """
+    Excludes holes from the points decided on arrays, then re-tests the points
+    too close to call with the shape's own contains_coordinate.
+    """
+    result = _exclude_holes(shape, inside & ~unsure, lons, lats)
+    if result is None:
+        return None
+
+    for i in np.flatnonzero(unsure).tolist():
+        result[i] = shape.contains_coordinate(Coordinate(float(lons[i]), float(lats[i])))
+    return result
+
+
+def _circle_contains(circle: GeoCircle, lons: np.ndarray, lats: np.ndarray):
+    """Vectorized GeoCircle.contains_coordinate (Haversine only)"""
+    if not _haversine_is_active():
+        return None
+
+    center = circle.center
+    distances = _haversine_distances(lons, lats, center.longitude, center.latitude)
+    unsure = (
+        (np.abs(distances - circle.radius) <= _distance_margin(circle.radius))
+        | (distances > _ANTIPODE_DISTANCE)
+    )
+    return _resolve_curved(circle, distances <= circle.radius, unsure, lons, lats)
+
+
+def _ellipse_contains(ellipse: GeoEllipse, lons: np.ndarray, lats: np.ndarray):
+    """Vectorized GeoEllipse.contains_coordinate (Haversine only)"""
+    if not _haversine_is_active():
+        return None
+
+    semi_major, semi_minor = ellipse.semi_major, ellipse.semi_minor
+    longest, shortest = max(semi_major, semi_minor), min(semi_major, semi_minor)
+    if shortest <= 0:
+        return None
+
+    center = ellipse.center
+    bearings = _haversine_bearings(center.longitude, center.latitude, lons, lats)
+    angles = np.radians(bearings - ellipse.rotation)
+    radii = (
+        semi_major
+        * semi_minor
+        / np.sqrt(
+            (semi_major**2) * (np.sin(angles) ** 2)
+            + (semi_minor**2) * (np.cos(angles) ** 2)
+        )
+    )
+    distances = _haversine_distances(center.longitude, center.latitude, lons, lats)
+
+    # The radius varies with bearing, so a bearing's rounding error moves it
+    # by up to roughly longest * (longest / shortest) times that error
+    margin = _distance_margin(longest * (longest / shortest) ** 2)
+    unsure = (np.abs(distances - radii) <= margin) | _unreliable(distances)
+    return _resolve_curved(ellipse, distances <= radii, unsure, lons, lats)
+
+
+def _ring_contains(ring: GeoRing, lons: np.ndarray, lats: np.ndarray):
+    """Vectorized GeoRing.contains_coordinate (Haversine only)"""
+    if not _haversine_is_active():
+        return None
+
+    center = ring.center
+    distances = _haversine_distances(center.longitude, center.latitude, lons, lats)
+    inside = (ring.inner_radius <= distances) & (distances <= ring.outer_radius)
+    unsure = (
+        (np.abs(distances - ring.inner_radius) <= _distance_margin(ring.inner_radius))
+        | (np.abs(distances - ring.outer_radius) <= _distance_margin(ring.outer_radius))
+        | (distances > _ANTIPODE_DISTANCE)
+    )
+
+    if ring.angle_max - ring.angle_min < 360:
+        bearings = _haversine_bearings(center.longitude, center.latitude, lons, lats)
+        inside &= (bearings - ring.angle_min) % 360 <= ring.angle_max - ring.angle_min
+        unsure |= (
+            _near_bearing(bearings, ring.angle_min)
+            | _near_bearing(bearings, ring.angle_max)
+            | _unreliable(distances)
+        )
+
+    return _resolve_curved(ring, inside, unsure, lons, lats)
+
+
 _POINT_KERNELS: Dict[Type, Callable[..., Optional[np.ndarray]]] = {
     GeoPolygon: _polygon_contains,
     GeoBox: _box_contains,
+    GeoCircle: _circle_contains,
+    GeoEllipse: _ellipse_contains,
+    GeoRing: _ring_contains,
 }
 
 
@@ -264,6 +415,29 @@ class ShapeColumns:
         for i in np.flatnonzero(~is_point):
             envelopes[i] = shape_envelope(self._shapes[int(i)])
         return envelopes
+
+    def bounds(self) -> _ENVELOPE:
+        """
+        The (min_lon, min_lat, max_lon, max_lat) covering every shape's bounds,
+        as combining each shape.bounds would give. Points come from their
+        coordinate arrays; only other shapes are visited.
+        """
+        is_point, coords = self._points
+        all_bounds = [self._shapes[i].bounds for i in np.flatnonzero(~is_point).tolist()]
+        if is_point.any():
+            # Rows for other shapes hold NaN, which fmin and fmax ignore
+            lons, lats = coords[:, 0], coords[:, 1]
+            all_bounds.append((
+                float(np.fmin.reduce(lons)), float(np.fmin.reduce(lats)),
+                float(np.fmax.reduce(lons)), float(np.fmax.reduce(lats)),
+            ))
+
+        return (
+            min(x[0] for x in all_bounds),
+            min(x[1] for x in all_bounds),
+            max(x[2] for x in all_bounds),
+            max(x[3] for x in all_bounds)
+        )
 
     @cached_property
     def _times(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:

@@ -120,6 +120,10 @@ class CollectionBase:
     def __delitem__(self, index: Union[int, slice]):
         del self._modify()[index]
 
+    def extend(self, shapes: Iterable[BaseShape]):
+        """Add shapes to the collection"""
+        raise NotImplementedError  # pragma: no cover
+
     def pop(self, index: int = -1) -> BaseShape:
         """Remove and return the shape at index (default last)"""
         return self._modify().pop(index)
@@ -160,13 +164,7 @@ class CollectionBase:
 
     @cached_property
     def bounds(self) -> Tuple[float, float, float, float]:
-        all_bounds = [x.bounds for x in self.geoshapes]
-        return (
-            min(x[0] for x in all_bounds),
-            min(x[1] for x in all_bounds),
-            max(x[2] for x in all_bounds),
-            max(x[3] for x in all_bounds)
-        )
+        return self._columns.bounds()
 
     @property
     def centroid(self):

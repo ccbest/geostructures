@@ -252,8 +252,14 @@ to [Semantic Versioning](https://semver.org/).
   shape. Candidates are first narrowed by bounding envelope and time; GeoPoints
   tested against a `GeoPolygon` or `GeoBox` are then resolved with a vectorized
   point-in-polygon test, and anything else with the existing per-shape methods,
-  so results are unchanged. On 300k timed points, repeated filters run 30-145x
-  faster than before.
+  so results are unchanged. GeoPoints tested against a `GeoCircle`,
+  `GeoEllipse` or `GeoRing` are resolved with vectorized distance and bearing
+  tests while the Haversine algorithm is selected (the default), re-testing
+  points within a hair of the boundary with the shape's own method so results
+  stay identical. On 300k timed points, repeated filters run 30-145x faster
+  than before, and filtering by a curved shape runs 11-12x faster.
+  `collection.bounds` takes GeoPoints' coordinates from the same arrays,
+  visiting only other shapes.
 - **`collection + shape`** adds a single shape to a copy of a `FeatureCollection`
   or `Track`, and **`collection.filter(predicate)`** subsets by an arbitrary
   function, returning the same collection type. `+` reuses the filtering
