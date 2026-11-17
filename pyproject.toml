@@ -114,6 +114,7 @@ disable = [
     "too-many-locals",
     "too-many-statements",
     "too-many-positional-arguments",
+    "too-many-lines",
     # Misc
     "fixme",
     "unused-argument",

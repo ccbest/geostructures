@@ -135,6 +135,7 @@ class BaseShape(ABC):
     def __getstate__(self):
         state = self.__dict__.copy()
         state.pop('_shapely', None)
+        state.pop('_envelope', None)
         return state
 
     def __setstate__(self, state):
@@ -253,6 +254,7 @@ class BaseShape(ABC):
     def _clear_caches(self):
         """Discard cached derived values (shapely conversion and cached properties)"""
         self.__dict__.pop('_shapely', None)
+        self.__dict__.pop('_envelope', None)
         for name in _cached_property_names(type(self)):
             self.__dict__.pop(name, None)
 
