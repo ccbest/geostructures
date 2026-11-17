@@ -16,3 +16,4 @@ def test_compile():
     import geostructures.typing
     import geostructures.collections
     import geostructures.parsers
+    import geostructures._polars_io

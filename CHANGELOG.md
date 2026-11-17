@@ -295,6 +295,15 @@ to [Semantic Versioning](https://semver.org/).
   the coarsest resolution needs more.
   Supported by `H3Hasher` and `NiemeyerHasher`, which gain `coarsen()`,
   `get_cell_boundary()` and `get_neighbors()` to support it.
+- **`collection.to_polars(include_properties, lazy, geometry)`** converts a
+  `FeatureCollection` or `Track` to a Polars frame with one row per shape. The
+  `geometry` column is a light label such as `<GeoPoint>` (a `pl.Enum`), or
+  the shape objects themselves with `geometry='shape'`; time and properties
+  follow as ordinary columns, named as `to_geopandas()` names them, with
+  `datetime_start` and `datetime_end` in UTC. A property whose values have
+  different types across shapes becomes a `pl.Object` column. `lazy=True`
+  returns a `LazyFrame`. Requires the new `polars` extra
+  (`pip install geostructures[polars]`).
 - **`H3Hasher` accepts resolution 0.** The base cells were rejected as though no
   resolution had been given.
 - **`Coordinate.is_close(other, abs_tol=...)`** — a tolerance-based comparison

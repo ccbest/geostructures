@@ -499,6 +499,27 @@ def test_collection_convex_hull():
     ])
 
 
+def test_collection_to_polars():
+    import polars as pl
+
+    shapes = [
+        GeoPoint(Coordinate(0.0, 0.0), dt=datetime(2020, 1, 2, tzinfo=timezone.utc), properties={'i': 1}),
+        GeoPoint(Coordinate(1.0, 1.0), dt=datetime(2020, 1, 1, tzinfo=timezone.utc), properties={'i': 0}),
+    ]
+
+    frame = FeatureCollection(shapes).to_polars()
+    assert isinstance(frame, pl.DataFrame)
+    assert frame.columns == ['geometry', 'datetime_start', 'datetime_end', 'i']
+    assert frame['i'].to_list() == [1, 0]
+
+    # A Track's rows come out in time order
+    frame = Track(shapes).to_polars(include_properties=['i'], geometry='shape')
+    assert frame['i'].to_list() == [0, 1]
+    assert frame['geometry'].to_list()[0] is shapes[1]
+
+    assert isinstance(Track(shapes).to_polars(lazy=True), pl.LazyFrame)
+
+
 def test_collection_to_from_shapefile(pyshp_round_trip, caplog):
     # Tests both to and from because of temporary file usage
     # Shapes will be assigned an ID when written to shapefile, so have to hard code in tests

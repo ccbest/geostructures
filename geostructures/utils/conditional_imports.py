@@ -15,6 +15,7 @@ _PACKAGE_EXTRAS = {
     'h3': 'h3',
     'mgrs': 'mgrs',
     'pandas': 'df',
+    'polars': 'polars',
     'pyproj': 'proj',
     'shapefile': 'shapefile',
     'shapely': 'shapely',
