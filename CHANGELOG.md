@@ -7,6 +7,11 @@ to [Semantic Versioning](https://semver.org/).
 
 ### ⚠️ Breaking API Changes
 
+- **Python 3.9 is no longer supported.** It reached end of life in October
+  2025, and CI runners no longer provide it. `geostructures` now requires
+  Python 3.10 or later; installs on 3.9 resolve to the last release that
+  supported it.
+
 - **The deprecated geodesic functions in `geostructures.calc` have been
   removed.** They were deprecated with a runtime warning in 0.14.0 and carried
   their own copies of the geodesic formulas, which had drifted from the

@@ -7,7 +7,6 @@ authors = [{ name = "Carl Best" }]
 classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -18,7 +17,7 @@ dependencies = ["numpy>=2,<3", "pydantic>=2,<3"]
 description = "A lightweight implementation of shapes drawn across a geo-temporal plane."
 dynamic = ["version"]
 name = "geostructures"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 [project.optional-dependencies]
 all = [
@@ -85,13 +84,13 @@ plugins = ["pydantic.mypy"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W"]
 
 [tool.pylint.main]
-py-version = "3.9"
+py-version = "3.10"
 
 [tool.pylint.format]
 max-line-length = 120
