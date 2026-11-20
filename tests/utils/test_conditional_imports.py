@@ -36,3 +36,7 @@ def test_import_optional_names_extra(monkeypatch):
     with pytest.raises(ImportError) as excinfo:
         import_optional('shapely')
     assert 'pip install geostructures[shapely]' in str(excinfo.value)
+
+    with pytest.raises(ImportError) as excinfo:
+        import_optional('polars')
+    assert 'pip install geostructures[polars]' in str(excinfo.value)

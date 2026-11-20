@@ -25,6 +25,7 @@ from geostructures._base import (
 )
 from geostructures._columnar import ShapeColumns, points_in_shape, shape_envelope
 from geostructures._geometry import convex_hull
+from geostructures._polars_io import shapes_to_polars
 from geostructures.geodesic import distance_meters
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
@@ -723,6 +724,33 @@ class CollectionBase:
             ),
             geometry=gpd.GeoSeries.from_wkt([x.to_wkt() for x in self.geoshapes])
         )
+
+    def to_polars(
+        self,
+        include_properties: Optional[List[str]] = None,
+        lazy: bool = False,
+        geometry: str = 'label',
+    ):
+        """
+        Convert the collection to a Polars frame: one row per shape, a
+        `geometry` column, then time and properties as columns.
+
+        Args:
+            include_properties: (Optional)
+                The property keys to include as columns, in order. Defaults
+                to all properties present on any shape.
+
+            lazy: (Default False)
+                Return a polars.LazyFrame instead of a polars.DataFrame
+
+            geometry: (Default 'label')
+                'label' for a column reading e.g. '<GeoPoint>', or 'shape'
+                for a column holding the shapes themselves
+
+        Returns:
+            polars.DataFrame, or polars.LazyFrame if lazy is True
+        """
+        return shapes_to_polars(self.geoshapes, include_properties, lazy, geometry)
 
     def to_shapefile(
         self,
