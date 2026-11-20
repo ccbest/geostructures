@@ -25,7 +25,7 @@ from geostructures._base import (
 )
 from geostructures._columnar import ShapeColumns, points_in_shape, shape_envelope
 from geostructures._geometry import convex_hull
-from geostructures._polars_io import shapes_to_polars
+from geostructures._polars_io import collection_to_html, shapes_to_polars
 from geostructures.geodesic import distance_meters
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
@@ -201,6 +201,14 @@ class CollectionBase:
     def _columns(self) -> ShapeColumns:
         """Arrays derived from the shapes, used to filter the whole collection at once"""
         return ShapeColumns(self._shapes)
+
+    def _repr_html_(self) -> Optional[str]:
+        """Notebook display: a header and the table. None (so repr is used) without Polars"""
+        try:
+            import_optional('polars')
+        except ImportError:
+            return None
+        return collection_to_html(type(self).__name__, self.geoshapes)
 
     def _subset(self: _COL_TYPE, selection: Union[np.ndarray, Sequence[bool], Sequence[int]]) -> _COL_TYPE:
         """

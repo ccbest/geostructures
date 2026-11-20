@@ -309,6 +309,12 @@ to [Semantic Versioning](https://semver.org/).
   different types across shapes becomes a `pl.Object` column. `lazy=True`
   returns a `LazyFrame`. Requires the new `polars` extra
   (`pip install geostructures[polars]`).
+- **Collections display as a table in notebooks.** A `FeatureCollection` or
+  `Track` on a line by itself shows a header, such as
+  `FeatureCollection: 4,000 shapes x 6 fields (GeoPoint)`, and its
+  `to_polars()` table; longer than ten shapes, only the first five and last five
+  are shown and converted. Needs the `polars` extra; without it the notebook
+  shows `repr()` as before. `repr()` and `print()` are unchanged.
 - **`H3Hasher` accepts resolution 0.** The base cells were rejected as though no
   resolution had been given.
 - **`Coordinate.is_close(other, abs_tol=...)`** — a tolerance-based comparison

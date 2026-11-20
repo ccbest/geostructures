@@ -499,6 +499,23 @@ def test_collection_convex_hull():
     ])
 
 
+def test_collection_repr_html(monkeypatch):
+    import geostructures.collections as collections_module
+
+    shapes = [GeoPoint(Coordinate(0.0, 0.0), dt=datetime(2020, 1, 1, tzinfo=timezone.utc), properties={'i': 1})]
+    assert FeatureCollection(shapes)._repr_html_().startswith(
+        '<p>FeatureCollection: 1 shape x 3 fields (GeoPoint)</p>'
+    )
+    assert Track(shapes)._repr_html_().startswith('<p>Track: 1 shape')
+
+    # Without Polars a notebook falls back to repr()
+    def _raise(package):
+        raise ImportError(package)
+
+    monkeypatch.setattr(collections_module, 'import_optional', _raise)
+    assert FeatureCollection(shapes)._repr_html_() is None
+
+
 def test_collection_to_polars():
     import polars as pl
 
