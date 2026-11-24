@@ -8,7 +8,7 @@ from geostructures import (
 )
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
 from geostructures.time import TimeInterval
-from geostructures._polars_io import shapes_to_polars
+from geostructures._polars_io import collection_to_html, shapes_to_polars
 
 
 _SQUARE = [Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0), Coordinate(0.0, 0.0)]
@@ -137,3 +137,44 @@ def test_shapes_to_polars_geometry_property():
     assert shapes_to_polars(shapes).columns == ['geometry', 'a']
     assert shapes_to_polars(shapes)['geometry'].to_list() == ['<GeoPoint>']
     assert shapes_to_polars(shapes, include_properties=['geometry', 'a']).columns == ['geometry', 'a']
+
+
+def test_collection_to_html():
+    shapes = [
+        _point(properties={'a': 1, 'geometry': 'x'}),
+        GeoPolygon(_SQUARE, properties={'b': 'y'}),
+        _point(dt=datetime(2024, 1, 1, tzinfo=timezone.utc)),
+    ]
+    out = collection_to_html('FeatureCollection', shapes)
+    assert out.startswith('<p>FeatureCollection: 3 shapes x 4 fields (GeoPoint, GeoPolygon)</p>')
+    assert '&lt;GeoPoint&gt;' in out and '&lt;GeoPolygon&gt;' in out
+    assert 'showing' not in out
+
+    out = collection_to_html('Track', [_point()])
+    assert out.startswith('<p>Track: 1 shape x 0 fields (GeoPoint)</p>')
+
+    out = collection_to_html('FeatureCollection', [])
+    assert out.startswith('<p>FeatureCollection: 0 shapes x 0 fields</p>')
+
+
+def test_collection_to_html_long(monkeypatch):
+    import geostructures._polars_io as polars_io
+
+    shapes = [_point(properties={'i': i}) for i in range(10_000)]
+    converted = []
+    original = polars_io.shapes_to_polars
+
+    def _spy(sample, *args, **kwargs):
+        converted.append(len(sample))
+        return original(sample, *args, **kwargs)
+
+    monkeypatch.setattr(polars_io, 'shapes_to_polars', _spy)
+    out = collection_to_html('FeatureCollection', shapes)
+
+    assert converted == [10]
+    assert out.startswith(
+        '<p>FeatureCollection: 10,000 shapes x 1 field (GeoPoint); showing the first 5 and last 5</p>'
+    )
+    for i in (0, 4, 9995, 9999):
+        assert f'<td>{i}</td>' in out
+    assert '<td>5</td>' not in out and '<td>9994</td>' not in out
