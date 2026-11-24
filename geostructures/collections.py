@@ -730,7 +730,8 @@ class CollectionBase:
                     } for x in self.geoshapes
                 ]
             ),
-            geometry=gpd.GeoSeries.from_wkt([x.to_wkt() for x in self.geoshapes])
+            geometry=gpd.GeoSeries.from_wkt([x.to_wkt() for x in self.geoshapes]),
+            crs='EPSG:4326',
         )
 
     def to_polars(
