@@ -202,6 +202,13 @@ to [Semantic Versioning](https://semver.org/).
 
 ### ⚠️ Behavior Changes
 
+- **`from_geopandas()` converts frames in other CRSs to WGS84.** It read the
+  geometry's coordinates as longitude and latitude whatever the frame's CRS, so
+  a frame in a projected CRS was silently misread: a point at lon -76, lat 37
+  stored in EPSG:3857 came back as lon 78.70, lat -54.00. A frame whose CRS is
+  set and is not EPSG:4326 is now reprojected to EPSG:4326 first (the frame you
+  pass in is not modified). Frames in EPSG:4326, and frames with no CRS, are
+  read exactly as before.
 - **`circumscribing_circle()` returns the smallest enclosing circle for every
   shape that computes one numerically.** `GeoLineString`, `GeoRing` wedges,
   `GeoBox`, `MultiGeoPoint`, `MultiGeoLineString`, and `MultiGeoPolygon`

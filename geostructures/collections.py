@@ -491,6 +491,10 @@ class CollectionBase:
         import_optional('pandas')
         import pandas as pd
 
+        if df.crs is not None and not df.crs.equals('EPSG:4326'):
+            # Returns a new frame; the caller's frame is left as it was
+            df = df.to_crs('EPSG:4326')
+
         conv_map = {
             'Point': GeoPoint,
             'LineString': GeoLineString,
