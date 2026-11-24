@@ -309,6 +309,20 @@ def test_collection_from_geopandas():
     assert col == new_col
 
 
+def test_collection_to_geopandas_crs():
+    col = FeatureCollection([
+        GeoPoint(Coordinate(0.0, 1.0), properties={'name': 'a'}),
+        GeoLineString(
+            [Coordinate(0.0, 1.0), Coordinate(1.0, 1.0), Coordinate(1.0, 0.0)],
+            properties={'name': 'b'},
+        ),
+    ])
+    df = col.to_geopandas()
+
+    assert df.crs == 'EPSG:4326'
+    assert FeatureCollection.from_geopandas(df) == col
+
+
 def test_collection_from_geopandas_missing_times():
     import geopandas as gpd
     import pandas as pd

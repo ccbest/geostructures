@@ -258,6 +258,12 @@ to [Semantic Versioning](https://semver.org/).
   present, so an empty collection produced an archive containing no members at
   all — 22 bytes of end-of-central-directory record, which reads as a corrupt
   zip rather than as an empty result.
+- **`to_geopandas()` labels the returned frame `EPSG:4326`.** The frame
+  previously had no CRS (`crs` was `None`), although its coordinates are
+  WGS84. Code that reprojects it with `to_crs()` no longer needs to call
+  `set_crs()` first. **Calling `set_crs()` on it with a different CRS now
+  raises `ValueError`**; use `to_crs()` to transform the coordinates, or pass
+  `allow_override=True` to relabel them without transforming.
 
 ### Features
 
