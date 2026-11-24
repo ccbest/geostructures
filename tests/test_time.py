@@ -2,9 +2,10 @@
 from datetime import date, datetime, timedelta, timezone
 
 from fastkml.times import TimeSpan, TimeStamp, KmlDateTime
+import numpy as np
 import pytest
 
-from geostructures.time import TimeInterval
+from geostructures.time import TimeInterval, _TimeColumns, _to_micros
 
 
 def test_timeinterval_construction():
@@ -393,3 +394,65 @@ def test_timeinterval_caches_endpoints():
     restored = pickle.loads(pickle.dumps(interval))
     assert restored.start == interval.start and restored.start.tzinfo == plus_one
     assert interval.copy().end == interval.end
+
+
+def test_timecolumns_from_endpoints():
+    plus_one = timezone(timedelta(hours=1))
+    micros = lambda *args: _to_micros(datetime(*args, tzinfo=timezone.utc))
+
+    # Rows: both endpoints, only a start, only an end, neither
+    starts = np.array([micros(2020, 1, 1), micros(2020, 1, 2), 0, 0], dtype=np.int64)
+    has_start = np.array([True, True, False, False])
+    start_tz = np.array([timezone.utc, plus_one, None, None], dtype=object)
+    ends = np.array([micros(2020, 1, 5), 0, micros(2020, 1, 3), 0], dtype=np.int64)
+    has_end = np.array([True, False, True, False])
+    end_tz = np.array([plus_one, None, timezone.utc, None], dtype=object)
+
+    columns = _TimeColumns.from_endpoints(starts, has_start, start_tz, ends, has_end, end_tz)
+    assert len(columns) == 4
+    assert columns.has_dt.tolist() == [True, True, True, False]
+
+    both = columns.interval(0)
+    assert both == TimeInterval(datetime(2020, 1, 1, tzinfo=timezone.utc), datetime(2020, 1, 5, tzinfo=timezone.utc))
+    assert both.start.tzinfo == timezone.utc and both.end.tzinfo == plus_one
+
+    # A row with only one endpoint is an instant at it, in that endpoint's timezone
+    only_start = columns.interval(1)
+    assert only_start.is_instant
+    assert only_start.start == datetime(2020, 1, 2, tzinfo=timezone.utc)
+    assert only_start.start.tzinfo == plus_one and only_start.end.tzinfo == plus_one
+
+    only_end = columns.interval(2)
+    assert only_end.is_instant
+    assert only_end.end == datetime(2020, 1, 3, tzinfo=timezone.utc)
+    assert only_end.start.tzinfo == timezone.utc
+
+    assert columns.interval(3) is None
+
+    # An end before its start is rejected, as TimeInterval rejects it
+    with pytest.raises(ValueError, match='must not be less than start date'):
+        _TimeColumns.from_endpoints(ends, has_end, end_tz, starts, has_start, start_tz)
+
+    # ...but only where both endpoints are present
+    ends[1] = micros(2019, 1, 1)
+    _TimeColumns.from_endpoints(starts, has_start, start_tz, ends, has_end, end_tz)
+
+
+def test_timecolumns_take_and_interval():
+    plus_one = timezone(timedelta(hours=1))
+    intervals = [
+        TimeInterval(datetime(2020, 1, 1, tzinfo=plus_one), datetime(2020, 1, 2, tzinfo=timezone.utc)),
+        None,
+        TimeInterval(datetime(2020, 1, 3, tzinfo=timezone.utc), datetime(2020, 1, 3, tzinfo=timezone.utc)),
+    ]
+    columns = _TimeColumns.from_intervals(intervals)
+    assert [columns.interval(i) for i in range(3)] == intervals
+    assert columns.interval(0).start.tzinfo == plus_one
+
+    taken = columns.take(np.array([2, 0]))
+    assert len(taken) == 2
+    assert [taken.interval(i) for i in range(2)] == [intervals[2], intervals[0]]
+    assert taken.interval(1).start.tzinfo == plus_one
+
+    masked = columns.take(np.array([False, True, False]))
+    assert len(masked) == 1 and masked.interval(0) is None

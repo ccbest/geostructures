@@ -26,6 +26,7 @@ from geostructures._base import (
 from geostructures._columnar import ShapeColumns, points_in_shape, shape_envelope
 from geostructures._geometry import convex_hull
 from geostructures._polars_io import collection_to_html, shapes_to_polars
+from geostructures._shapely_io import LazyShapes, as_geometry_array, shapes_to_shapely
 from geostructures.geodesic import distance_meters
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
@@ -60,9 +61,14 @@ class CollectionBase:
     from the shapes - bounds, the convex hull, and the arrays used to filter
     quickly - are cached, and discarded whenever the collection is modified;
     the filtering arrays are rebuilt from values cached on each shape.
+
+    Collections read from shapely geometries (from_shapely) create each shape
+    only when it is first accessed. Indexing, iterating, filtering and
+    exporting create only the shapes they need; accessing `geoshapes`, or
+    modifying the collection, creates them all.
     """
 
-    _shapes: List[BaseShape]
+    _shapes: Union[List[BaseShape], LazyShapes]
 
     @validate_call(config={'arbitrary_types_allowed': True})
     def __init__(self, geoshapes: List[BaseShape]):
@@ -72,7 +78,7 @@ class CollectionBase:
     @classmethod
     def _from_shapes(
         cls: Type[_COL_TYPE],
-        shapes: List[BaseShape],
+        shapes: Union[List[BaseShape], LazyShapes],
         columns: Optional[ShapeColumns] = None,
     ) -> _COL_TYPE:
         """Creates a collection from shapes known to be valid for it, skipping __init__"""
@@ -81,6 +87,11 @@ class CollectionBase:
         if columns is not None:
             new.__dict__['_columns'] = columns
         return new
+
+    @classmethod
+    def _from_lazy(cls: Type[_COL_TYPE], shapes: LazyShapes) -> _COL_TYPE:
+        """Creates a collection from shapes created on demand"""
+        return cls._from_shapes(shapes)
 
     @cached_property
     def _shape_tuple(self) -> Tuple[BaseShape, ...]:
@@ -101,9 +112,12 @@ class CollectionBase:
     def _modify(self) -> List[BaseShape]:
         """
         The shapes as a list to modify in place, discarding values cached from
-        the current contents.
+        the current contents. Creates any shapes not yet created.
         """
         shapes = self._shapes
+        if isinstance(shapes, LazyShapes):
+            shapes = list(shapes)
+            self._shapes = shapes
         for name in _cached_property_names(type(self)):  # type: ignore[arg-type]
             self.__dict__.pop(name, None)
         return shapes
@@ -221,7 +235,11 @@ class CollectionBase:
         else:
             idx = idx.astype(np.intp, copy=False)
 
-        shapes = [self._shapes[i] for i in idx.tolist()]
+        shapes: Union[List[BaseShape], LazyShapes]
+        if isinstance(self._shapes, LazyShapes):
+            shapes = self._shapes.take(idx)
+        else:
+            shapes = [self._shapes[i] for i in idx.tolist()]
 
         # A subset is valid for any collection type (Track ordering is
         # preserved), so skip re-validating it in __init__
@@ -619,36 +637,18 @@ class CollectionBase:
     @classmethod
     def from_shapely(cls, geometry_collection):
         """
-        Creates a geostructures FeatureCollection from a shapely GeometryCollection
+        Creates a collection from shapely geometries. Shapes are created from
+        the geometries as they're accessed; see CollectionBase.
 
         Args:
             geometry_collection:
-                A shapely GeometryCollection
+                A shapely GeometryCollection, or any sequence (e.g. a numpy
+                array or GeoSeries) of shapely geometries
 
         Returns:
-            FeatureCollection
+            An object of this class's type
         """
-        conv_map = {
-            'Point': GeoPoint,
-            'LineString': GeoLineString,
-            'Polygon': GeoPolygon,
-            'MultiPoint': MultiGeoPoint,
-            'MultiLineString': MultiGeoLineString,
-            'MultiPolygon': MultiGeoPolygon,
-        }
-
-        shapes = []
-        for shape in geometry_collection.geoms:
-            geom_type = shape.geom_type
-            if geom_type not in conv_map:  # pragma: no cover
-                # ignored coverage because can't falsify geometry type
-                raise ValueError(f'Unrecognized geometry type: {geom_type}')
-
-            shapes.append(
-                conv_map[geom_type].from_shapely(shape)
-            )
-
-        return cls(shapes)
+        return cls._from_lazy(LazyShapes(as_geometry_array(geometry_collection)))
 
     @cached_property
     def geospan(self) -> float:
@@ -908,6 +908,17 @@ class CollectionBase:
                     )
                     zip_file.write(prj, prj.name)
 
+    def to_shapely(self) -> np.ndarray:
+        """
+        Converts the collection to an array of shapely geometries, each the
+        equivalent of the shape's to_shapely(), building each geometry type in
+        a single vectorized call.
+
+        Returns:
+            A numpy object array of shapely geometries
+        """
+        return shapes_to_shapely(self._shapes)
+
 
 class FeatureCollection(CollectionBase):
 
@@ -1011,6 +1022,18 @@ class Track(CollectionBase):
     def _check_timed(shapes: Sequence[Any]) -> None:
         if not all(x.dt for x in shapes):
             raise ValueError('All track geoshapes must have an associated time value.')
+
+    @classmethod
+    def _from_lazy(cls, shapes: LazyShapes) -> 'Track':
+        # Validate and order by start time from the arrays, as __init__ does
+        # from the shapes
+        columns = ShapeColumns(shapes)
+        if not columns.has_dt.all():
+            raise ValueError('All track geoshapes must have an associated time value.')
+
+        order = columns.start_order()
+        ordered = shapes.take(order)
+        return cls._from_shapes(ordered, columns.take(order, ordered))
 
     def __add__(self, other):
         if isinstance(other, BaseShape):
