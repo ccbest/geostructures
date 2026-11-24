@@ -330,6 +330,37 @@ def test_collection_from_geopandas_missing_times():
     assert col[3].dt is None
 
 
+def test_collection_from_geopandas_projected_crs():
+    import geopandas as gpd
+
+    df = gpd.GeoDataFrame(
+        geometry=[shapely.Point(-76.0, 37.0)], crs='EPSG:4326'
+    ).to_crs('EPSG:3857')
+    col = FeatureCollection.from_geopandas(df)
+
+    assert col[0].centroid.longitude == pytest.approx(-76.0, abs=1e-6)
+    assert col[0].centroid.latitude == pytest.approx(37.0, abs=1e-6)
+
+
+def test_collection_from_geopandas_wgs84_or_no_crs():
+    import geopandas as gpd
+
+    expected = FeatureCollection([GeoPoint(Coordinate(-76.0, 37.0))])
+    for crs in ('EPSG:4326', None):
+        df = gpd.GeoDataFrame(geometry=[shapely.Point(-76.0, 37.0)], crs=crs)
+        assert FeatureCollection.from_geopandas(df) == expected
+
+
+def test_collection_from_geopandas_leaves_frame_unchanged():
+    import geopandas as gpd
+
+    df = gpd.GeoDataFrame(geometry=[shapely.Point(-8460281.0, 4439106.0)], crs='EPSG:3857')
+    FeatureCollection.from_geopandas(df)
+
+    assert df.crs == 'EPSG:3857'
+    assert df.geometry[0].equals(shapely.Point(-8460281.0, 4439106.0))
+
+
 def test_collection_from_geojson():
     gjson = {
         'type': 'FeatureCollection',
