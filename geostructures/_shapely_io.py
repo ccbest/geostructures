@@ -153,7 +153,7 @@ def _in_coordinate_range(coords: np.ndarray) -> np.ndarray:
     )
 
 
-class _Source:
+class _Source:  # pylint: disable=too-few-public-methods
     """The data a LazyShapes (and every subset taken from it) creates its shapes from"""
 
     __slots__ = ('geometries', 'times', 'properties', 'shapes')
@@ -271,6 +271,7 @@ class LazyShapes(Sequence[BaseShape]):
             coords[point_idx] = shapely.get_coordinates(geometries[point_idx])
             # Coordinate wraps values outside its range; read those from the shape
             for i in point_idx[~_in_coordinate_range(coords[point_idx])]:
+                # pylint: disable-next=no-member
                 coordinate = self[int(i)].coordinate  # type: ignore[attr-defined]
                 coords[i] = coordinate.longitude, coordinate.latitude
 
@@ -323,7 +324,7 @@ def _ring_positions(rings) -> Optional[Tuple[List[List[List[float]]], int]]:
     return converted, dims.pop()
 
 
-class _RaggedBuilder:
+class _RaggedBuilder:  # pylint: disable=too-few-public-methods
     """Accumulates one geometry type and dimension in shapely's ragged array layout"""
 
     def __init__(self, geometry_type, levels: int):
@@ -453,4 +454,3 @@ def shapes_to_shapely(shapes: Sequence[BaseShape]) -> np.ndarray:
             shape.__dict__['_shapely'] = out[row]
 
     return out
-
