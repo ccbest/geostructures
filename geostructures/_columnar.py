@@ -26,6 +26,7 @@ from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, Mul
 from geostructures.structures import (
     GeoBox, GeoCircle, GeoEllipse, GeoLineString, GeoPoint, GeoPolygon, GeoRing
 )
+from geostructures._shapely_io import LazyShapes
 from geostructures.time import TimeInterval, _endpoint, _TimeColumns
 
 
@@ -442,7 +443,11 @@ class ShapeColumns:
     @cached_property
     def _times(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Start and end microseconds (zero for rows without time), and whether each row has time"""
-        times = _TimeColumns.from_intervals([x.dt for x in self._shapes])
+        if isinstance(self._shapes, LazyShapes):
+            # Read from the source data, without creating shapes
+            times = self._shapes.time_columns()
+        else:
+            times = _TimeColumns.from_intervals([x.dt for x in self._shapes])
         return times.starts, times.ends, times.has_dt
 
     @property
@@ -464,6 +469,9 @@ class ShapeColumns:
 
     @cached_property
     def _points(self) -> Tuple[np.ndarray, np.ndarray]:
+        if isinstance(self._shapes, LazyShapes):
+            return self._shapes.point_columns()
+
         is_point, coords = [], []
         for shape in self._shapes:
             if type(shape) is GeoPoint:  # pylint: disable=unidiomatic-typecheck

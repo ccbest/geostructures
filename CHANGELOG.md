@@ -271,6 +271,17 @@ to [Semantic Versioning](https://semver.org/).
   `set_crs()` first. **Calling `set_crs()` on it with a different CRS now
   raises `ValueError`**; use `to_crs()` to transform the coordinates, or pass
   `allow_override=True` to relabel them without transforming.
+- **`from_shapely` no longer goes through WKT text.** A collection's
+  `from_shapely` reads coordinates directly from the geometries, so they are
+  now exact. Previously GEOS's WKT output lost the last bit of roughly 1 in
+  200 coordinates on the way in.
+- **Collections read from shapely create their shapes on demand.** Indexing,
+  iterating, filtering and exporting create only the shapes they touch;
+  accessing `geoshapes`, or modifying the collection, creates them all. A
+  given row is always the same object once created.
+- **`from_shapely` rejects unconvertible input up front with a `ValueError`:**
+  missing, empty or unsupported geometries, and NaN or infinite coordinates.
+  A missing geometry previously raised `AttributeError`.
 
 ### Features
 
@@ -328,6 +339,12 @@ to [Semantic Versioning](https://semver.org/).
   `to_polars()` table; longer than ten shapes, only the first five and last five
   are shown and converted. Needs the `polars` extra; without it the notebook
   shows `repr()` as before. `repr()` and `print()` are unchanged.
+- **Array-based shapely interchange.** Collections convert to and from shapely
+  in vectorized calls: the new `collection.to_shapely()` returns a numpy array
+  of geometries, each identical to that shape's own `to_shapely()`, and
+  `from_shapely` accepts any sequence of geometries (a numpy array, a
+  GeoSeries or a list) as well as a GeometryCollection. Reading 100k points
+  with `from_shapely` takes ~0.02s, down from ~1.2s.
 - **`H3Hasher` accepts resolution 0.** The base cells were rejected as though no
   resolution had been given.
 - **`Coordinate.is_close(other, abs_tol=...)`** — a tolerance-based comparison

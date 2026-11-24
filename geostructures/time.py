@@ -408,3 +408,47 @@ class _TimeColumns:
         has_dt = np.zeros(n, dtype=bool)
         has_dt[idx] = True
         return cls(starts, ends, has_dt, start_tz, end_tz)
+
+    @classmethod
+    def from_endpoints(
+        cls,
+        starts: np.ndarray,
+        has_start: np.ndarray,
+        start_tz: np.ndarray,
+        ends: np.ndarray,
+        has_end: np.ndarray,
+        end_tz: np.ndarray,
+    ) -> _TimeColumns:
+        """
+        Combine separately-recorded start and end times, either of which may
+        be missing. A row with only one endpoint becomes an instant at it.
+        Raises ValueError where an end precedes its start, as TimeInterval does.
+        """
+        both = has_start & has_end
+        if (ends[both] < starts[both]).any():
+            row = np.flatnonzero(both & (ends < starts))[0]
+            raise ValueError(
+                f'end date {_to_datetime(int(ends[row]), end_tz[row])} must not be less '
+                f'than start date {_to_datetime(int(starts[row]), start_tz[row])}'
+            )
+        return cls(
+            np.where(has_start, starts, ends),
+            np.where(has_end, ends, starts),
+            has_start | has_end,
+            np.where(has_start, start_tz, end_tz),
+            np.where(has_end, end_tz, start_tz),
+        )
+
+    def take(self, idx: np.ndarray) -> _TimeColumns:
+        return _TimeColumns(
+            self.starts[idx], self.ends[idx], self.has_dt[idx],
+            self.start_tz[idx], self.end_tz[idx]
+        )
+
+    def interval(self, row: int) -> Optional[TimeInterval]:
+        """The TimeInterval for a row, or None if it has no time"""
+        if not self.has_dt[row]:
+            return None
+        return TimeInterval._from_micros(  # pylint: disable=protected-access
+            int(self.starts[row]), int(self.ends[row]), self.start_tz[row], self.end_tz[row]
+        )

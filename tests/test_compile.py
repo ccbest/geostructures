@@ -17,3 +17,4 @@ def test_compile():
     import geostructures.collections
     import geostructures.parsers
     import geostructures._polars_io
+    import geostructures._shapely_io
