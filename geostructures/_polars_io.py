@@ -6,9 +6,12 @@ __all__ = ['collection_to_html', 'shapes_to_polars']
 
 from datetime import timezone
 import html
-from typing import Any, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+import numpy as np
 
 from geostructures._base import BaseShape
+from geostructures._shapely_io import LazyShapes
 from geostructures.utils.conditional_imports import import_optional
 
 
@@ -37,16 +40,31 @@ def _column(pl: Any, name: str, values: List[Any]):
         return pl.Series(name, values, dtype=pl.Object)
 
 
-def _default_keys(shapes: Sequence[BaseShape]) -> List[str]:
+def _default_keys(rows: Sequence[Dict]) -> List[str]:
     """
-    The property columns of a frame built without include_properties: the time
-    columns (if any shape has them), then every other key in the order first
-    seen. A property named 'geometry' is left out, as the geometry column
-    takes its place.
+    The property columns of a frame built without include_properties, given
+    each shape's properties: the time columns (if any shape has them), then
+    every other key in the order first seen. A property named 'geometry' is
+    left out, as the geometry column takes its place.
     """
-    seen = list(dict.fromkeys(key for shape in shapes for key in shape.properties))
+    seen = list(dict.fromkeys(key for row in rows for key in row))
     keys = [k for k in _TIME_KEYS if k in seen] + [k for k in seen if k not in _TIME_KEYS]
     return [key for key in keys if key != 'geometry']
+
+
+def _names_and_properties(shapes: Sequence[BaseShape]) -> Tuple[List[str], List[Dict]]:
+    """
+    Each shape's class name and properties. Shapes a LazyShapes hasn't created
+    yet are read from its source data and stay uncreated.
+    """
+    if not isinstance(shapes, LazyShapes):
+        return [type(shape).__name__ for shape in shapes], [shape.properties for shape in shapes]
+
+    created = shapes.created()
+    return shapes.type_names(), [
+        shapes[i].properties if created[i] else shapes.properties_at(i)
+        for i in range(len(shapes))
+    ]
 
 
 def _plural(count: int, noun: str) -> str:
@@ -73,16 +91,21 @@ def collection_to_html(class_name: str, shapes: Sequence[BaseShape]) -> str:
     import_optional('polars')
     import polars as pl
 
-    keys = _default_keys(shapes)
-    shape_types = sorted({type(shape).__name__ for shape in shapes})
+    names, rows = _names_and_properties(shapes)
+    keys = _default_keys(rows)
+    shape_types = sorted(set(names))
 
     header = f'{class_name}: {_plural(len(shapes), "shape")} x {_plural(len(keys), "field")}'
     if shape_types:
         header += f' ({", ".join(shape_types)})'
 
-    sample = list(shapes)
+    sample = shapes
     if len(shapes) > _HTML_MAX_ROWS:
-        sample = sample[:_HTML_EDGE] + sample[-_HTML_EDGE:]
+        edges = list(range(_HTML_EDGE)) + list(range(len(shapes) - _HTML_EDGE, len(shapes)))
+        if isinstance(shapes, LazyShapes):
+            sample = shapes.take(np.array(edges))
+        else:
+            sample = [shapes[i] for i in edges]
         header += f'; showing the first {_HTML_EDGE} and last {_HTML_EDGE}'
 
     frame = shapes_to_polars(sample, include_properties=keys)
@@ -124,17 +147,18 @@ def shapes_to_polars(
     import_optional('polars')
     import polars as pl
 
+    names, rows = _names_and_properties(shapes)
     if geometry == 'label':
-        labels = [f'<{type(shape).__name__}>' for shape in shapes]
+        labels = [f'<{name}>' for name in names]
         geom = pl.Series('geometry', labels, dtype=pl.Enum(sorted(set(labels))))
     elif geometry == 'shape':
+        # The one case that needs the shapes themselves
         geom = pl.Series('geometry', list(shapes), dtype=pl.Object)
     else:
         raise ValueError(f"geometry must be 'label' or 'shape', not {geometry!r}")
 
-    rows = [shape.properties for shape in shapes]
     if include_properties is None:
-        keys = _default_keys(shapes)
+        keys = _default_keys(rows)
     else:
         # As in to_geopandas, the geometry column takes precedence over a property of the same name
         keys = [key for key in include_properties if key != 'geometry']

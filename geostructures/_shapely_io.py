@@ -27,6 +27,15 @@ from geostructures.utils.conditional_imports import import_optional
 # shapely.get_type_id values for the geometry types geostructures represents
 _POINT, _LINESTRING, _POLYGON, _MULTIPOINT, _MULTILINESTRING, _MULTIPOLYGON = 0, 1, 3, 4, 5, 6
 _SUPPORTED_TYPE_IDS = (_POINT, _LINESTRING, _POLYGON, _MULTIPOINT, _MULTILINESTRING, _MULTIPOLYGON)
+# The class shape_from_shapely creates for each
+_TYPE_NAMES = {
+    _POINT: 'GeoPoint',
+    _LINESTRING: 'GeoLineString',
+    _POLYGON: 'GeoPolygon',
+    _MULTIPOINT: 'MultiGeoPoint',
+    _MULTILINESTRING: 'MultiGeoLineString',
+    _MULTIPOLYGON: 'MultiGeoPolygon',
+}
 
 
 def _shapely():
@@ -254,6 +263,11 @@ class LazyShapes(Sequence[BaseShape]):
         if dt is not None:
             props['datetime_start'], props['datetime_end'] = dt.start, dt.end
         return props
+
+    def type_names(self) -> List[str]:
+        """The class name of each shape, without creating it"""
+        type_ids = _shapely().get_type_id(self.geometries).tolist()
+        return [_TYPE_NAMES[type_id] for type_id in type_ids]
 
     def point_columns(self) -> Tuple[np.ndarray, np.ndarray]:
         """

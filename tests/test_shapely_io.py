@@ -727,7 +727,8 @@ def test_geopandas_helpers_create_no_shapes():
 
     assert fcol._row_properties() == [x.properties for x in reference]
     assert fcol._rows_with_m() == [i for i, x in enumerate(reference) if x.has_m]
-    assert len(fcol._rows_with_m()) == 4
+    # The comparison above means something only if some rows carry M values and some don't
+    assert 0 < len(fcol._rows_with_m()) < len(fcol)
     assert fcol._shapes.created().sum() == 0
 
     # Rows already created report their shape's own properties
@@ -752,3 +753,25 @@ def test_geopandas_round_trip_is_exact():
     with_m = FeatureCollection([GeoPoint(Coordinate(1., 2., m=3.)), GeoPoint(Coordinate(4., 5.))])
     geometries = with_m.to_geopandas().geometry
     assert geometries[0].wkt == 'POINT M (1 2 3)' and geometries[1].wkt == 'POINT (4 5)'
+
+
+def test_geopandas_empty_frame():
+    empty = gpd.GeoDataFrame(
+        {
+            'x': pd.Series([], dtype='int64'),
+            'datetime_start': pd.to_datetime([], utc=True),
+            'datetime_end': pd.to_datetime([], utc=True),
+        },
+        geometry=gpd.GeoSeries([], crs='EPSG:4326'),
+    )
+    # With property and time columns, with a geometry column only, and in a projected CRS
+    for df in (empty, empty[['geometry']], empty.to_crs('EPSG:3857')):
+        for cls in (FeatureCollection, Track):
+            fcol = cls.from_geopandas(df)
+            assert len(fcol) == 0 and list(fcol) == []
+            assert fcol._row_properties() == [] and fcol._rows_with_m() == []
+            assert len(fcol.to_shapely()) == 0
+
+            out = fcol.to_geopandas()
+            assert len(out) == 0 and out.crs == 'EPSG:4326'
+            assert len(cls.from_geopandas(out)) == 0
