@@ -282,6 +282,19 @@ to [Semantic Versioning](https://semver.org/).
 - **`from_shapely` rejects unconvertible input up front with a `ValueError`:**
   missing, empty or unsupported geometries, and NaN or infinite coordinates.
   A missing geometry previously raised `AttributeError`.
+- **`from_geopandas` and `to_geopandas` no longer go through WKT text.** Both
+  read and write coordinates directly, so a GeoDataFrame round trip is now
+  exact. Previously GEOS's WKT output lost the last bit of roughly 1 in 200
+  coordinates on the way in, and `to_geopandas` rounded every coordinate to 12
+  decimal places on the way out. The returned frame is still labelled
+  `EPSG:4326`, and frames in other CRSs are still converted to WGS84 before
+  they are read.
+- **`to_geopandas` geometries are each shape's own `to_shapely()`.** Shapes
+  carrying M values, which shapely geometries can't represent, are still
+  exported via WKT.
+- **Collections read from geopandas create their shapes on demand**, as
+  collections read from shapely do, and `from_geopandas` rejects the same
+  unconvertible input up front with a `ValueError`.
 
 ### Features
 
@@ -345,6 +358,11 @@ to [Semantic Versioning](https://semver.org/).
   `from_shapely` accepts any sequence of geometries (a numpy array, a
   GeoSeries or a list) as well as a GeometryCollection. Reading 100k points
   with `from_shapely` takes ~0.02s, down from ~1.2s.
+- **Array-based geopandas interchange.** `from_geopandas` and `to_geopandas`
+  convert geometries, and `datetime64` time columns, as whole arrays. Reading
+  300k timed points from geopandas is ~30x faster (6.9s to 0.23s), a read,
+  filter and export of them ~16x faster (7.2s to 0.44s), and the collection
+  holds them in under half the memory.
 - **`H3Hasher` accepts resolution 0.** The base cells were rejected as though no
   resolution had been given.
 - **`Coordinate.is_close(other, abs_tol=...)`** — a tolerance-based comparison
