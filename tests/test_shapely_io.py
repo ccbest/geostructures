@@ -188,6 +188,26 @@ def test_shape_from_shapely_is_exact():
 
 
 @pytest.mark.parametrize('seed', range(3))
+def test_from_geopandas_matches_previous_implementation(seed):
+    df = _random_dataframe(random.Random(seed), 200)
+    expected = [_signature(x) for x in _old_from_geopandas(df)]
+
+    fcol = FeatureCollection.from_geopandas(df)
+    assert isinstance(fcol._shapes, LazyShapes)
+    assert [_signature(x) for x in fcol] == expected
+    # The same row is always the same object
+    assert all(x is y for x, y in zip(fcol, fcol))
+
+    timed = df[df['datetime_start'].notna()]
+    expected_track = sorted(_old_from_geopandas(timed), key=lambda x: x.start)
+    assert [_signature(x) for x in Track.from_geopandas(timed)] == \
+        [_signature(x) for x in expected_track]
+
+    with pytest.raises(ValueError, match='must have an associated time value'):
+        Track.from_geopandas(df)
+
+
+@pytest.mark.parametrize('seed', range(3))
 def test_lazy_columns_match_shape_columns(seed):
     df = _random_dataframe(random.Random(seed), 300)
     lazy = ShapeColumns(FeatureCollection.from_geopandas(df)._shapes)
@@ -224,6 +244,27 @@ def test_lazy_filters_match_eager(seed):
     window = TimeInterval(_T0 + timedelta(hours=1), _T0 + timedelta(hours=3))
     assert [lazy_rows[id(x)] for x in lazy.filter_by_dt(window)] == \
         [eager_rows[id(x)] for x in eager.filter_by_dt(window)]
+
+
+def test_point_workflows_create_few_shapes():
+    n = 5_000
+    xy = np.random.default_rng(0).uniform(-10, 10, (n, 2))
+    df = gpd.GeoDataFrame(
+        {'datetime_start': pd.date_range('2020-01-01', periods=n, freq='s', tz='UTC')},
+        geometry=shapely.points(xy),
+    )
+    track = Track.from_geopandas(df)
+    filtered = track.filter_by_intersection(GeoBox(Coordinate(0., 1.), Coordinate(1., 0.)))
+    filtered = filtered[datetime(2020, 1, 1):datetime(2020, 1, 1, 1)]
+    out = filtered.to_geopandas()
+
+    assert len(out) == len(filtered) > 0
+    # Nothing above needed a shape object
+    assert not track._shapes.created().any()
+
+    # Indexing creates just that shape
+    _ = filtered[0]
+    assert track._shapes.created().sum() == 1
 
 
 @pytest.mark.parametrize('seed', range(3))
@@ -658,3 +699,56 @@ def test_lazily_held_collection_mutation():
         in_area = [_signature(x) for x in reference.filter_by_intersection(area)]
         assert [_signature(x) for x in col.filter_by_intersection(area)] == in_area
         assert [x.dt for x in col.filter_by_dt(window)] == [x.dt for x in reference.filter_by_dt(window)]
+
+
+def test_from_geopandas_rejects_unconvertible():
+    for bad in (None, shapely.Point(), shapely.Point(float('nan'), 0)):
+        df = gpd.GeoDataFrame({'x': [1, 2]}, geometry=[shapely.Point(0, 1), bad])
+        with pytest.raises(ValueError):
+            FeatureCollection.from_geopandas(df)
+
+
+def test_from_geopandas_reprojects_lazily():
+    xy = np.random.default_rng(0).uniform(-10, 10, (50, 2))
+    wgs84 = gpd.GeoDataFrame({'x': range(50)}, geometry=shapely.points(xy), crs='EPSG:4326')
+    projected = wgs84.to_crs('EPSG:3857')
+
+    fcol = FeatureCollection.from_geopandas(projected)
+    assert isinstance(fcol._shapes, LazyShapes) and not fcol._shapes.created().any()
+    coords = np.array([[x.coordinate.longitude, x.coordinate.latitude] for x in fcol])
+    np.testing.assert_allclose(coords, xy, atol=1e-9)
+    assert [x.properties['x'] for x in fcol] == list(range(50))
+
+
+def test_geopandas_helpers_create_no_shapes():
+    df = _random_dataframe(random.Random(5), 200)
+    reference = _old_from_geopandas(df)
+    fcol = FeatureCollection.from_geopandas(df)
+
+    assert fcol._row_properties() == [x.properties for x in reference]
+    assert fcol._rows_with_m() == [i for i, x in enumerate(reference) if x.has_m]
+    assert len(fcol._rows_with_m()) == 4
+    assert fcol._shapes.created().sum() == 0
+
+    # Rows already created report their shape's own properties
+    created = fcol[3]
+    assert fcol._row_properties()[3] == created.properties
+    assert fcol._shapes.created().sum() == 1
+
+    eager = FeatureCollection(reference)
+    assert eager._row_properties() == [x.properties for x in reference]
+    assert eager._rows_with_m() == fcol._rows_with_m()
+
+
+def test_geopandas_round_trip_is_exact():
+    xy = np.random.default_rng(0).uniform(-10, 10, (2_000, 2))
+    df = gpd.GeoDataFrame({'x': range(2_000)}, geometry=shapely.points(xy), crs='EPSG:4326')
+
+    out = FeatureCollection.from_geopandas(df).to_geopandas()
+    assert out.crs == 'EPSG:4326'
+    np.testing.assert_array_equal(shapely.get_coordinates(out.geometry.values), xy)
+
+    # M values, which shapely geometries can't carry, survive via WKT
+    with_m = FeatureCollection([GeoPoint(Coordinate(1., 2., m=3.)), GeoPoint(Coordinate(4., 5.))])
+    geometries = with_m.to_geopandas().geometry
+    assert geometries[0].wkt == 'POINT M (1 2 3)' and geometries[1].wkt == 'POINT (4 5)'

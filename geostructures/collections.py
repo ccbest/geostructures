@@ -5,7 +5,7 @@ Module for sequences of GeoShapes
 __all__ = ['FeatureCollection', 'CollectionBase', 'Track']
 
 from collections import defaultdict, Counter
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from functools import cached_property
 from pathlib import Path
 import tempfile
@@ -30,7 +30,7 @@ from geostructures._shapely_io import LazyShapes, as_geometry_array, shapes_to_s
 from geostructures.geodesic import distance_meters
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
 from geostructures.structures import GeoLineString, GeoPoint, GeoPolygon
-from geostructures.time import TimeInterval
+from geostructures.time import TimeInterval, _endpoint, _TimeColumns
 from geostructures.utils.functions import default_to_zulu
 from geostructures.utils.logging import warn_once
 from geostructures.utils.conditional_imports import import_optional
@@ -62,8 +62,8 @@ class CollectionBase:
     quickly - are cached, and discarded whenever the collection is modified;
     the filtering arrays are rebuilt from values cached on each shape.
 
-    Collections read from shapely geometries (from_shapely) create each shape
-    only when it is first accessed. Indexing, iterating, filtering and
+    Collections read from shapely geometries (from_shapely, from_geopandas)
+    create each shape only when it is first accessed. Indexing, iterating, filtering and
     exporting create only the shapes they need; accessing `geoshapes`, or
     modifying the collection, creates them all.
     """
@@ -223,6 +223,32 @@ class CollectionBase:
         except ImportError:
             return None
         return collection_to_html(type(self).__name__, self.geoshapes)
+
+    def _row_properties(self) -> List[Dict]:
+        """Each shape's properties, without creating shapes that don't exist yet"""
+        shapes = self._shapes
+        if not isinstance(shapes, LazyShapes):
+            return [x.properties for x in shapes]
+
+        created = shapes.created()
+        return [
+            shapes[i].properties if created[i] else shapes.properties_at(i)
+            for i in range(len(shapes))
+        ]
+
+    def _rows_with_m(self) -> List[int]:
+        """Rows whose shapes carry M values"""
+        shapes = self._shapes
+        if not isinstance(shapes, LazyShapes):
+            return [i for i, x in enumerate(shapes) if x.has_m]
+
+        import_optional('shapely')
+        import shapely
+
+        if not hasattr(shapely, 'has_m'):  # pragma: no cover
+            # M support arrived in shapely 2.1
+            return []
+        return np.flatnonzero(shapely.has_m(shapes.geometries)).tolist()
 
     def _subset(self: _COL_TYPE, selection: Union[np.ndarray, Sequence[bool], Sequence[int]]) -> _COL_TYPE:
         """
@@ -491,6 +517,9 @@ class CollectionBase:
         Associates start and end times to the shape, if present, and
         stores the remaining columns as shape properties.
 
+        Shapes are created from the dataframe's geometries as they're accessed;
+        see CollectionBase.
+
         Args:
             df:
                 A GeoPandas dataframe
@@ -513,50 +542,51 @@ class CollectionBase:
             # Returns a new frame; the caller's frame is left as it was
             df = df.to_crs('EPSG:4326')
 
-        conv_map = {
-            'Point': GeoPoint,
-            'LineString': GeoLineString,
-            'Polygon': GeoPolygon,
-            'MultiPoint': MultiGeoPoint,
-            'MultiLineString': MultiGeoLineString,
-            'MultiPolygon': MultiGeoPolygon,
-        }
-
-        def _get_dt(rec):
-            """Grabs datetime data and returns appropriate struct"""
-            # Anything other than a datetime is missing, including pandas' NaT
-            # (which is truthy, so must be removed before the checks below)
-            dt_start, dt_end = (
-                value if isinstance(value, datetime) and not pd.isnull(value) else None
-                for value in (rec.get(time_start_field), rec.get(time_end_field))
-            )
-            if dt_start is None or dt_end is None or dt_start == dt_end:
-                return dt_start or dt_end
-
-            return TimeInterval(dt_start, dt_end)
-
         df = cast(gpd.GeoDataFrame, df)
-        prop_fields = [
-            x for x in df.columns if x not in (time_start_field, time_end_field, 'geometry')
-        ]
-        shapes: List[BaseShape] = []
-        for record in df.to_dict('records'):
-            geom_type = record['geometry'].geom_type
-            if geom_type not in conv_map:  # pragma: no cover
-                # ignored coverage because can't falsify geometry type
-                raise ValueError(f'Unrecognized geometry type: {geom_type}')
+        geometries = as_geometry_array(df.geometry.values)
+        attributes = pd.DataFrame(df.drop(columns=df.geometry.name))
+        n = len(df)
 
-            dt = _get_dt(record)
-            props = {k: v for k, v in record.items() if k in prop_fields}
-            shapes.append(
-                conv_map[geom_type].from_wkt(  # type: ignore
-                    record['geometry'].wkt,
-                    dt=dt,
-                    properties=props
-                )
-            )
+        def _endpoints(field: str):
+            """Microseconds, presence, and timezone of each row's value for a time field"""
+            micros, present = np.zeros(n, dtype=np.int64), np.zeros(n, dtype=bool)
+            tzs = np.full(n, None, dtype=object)
+            if field not in attributes.columns:
+                return micros, present, tzs
 
-        return cls(shapes)
+            column = attributes[field]
+            if pd.api.types.is_datetime64_any_dtype(column):
+                tz = column.dt.tz
+                if tz is None:
+                    warn_once(
+                        'Datetime does not contain timezone information; Zulu/UTC time '
+                        'assumed. (this warning will not repeat)'
+                    )
+                else:
+                    column = column.dt.tz_convert(None)
+                present = column.notna().to_numpy()
+                values = column.to_numpy().astype('datetime64[us]').view(np.int64)
+                micros[present] = values[present]
+                tzs[:] = tz or timezone.utc
+                return micros, present, tzs
+
+            # Anything other than a datetime (missing values, strings) is treated as absent
+            for i, value in enumerate(column.tolist()):
+                if isinstance(value, datetime) and not pd.isnull(value):
+                    micros[i], tzs[i] = _endpoint(default_to_zulu(value))
+                    present[i] = True
+            return micros, present, tzs
+
+        times = _TimeColumns.from_endpoints(
+            *_endpoints(time_start_field), *_endpoints(time_end_field)
+        )
+        properties = attributes.drop(
+            columns=[x for x in (time_start_field, time_end_field) if x in attributes.columns]
+        ).to_dict('records')
+        if not properties:
+            # to_dict returns no records at all for a frame without columns
+            properties = [{} for _ in range(n)]
+        return cls._from_lazy(LazyShapes(geometries, times, properties))
 
     @classmethod
     def from_shapefile(
@@ -720,21 +750,29 @@ class CollectionBase:
         import pandas as pd
         import_optional('geopandas')
         import geopandas as gpd
+        import_optional('shapely')
+        import shapely
 
+        all_properties = self._row_properties()
         keys = include_properties or set(
-            _key for x in self.geoshapes
-            for _key in x.properties.keys()
+            _key for props in all_properties
+            for _key in props.keys()
         )
+
+        geometries = self.to_shapely()
+        # Shapely geometries can't carry M values; keep them by going via WKT
+        for i in self._rows_with_m():
+            geometries[i] = shapely.from_wkt(self._shapes[i].to_wkt())
 
         return gpd.GeoDataFrame(
             data=pd.DataFrame(
                 [
                     {
-                       key: x.properties.get(key) for key in keys
-                    } for x in self.geoshapes
+                       key: props.get(key) for key in keys
+                    } for props in all_properties
                 ]
             ),
-            geometry=gpd.GeoSeries.from_wkt([x.to_wkt() for x in self.geoshapes]),
+            geometry=gpd.GeoSeries(geometries),
             crs='EPSG:4326',
         )
 
