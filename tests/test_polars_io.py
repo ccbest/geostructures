@@ -1,14 +1,21 @@
 from datetime import datetime, timedelta, timezone
 
+import geopandas as gpd
+import numpy as np
+import pandas as pd
 import polars as pl
+from polars.testing import assert_frame_equal
 import pytest
+import shapely
 
 from geostructures import (
-    Coordinate, GeoBox, GeoCircle, GeoEllipse, GeoLineString, GeoPoint, GeoPolygon, GeoRing,
+    Coordinate, FeatureCollection, GeoBox, GeoCircle, GeoEllipse, GeoLineString, GeoPoint,
+    GeoPolygon, GeoRing, Track,
 )
 from geostructures.multistructures import MultiGeoLineString, MultiGeoPoint, MultiGeoPolygon
 from geostructures.time import TimeInterval
 from geostructures._polars_io import collection_to_html, shapes_to_polars
+from geostructures._shapely_io import LazyShapes
 
 
 _SQUARE = [Coordinate(0.0, 0.0), Coordinate(1.0, 0.0), Coordinate(1.0, 1.0), Coordinate(0.0, 0.0)]
@@ -178,3 +185,127 @@ def test_collection_to_html_long(monkeypatch):
     for i in (0, 4, 9995, 9999):
         assert f'<td>{i}</td>' in out
     assert '<td>5</td>' not in out and '<td>9994</td>' not in out
+
+
+def _timed_points(n):
+    """A GeoDataFrame of timed points with two property columns"""
+    rng = np.random.default_rng(0)
+    start = pd.Timestamp('2024-01-01', tz='UTC') + pd.to_timedelta(
+        rng.integers(0, 86_400, n), unit='s'
+    )
+    return gpd.GeoDataFrame(
+        {
+            'speed': rng.uniform(0, 25, n),
+            'label': [('a', 'b')[i % 2] for i in range(n)],
+            'datetime_start': start,
+            'datetime_end': start + pd.Timedelta(minutes=5),
+        },
+        geometry=shapely.points(rng.uniform(-10, 10, (n, 2))),
+        crs='EPSG:4326',
+    )
+
+
+def _lazy_and_eager(df, cls=FeatureCollection):
+    """The same data held as lazily created shapes, and as ordinary shape objects"""
+    lazy = cls.from_geopandas(df)
+    eager = cls(list(cls.from_geopandas(df)))
+    assert isinstance(lazy._shapes, LazyShapes) and isinstance(eager._shapes, list)
+    return lazy, eager
+
+
+def _assert_same_frame(left, right):
+    """Frame equality that also holds for pl.Object columns containing NaN"""
+    assert left.schema == right.schema
+    for name in left.columns:
+        for a, b in zip(left[name].to_list(), right[name].to_list(), strict=True):
+            assert a == b or (a != a and b != b), name
+
+
+def test_to_polars_creates_no_shapes():
+    lazy, eager = _lazy_and_eager(_timed_points(10_000))
+
+    frame = lazy.to_polars()
+    assert frame.columns == ['geometry', 'datetime_start', 'datetime_end', 'speed', 'label']
+    assert_frame_equal(frame, eager.to_polars())
+    assert_frame_equal(
+        lazy.to_polars(include_properties=['label', 'missing']),
+        eager.to_polars(include_properties=['label', 'missing']),
+    )
+    assert_frame_equal(lazy.to_polars(lazy=True).collect(), eager.to_polars())
+    assert lazy._shapes.created().sum() == 0
+
+    # A subset of a lazily read collection is read from the same source
+    subset = lazy.filter_by_intersection(GeoBox(Coordinate(-5., 5.), Coordinate(5., -5.)))
+    assert 0 < len(subset) < len(lazy)
+    assert_frame_equal(subset.to_polars(), FeatureCollection(list(subset.geoshapes)).to_polars())
+
+
+def test_repr_html_creates_no_shapes():
+    lazy, eager = _lazy_and_eager(_timed_points(10_000))
+
+    out = lazy._repr_html_()
+    assert lazy._shapes.created().sum() == 0
+    assert out == eager._repr_html_()
+    assert out.startswith(
+        '<p>FeatureCollection: 10,000 shapes x 4 fields (GeoPoint); '
+        'showing the first 5 and last 5</p>'
+    )
+
+    # Ten shapes or fewer are shown whole
+    lazy, eager = _lazy_and_eager(_timed_points(7), Track)
+    assert lazy._repr_html_() == eager._repr_html_()
+    assert lazy._shapes.created().sum() == 0
+
+
+@pytest.mark.parametrize('seed', range(3))
+def test_lazily_held_shapes_match_eager(seed):
+    """Every geometry type, with times and properties missing from some rows"""
+    import random
+    from tests.test_shapely_io import _random_dataframe
+
+    lazy, eager = _lazy_and_eager(_random_dataframe(random.Random(seed), 300))
+
+    frame = lazy.to_polars()
+    assert lazy._shapes.created().sum() == 0
+    _assert_same_frame(frame, eager.to_polars())
+    assert set(frame['geometry'].unique()) == {
+        '<GeoPoint>', '<GeoLineString>', '<GeoPolygon>',
+        '<MultiGeoPoint>', '<MultiGeoLineString>', '<MultiGeoPolygon>',
+    }
+    assert lazy._repr_html_() == eager._repr_html_()
+    assert lazy._shapes.created().sum() == 0
+
+    # Shapes that have been created are read as they are now, not as they were read
+    lazy[3].set_property('added', 1, inplace=True)
+    eager[3].set_property('added', 1, inplace=True)
+    assert lazy._shapes.created().sum() == 1
+    assert 'added' in lazy.to_polars().columns
+    _assert_same_frame(lazy.to_polars(), eager.to_polars())
+    assert lazy._repr_html_() == eager._repr_html_()
+    assert lazy._shapes.created().sum() == 1
+
+
+def test_lazily_held_shapes_without_times_or_properties():
+    geometries = [shapely.Point(0, 1), shapely.LineString([(0, 0), (1, 1)])]
+    lazy = FeatureCollection.from_shapely(geometries)
+    eager = FeatureCollection(list(FeatureCollection.from_shapely(geometries)))
+
+    assert lazy.to_polars().columns == ['geometry']
+    assert_frame_equal(lazy.to_polars(), eager.to_polars())
+    assert lazy._repr_html_() == eager._repr_html_()
+    assert lazy._repr_html_().startswith(
+        '<p>FeatureCollection: 2 shapes x 0 fields (GeoLineString, GeoPoint)</p>'
+    )
+    assert lazy._shapes.created().sum() == 0
+
+    empty = FeatureCollection.from_shapely([])
+    assert empty.to_polars().shape == (0, 1)
+    assert empty._repr_html_() == FeatureCollection([])._repr_html_()
+
+
+def test_to_polars_geometry_shape_creates_shapes():
+    lazy, _ = _lazy_and_eager(_timed_points(20))
+
+    frame = lazy.to_polars(geometry='shape')
+    assert lazy._shapes.created().all()
+    assert all(a is b for a, b in zip(frame['geometry'].to_list(), lazy.geoshapes))

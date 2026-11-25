@@ -363,6 +363,12 @@ to [Semantic Versioning](https://semver.org/).
   300k timed points from geopandas is ~30x faster (6.9s to 0.23s), a read,
   filter and export of them ~16x faster (7.2s to 0.44s), and the collection
   holds them in under half the memory.
+- **`to_polars()` and the notebook display read lazily held collections
+  without creating their shapes.** For a collection read from shapely or
+  geopandas, labels, times and properties come from the source data, and the
+  result is the same as for ordinary shapes. `to_polars()` on 300k timed points
+  read from geopandas takes ~1.3s, down from ~3.6s. `geometry='shape'` still
+  creates every shape, as the column holds them.
 - **`H3Hasher` accepts resolution 0.** The base cells were rejected as though no
   resolution had been given.
 - **`Coordinate.is_close(other, abs_tol=...)`** — a tolerance-based comparison

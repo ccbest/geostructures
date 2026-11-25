@@ -222,7 +222,7 @@ class CollectionBase:
             import_optional('polars')
         except ImportError:
             return None
-        return collection_to_html(type(self).__name__, self.geoshapes)
+        return collection_to_html(type(self).__name__, self._shapes)
 
     def _row_properties(self) -> List[Dict]:
         """Each shape's properties, without creating shapes that don't exist yet"""
@@ -796,12 +796,13 @@ class CollectionBase:
 
             geometry: (Default 'label')
                 'label' for a column reading e.g. '<GeoPoint>', or 'shape'
-                for a column holding the shapes themselves
+                for a column holding the shapes themselves. 'shape' creates
+                every shape of a lazily read collection (see CollectionBase).
 
         Returns:
             polars.DataFrame, or polars.LazyFrame if lazy is True
         """
-        return shapes_to_polars(self.geoshapes, include_properties, lazy, geometry)
+        return shapes_to_polars(self._shapes, include_properties, lazy, geometry)
 
     def to_shapefile(
         self,
